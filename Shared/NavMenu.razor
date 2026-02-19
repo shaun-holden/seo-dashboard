@@ -58,6 +58,15 @@
                 <span class="oi oi-data-transfer-download" aria-hidden="true"></span> Import Budget
             </NavLink>
         </div>
+        <AuthorizeView>
+            <Authorized>
+                <div class="nav-item px-3 mt-3">
+                    <a href="/SignOut" class="nav-link text-danger">
+                        <span class="oi oi-account-logout" aria-hidden="true"></span> Log Out
+                    </a>
+                </div>
+            </Authorized>
+        </AuthorizeView>
     </nav>
 </div>
 @code {

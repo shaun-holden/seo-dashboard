@@ -6,7 +6,7 @@
   "compilationOptions": {},
   "targets": {
     ".NETCoreApp,Version=v10.0": {
-      "GymBudgetApp/2.0.0": {
+      "GymBudgetApp/1.0.0": {
         "dependencies": {
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "10.0.3",
           "Microsoft.AspNetCore.Identity.UI": "10.0.3",
@@ -259,7 +259,7 @@
     }
   },
   "libraries": {
-    "GymBudgetApp/2.0.0": {
+    "GymBudgetApp/1.0.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

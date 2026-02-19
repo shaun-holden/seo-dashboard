@@ -66,3 +66,35 @@ a, .btn-link {
     .blazor-error-boundary::after {
         content: "An error has occurred."
     }
+
+.print-only {
+    display: none;
+}
+
+@media print {
+    .sidebar, .top-row, .no-print, #blazor-error-ui {
+        display: none !important;
+    }
+
+    .print-only {
+        display: block !important;
+    }
+
+    .page {
+        display: block !important;
+    }
+
+    main {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .content {
+        padding: 0 !important;
+    }
+
+    .card {
+        break-inside: avoid;
+    }
+}
