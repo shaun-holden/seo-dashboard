@@ -1,0 +1,147 @@
+@page "/meets"
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@inject AppDbContext Db
+
+<h3>Meets</h3>
+
+@if (seasons == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="mb-3">
+        <label>Select Season</label>
+        <select class="form-select w-auto d-inline-block ms-2" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @foreach (var s in seasons)
+            {
+                <option value="@s.Id">@s.Name</option>
+            }
+        </select>
+    </div>
+
+    @if (selectedSeasonId > 0)
+    {
+        <button class="btn btn-primary mb-3" @onclick="ShowForm">+ Add Meet</button>
+
+        @if (showForm)
+        {
+            <div class="card mb-4 p-3">
+                <h5>@(editingMeet == null ? "Add Meet" : "Edit Meet")</h5>
+                <div class="mb-2">
+                    <label>Meet Name</label>
+                    <input class="form-control" @bind="formName" placeholder="e.g. Meet 1, State Meet" />
+                </div>
+                <div class="mb-2">
+                    <label>Date</label>
+                    <input type="date" class="form-control" @bind="formDate" />
+                </div>
+                <div class="mb-2">
+                    <label>Travel Type</label>
+                    <select class="form-select" @bind="formTravelType">
+                        <option value="Drive">Drive</option>
+                        <option value="Fly">Fly</option>
+                    </select>
+                </div>
+                <button class="btn btn-success me-2" @onclick="SaveMeet">Save</button>
+                <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+            </div>
+        }
+
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Meet Name</th>
+                    <th>Date</th>
+                    <th>Travel</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var meet in meets)
+                {
+                    <tr>
+                        <td>@meet.Name</td>
+                        <td>@meet.Date.ToString("MM/dd/yyyy")</td>
+                        <td>
+                            @if (meet.TravelType == TravelType.Fly)
+                            {
+                                <span class="badge bg-info text-dark">Fly</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Drive</span>
+                            }
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditMeet(meet)">Edit</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteMeet(meet)">Delete</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    private List<Season>? seasons;
+    private List<Meet> meets = new();
+    private int selectedSeasonId;
+    private bool showForm;
+    private Meet? editingMeet;
+    private string formName = "";
+    private DateTime formDate = DateTime.Today;
+    private TravelType formTravelType = TravelType.Drive;
+
+    protected override async Task OnInitializedAsync()
+    {
+        seasons = await Task.FromResult(Db.Seasons.OrderByDescending(s => s.Name).ToList());
+        var active = seasons.FirstOrDefault(s => s.IsActive);
+        if (active != null) { selectedSeasonId = active.Id; await LoadMeets(); }
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        await LoadMeets();
+    }
+
+    private async Task LoadMeets()
+    {
+        meets = await Task.FromResult(Db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToList());
+    }
+
+    private void ShowForm() { editingMeet = null; formName = ""; formDate = DateTime.Today; formTravelType = TravelType.Drive; showForm = true; }
+    private void CancelForm() { showForm = false; }
+
+    private void EditMeet(Meet meet)
+    {
+        editingMeet = meet; formName = meet.Name; formDate = meet.Date; formTravelType = meet.TravelType; showForm = true;
+    }
+
+    private async Task SaveMeet()
+    {
+        if (editingMeet == null)
+        {
+            Db.Meets.Add(new Meet { Name = formName, Date = formDate, TravelType = formTravelType, SeasonId = selectedSeasonId });
+        }
+        else
+        {
+            editingMeet.Name = formName; editingMeet.Date = formDate; editingMeet.TravelType = formTravelType;
+            Db.Meets.Update(editingMeet);
+        }
+        await Db.SaveChangesAsync();
+        await LoadMeets();
+        showForm = false;
+    }
+
+    private async Task DeleteMeet(Meet meet)
+    {
+        Db.Meets.Remove(meet);
+        await Db.SaveChangesAsync();
+        await LoadMeets();
+    }
+}

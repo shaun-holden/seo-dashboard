@@ -1,0 +1,145 @@
+@page "/seasons"
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@inject AppDbContext Db
+@inject NavigationManager Nav
+
+<h3>Seasons</h3>
+
+@if (seasons == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <button class="btn btn-primary mb-3" @onclick="ShowForm">+ New Season</button>
+
+    @if (showForm)
+    {
+        <div class="card mb-4 p-3">
+            <h5>@(editingSeason == null ? "Add Season" : "Edit Season")</h5>
+            <div class="mb-2">
+                <label>Season Name (e.g. 2026-2027)</label>
+                <input class="form-control" @bind="formName" />
+            </div>
+            <div class="mb-2">
+                <label>Total Athlete Count</label>
+                <input type="number" class="form-control" @bind="formAthleteCount" />
+            </div>
+            <div class="mb-2">
+                <input type="checkbox" @bind="formIsActive" /> Active Season
+            </div>
+            <button class="btn btn-success me-2" @onclick="SaveSeason">Save</button>
+            <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+        </div>
+    }
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Season</th>
+                <th>Athletes</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var season in seasons)
+            {
+                <tr>
+                    <td>@season.Name</td>
+                    <td>@season.AthleteCount</td>
+                    <td>
+                        @if (season.IsActive)
+                        {
+                            <span class="badge bg-success">Active</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Inactive</span>
+                        }
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditSeason(season)">Edit</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteSeason(season)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Season>? seasons;
+    private bool showForm = false;
+    private Season? editingSeason;
+
+    private string formName = "";
+    private int formAthleteCount = 0;
+    private bool formIsActive = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSeasons();
+    }
+
+    private async Task LoadSeasons()
+    {
+        seasons = await Task.FromResult(Db.Seasons.OrderByDescending(s => s.Name).ToList());
+    }
+
+    private void ShowForm()
+    {
+        editingSeason = null;
+        formName = "";
+        formAthleteCount = 0;
+        formIsActive = true;
+        showForm = true;
+    }
+
+    private void EditSeason(Season season)
+    {
+        editingSeason = season;
+        formName = season.Name;
+        formAthleteCount = season.AthleteCount;
+        formIsActive = season.IsActive;
+        showForm = true;
+    }
+
+    private async Task SaveSeason()
+    {
+        if (editingSeason == null)
+        {
+            var newSeason = new Season
+            {
+                Name = formName,
+                AthleteCount = formAthleteCount,
+                IsActive = formIsActive
+            };
+            Db.Seasons.Add(newSeason);
+        }
+        else
+        {
+            editingSeason.Name = formName;
+            editingSeason.AthleteCount = formAthleteCount;
+            editingSeason.IsActive = formIsActive;
+            Db.Seasons.Update(editingSeason);
+        }
+
+        await Db.SaveChangesAsync();
+        await LoadSeasons();
+        showForm = false;
+    }
+
+    private async Task DeleteSeason(Season season)
+    {
+        Db.Seasons.Remove(season);
+        await Db.SaveChangesAsync();
+        await LoadSeasons();
+    }
+
+    private void CancelForm()
+    {
+        showForm = false;
+    }
+}

@@ -1,0 +1,150 @@
+@page "/reports"
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+
+<h3>Reports</h3>
+
+@if (seasons == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="mb-3">
+        <label>Select Season</label>
+        <select class="form-select w-auto d-inline-block ms-2" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @foreach (var s in seasons)
+            {
+                <option value="@s.Id">@s.Name</option>
+            }
+        </select>
+    </div>
+
+    @if (selectedSeasonId > 0 && selectedSeason != null)
+    {
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card text-white bg-primary">
+                    <div class="card-body">
+                        <h6>Total Budgeted</h6>
+                        <h4>$@budgetTotal.ToString("N2")</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-success">
+                    <div class="card-body">
+                        <h6>Total Actual</h6>
+                        <h4>$@actualTotal.ToString("N2")</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-info">
+                    <div class="card-body">
+                        <h6>Cost Per Athlete</h6>
+                        <h4>$@costPerAthlete.ToString("N2")</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-warning">
+                    <div class="card-body">
+                        <h6>Variance</h6>
+                        <h4>$@(budgetTotal - actualTotal).ToString("N2")</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h5>Budget vs Actual by Category</h5>
+        <table class="table table-striped mb-4">
+            <thead>
+                <tr><th>Category</th><th>Budgeted</th><th>Actual</th><th>Variance</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var cat in Enum.GetValues<BudgetCategory>())
+                {
+                    var budgeted = lineItems.Where(i => i.Category == cat && !i.IsActual).Sum(i => i.Total);
+                    var actual = lineItems.Where(i => i.Category == cat && i.IsActual).Sum(i => i.Total);
+                    if (budgeted > 0 || actual > 0)
+                    {
+                        <tr>
+                            <td>@cat</td>
+                            <td>$@budgeted.ToString("N2")</td>
+                            <td>$@actual.ToString("N2")</td>
+                            <td class="@(budgeted - actual >= 0 ? "text-success" : "text-danger")">
+                                $@((budgeted - actual).ToString("N2"))
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+
+        <h5>Team Level Cost Breakdown</h5>
+        @foreach (var level in teamLevels)
+        {
+            var items = athleteItems.Where(i => i.TeamLevelId == level.Id).ToList();
+            var itemsTotal = items.Sum(i => i.Cost);
+            var grandTotal = costPerAthlete + itemsTotal;
+            var monthly = level.PaymentPlanMonths > 0 ? grandTotal / level.PaymentPlanMonths : 0;
+            <div class="card mb-3">
+                <div class="card-header"><h6>@level.Name — @level.AthleteCount athletes</h6></div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr><td>Individual Share of Team Expenses</td><td>$@costPerAthlete.ToString("N2")</td></tr>
+                            @foreach (var item in items)
+                            {
+                                <tr><td>@item.Name @(item.IsRequired ? "" : "(optional)")</td><td>$@item.Cost.ToString("N2")</td></tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr class="fw-bold"><td>Grand Total</td><td>$@grandTotal.ToString("N2")</td></tr>
+                            <tr class="text-primary fw-bold"><td>Payment Plan (@level.PaymentPlanMonths months)</td><td>$@monthly.ToString("N2")/month</td></tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<Season>? seasons;
+    private List<BudgetLineItem> lineItems = new();
+    private List<TeamLevel> teamLevels = new();
+    private List<AthleteItem> athleteItems = new();
+    private int selectedSeasonId;
+    private Season? selectedSeason;
+
+    private decimal budgetTotal => lineItems.Where(i => !i.IsActual).Sum(i => i.Total);
+    private decimal actualTotal => lineItems.Where(i => i.IsActual).Sum(i => i.Total);
+    private decimal costPerAthlete => selectedSeason?.AthleteCount > 0 ? budgetTotal / selectedSeason!.AthleteCount : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        seasons = await Task.FromResult(Db.Seasons.OrderByDescending(s => s.Name).ToList());
+        var active = seasons.FirstOrDefault(s => s.IsActive);
+        if (active != null) { selectedSeasonId = active.Id; selectedSeason = active; await LoadData(); }
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        selectedSeason = seasons?.FirstOrDefault(s => s.Id == selectedSeasonId);
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        lineItems = await Task.FromResult(Db.BudgetLineItems.Where(b => b.SeasonId == selectedSeasonId).ToList());
+        teamLevels = await Task.FromResult(Db.TeamLevels.Where(t => t.SeasonId == selectedSeasonId).ToList());
+        var levelIds = teamLevels.Select(t => t.Id).ToList();
+        athleteItems = await Task.FromResult(Db.AthleteItems.Where(a => levelIds.Contains(a.TeamLevelId)).ToList());
+    }
+}

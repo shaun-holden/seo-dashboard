@@ -1,0 +1,144 @@
+@page "/coaches"
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+
+<h3>Coaches</h3>
+
+@if (seasons == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="mb-3">
+        <label>Select Season</label>
+        <select class="form-select w-auto d-inline-block ms-2" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @foreach (var s in seasons)
+            {
+                <option value="@s.Id">@s.Name</option>
+            }
+        </select>
+    </div>
+
+    @if (selectedSeasonId > 0)
+    {
+        <button class="btn btn-primary mb-3" @onclick="ShowForm">+ Add Coach</button>
+
+        @if (showForm)
+        {
+            <div class="card mb-4 p-3">
+                <h5>@(editingCoach == null ? "Add Coach" : "Edit Coach")</h5>
+                <div class="mb-2">
+                    <label>Name</label>
+                    <input class="form-control" @bind="formName" />
+                </div>
+                <div class="mb-2">
+                    <label>Role</label>
+                    <input class="form-control" @bind="formRole" placeholder="e.g. Head Coach, Compulsory 1" />
+                </div>
+                <div class="mb-2">
+                    <input type="checkbox" @bind="formIsActive" /> Active
+                </div>
+                <button class="btn btn-success me-2" @onclick="SaveCoach">Save</button>
+                <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+            </div>
+        }
+
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var coach in coaches)
+                {
+                    <tr>
+                        <td>@coach.Name</td>
+                        <td>@coach.Role</td>
+                        <td>
+                            @if (coach.IsActive)
+                            {
+                                <span class="badge bg-success">Active</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Inactive</span>
+                            }
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditCoach(coach)">Edit</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteCoach(coach)">Delete</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    private List<Season>? seasons;
+    private List<Coach> coaches = new();
+    private int selectedSeasonId;
+    private bool showForm;
+    private Coach? editingCoach;
+    private string formName = "";
+    private string formRole = "";
+    private bool formIsActive = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        seasons = await Task.FromResult(Db.Seasons.OrderByDescending(s => s.Name).ToList());
+        var active = seasons.FirstOrDefault(s => s.IsActive);
+        if (active != null) { selectedSeasonId = active.Id; await LoadCoaches(); }
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        await LoadCoaches();
+    }
+
+    private async Task LoadCoaches()
+    {
+        coaches = await Task.FromResult(Db.Coaches.Where(c => c.SeasonId == selectedSeasonId).ToList());
+    }
+
+    private void ShowForm() { editingCoach = null; formName = ""; formRole = ""; formIsActive = true; showForm = true; }
+    private void CancelForm() { showForm = false; }
+
+    private void EditCoach(Coach coach)
+    {
+        editingCoach = coach; formName = coach.Name; formRole = coach.Role; formIsActive = coach.IsActive; showForm = true;
+    }
+
+    private async Task SaveCoach()
+    {
+        if (editingCoach == null)
+        {
+            Db.Coaches.Add(new Coach { Name = formName, Role = formRole, IsActive = formIsActive, SeasonId = selectedSeasonId });
+        }
+        else
+        {
+            editingCoach.Name = formName; editingCoach.Role = formRole; editingCoach.IsActive = formIsActive;
+            Db.Coaches.Update(editingCoach);
+        }
+        await Db.SaveChangesAsync();
+        await LoadCoaches();
+        showForm = false;
+    }
+
+    private async Task DeleteCoach(Coach coach)
+    {
+        Db.Coaches.Remove(coach);
+        await Db.SaveChangesAsync();
+        await LoadCoaches();
+    }
+}

@@ -1,0 +1,211 @@
+@page "/perdiem"
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@inject AppDbContext Db
+
+<h3>Per Diem</h3>
+
+@if (seasons == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="mb-3">
+        <label>Select Season</label>
+        <select class="form-select w-auto d-inline-block ms-2" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @foreach (var s in seasons)
+            {
+                <option value="@s.Id">@s.Name</option>
+            }
+        </select>
+    </div>
+
+    @if (selectedSeasonId > 0)
+    {
+        <div class="mb-3">
+            <label>Select Meet</label>
+            <select class="form-select w-auto d-inline-block ms-2" @onchange="OnMeetChanged">
+                <option value="0">-- Select Meet --</option>
+                @foreach (var m in meets)
+                {
+                    <option value="@m.Id">@m.Name</option>
+                }
+            </select>
+        </div>
+    }
+
+    @if (selectedMeetId > 0)
+    {
+        <button class="btn btn-primary mb-3" @onclick="ShowForm">+ Add Entry</button>
+
+        @if (showForm)
+        {
+            <div class="card mb-4 p-3">
+                <h5>@(editingEntry == null ? "Add Per Diem Entry" : "Edit Entry")</h5>
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <label>Coach</label>
+                        <select class="form-select" @bind="formCoachId">
+                            <option value="0">-- Select Coach --</option>
+                            @foreach (var c in coaches)
+                            {
+                                <option value="@c.Id">@c.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label>Meal</label>
+                        <select class="form-select" @bind="formMealType">
+                            <option value="Breakfast">Breakfast</option>
+                            <option value="Lunch">Lunch</option>
+                            <option value="Dinner">Dinner</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 mb-2">
+                        <label>Rate ($)</label>
+                        <input type="number" step="0.01" class="form-control" @bind="formRate" />
+                    </div>
+                    <div class="col-md-2 mb-2">
+                        <label># of Days</label>
+                        <input type="number" class="form-control" @bind="formDays" />
+                    </div>
+                    <div class="col-md-2 mb-2">
+                        <label>Type</label>
+                        <select class="form-select" @bind="formIsActual">
+                            <option value="false">Budgeted</option>
+                            <option value="true">Actual</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-success me-2" @onclick="SaveEntry">Save</button>
+                <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+            </div>
+        }
+
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Coach</th>
+                    <th>Meal</th>
+                    <th>Rate</th>
+                    <th>Days</th>
+                    <th>Total</th>
+                    <th>Type</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var entry in entries)
+                {
+                    <tr>
+                        <td>@coaches.FirstOrDefault(c => c.Id == entry.CoachId)?.Name</td>
+                        <td>@entry.MealType</td>
+                        <td>$@entry.Rate.ToString("N2")</td>
+                        <td>@entry.NumberOfDays</td>
+                        <td>$@entry.Total.ToString("N2")</td>
+                        <td>@(entry.IsActual ? "Actual" : "Budgeted")</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditEntry(entry)">Edit</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteEntry(entry)">Delete</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr class="fw-bold">
+                    <td colspan="4">Total</td>
+                    <td>$@entries.Sum(e => e.Total).ToString("N2")</td>
+                    <td colspan="2"></td>
+                </tr>
+            </tfoot>
+        </table>
+    }
+}
+
+@code {
+    private List<Season>? seasons;
+    private List<Meet> meets = new();
+    private List<Coach> coaches = new();
+    private List<PerDiemEntry> entries = new();
+    private int selectedSeasonId;
+    private int selectedMeetId;
+    private bool showForm;
+    private PerDiemEntry? editingEntry;
+    private int formCoachId = 0;
+    private MealType formMealType = MealType.Breakfast;
+    private decimal formRate = 0;
+    private int formDays = 1;
+    private bool formIsActual = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        seasons = await Task.FromResult(Db.Seasons.OrderByDescending(s => s.Name).ToList());
+        var active = seasons.FirstOrDefault(s => s.IsActive);
+        if (active != null) { selectedSeasonId = active.Id; await LoadMeets(); }
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        selectedMeetId = 0;
+        await LoadMeets();
+    }
+
+    private async Task OnMeetChanged(ChangeEventArgs e)
+    {
+        selectedMeetId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        await LoadEntries();
+    }
+
+    private async Task LoadMeets()
+    {
+        meets = await Task.FromResult(Db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToList());
+        coaches = await Task.FromResult(Db.Coaches.Where(c => c.SeasonId == selectedSeasonId).ToList());
+    }
+
+    private async Task LoadEntries()
+    {
+        entries = await Task.FromResult(Db.PerDiemEntries.Where(p => p.MeetId == selectedMeetId).ToList());
+    }
+
+    private void ShowForm() { editingEntry = null; formCoachId = 0; formMealType = MealType.Breakfast; formRate = 0; formDays = 1; formIsActual = false; showForm = true; }
+    private void CancelForm() { showForm = false; }
+
+    private void EditEntry(PerDiemEntry entry)
+    {
+        editingEntry = entry; formCoachId = entry.CoachId; formMealType = entry.MealType;
+        formRate = entry.Rate; formDays = entry.NumberOfDays; formIsActual = entry.IsActual; showForm = true;
+    }
+
+    private async Task SaveEntry()
+    {
+        if (editingEntry == null)
+        {
+            Db.PerDiemEntries.Add(new PerDiemEntry
+            {
+                CoachId = formCoachId, MealType = formMealType,
+                Rate = formRate, NumberOfDays = formDays,
+                IsActual = formIsActual, MeetId = selectedMeetId
+            });
+        }
+        else
+        {
+            editingEntry.CoachId = formCoachId; editingEntry.MealType = formMealType;
+            editingEntry.Rate = formRate; editingEntry.NumberOfDays = formDays;
+            editingEntry.IsActual = formIsActual;
+            Db.PerDiemEntries.Update(editingEntry);
+        }
+        await Db.SaveChangesAsync();
+        await LoadEntries();
+        showForm = false;
+    }
+
+    private async Task DeleteEntry(PerDiemEntry entry)
+    {
+        Db.PerDiemEntries.Remove(entry);
+        await Db.SaveChangesAsync();
+        await LoadEntries();
+    }
+}
