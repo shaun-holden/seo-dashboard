@@ -1,7 +1,10 @@
 @page "/perdiem"
+@attribute [Authorize]
 @using GymBudgetApp.Models
 @using GymBudgetApp
+@using System.Security.Claims
 @inject AppDbContext Db
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <h3>Per Diem</h3>
 
@@ -138,10 +141,13 @@ else
     private decimal formRate = 0;
     private int formDays = 1;
     private bool formIsActual = false;
+    private string? userId;
 
     protected override async Task OnInitializedAsync()
     {
-        seasons = await Task.FromResult(Db.Seasons.OrderByDescending(s => s.Name).ToList());
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
         var active = seasons.FirstOrDefault(s => s.IsActive);
         if (active != null) { selectedSeasonId = active.Id; await LoadMeets(); }
     }

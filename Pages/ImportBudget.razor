@@ -1,0 +1,241 @@
+@page "/import-budget"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.AspNetCore.Identity
+@using System.Security.Claims
+@inject AppDbContext Db
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<IdentityUser> UserManager
+
+<h3>Import Budget</h3>
+<p class="text-muted">Copy a season's data (meets, coaches, team levels, and budget items) from another user's account into one of your seasons.</p>
+
+<div class="card mb-4 p-3" style="max-width: 600px;">
+    <h5>Step 1: Find Employee</h5>
+    <div class="input-group mb-2">
+        <input class="form-control" placeholder="Employee email address" @bind="searchEmail" @bind:event="oninput" />
+        <button class="btn btn-primary" @onclick="SearchUser" disabled="@isSearching">
+            @if (isSearching) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            Search
+        </button>
+    </div>
+    @if (searchError != null)
+    {
+        <div class="alert alert-danger py-2">@searchError</div>
+    }
+</div>
+
+@if (employeeSeasons != null)
+{
+    <div class="card mb-4 p-3" style="max-width: 600px;">
+        <h5>Step 2: Select Seasons</h5>
+        <div class="mb-3">
+            <label class="form-label fw-semibold">Import from (employee season)</label>
+            <select class="form-select" @bind="srcSeasonId" @bind:after="UpdatePreview">
+                <option value="0">-- Select Season --</option>
+                @foreach (var s in employeeSeasons)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label fw-semibold">Import into (your season)</label>
+            <select class="form-select" @bind="targetSeasonId" @bind:after="UpdatePreview">
+                <option value="0">-- Select Season --</option>
+                @foreach (var s in mySeasons)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        </div>
+
+        @if (srcSeasonId > 0 && targetSeasonId > 0 && preview != null)
+        {
+            <div class="alert alert-info">
+                <strong>Preview — what will be imported:</strong>
+                <ul class="mb-0 mt-1">
+                    <li>@preview.MeetCount meet(s)</li>
+                    <li>@preview.CoachCount coach(es)</li>
+                    <li>@preview.TeamLevelCount team level(s) with @preview.AthleteItemCount athlete item(s)</li>
+                    <li>@preview.BudgetItemCount budget line item(s)</li>
+                </ul>
+            </div>
+
+            @if (importError != null)
+            {
+                <div class="alert alert-danger py-2">@importError</div>
+            }
+
+            @if (importSuccess)
+            {
+                <div class="alert alert-success py-2">
+                    Import complete! @preview.MeetCount meets, @preview.CoachCount coaches, @preview.TeamLevelCount team levels, and @preview.BudgetItemCount budget items were added to your season.
+                </div>
+            }
+            else
+            {
+                <button class="btn btn-success" @onclick="DoImport" disabled="@isImporting">
+                    @if (isImporting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Import
+                </button>
+            }
+        }
+    </div>
+}
+
+@code {
+    private string searchEmail = "";
+    private bool isSearching;
+    private string? searchError;
+    private List<Season>? employeeSeasons;
+    private List<Season> mySeasons = new();
+    private string? employeeUserId;
+    private string? currentUserId;
+
+    private int srcSeasonId;
+    private int targetSeasonId;
+    private ImportPreview? preview;
+
+    private bool isImporting;
+    private bool importSuccess;
+    private string? importError;
+
+    private class ImportPreview
+    {
+        public int MeetCount { get; set; }
+        public int CoachCount { get; set; }
+        public int TeamLevelCount { get; set; }
+        public int AthleteItemCount { get; set; }
+        public int BudgetItemCount { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        currentUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        mySeasons = Db.Seasons.Where(s => s.UserId == currentUserId).OrderByDescending(s => s.Name).ToList();
+    }
+
+    private async Task SearchUser()
+    {
+        searchError = null;
+        employeeSeasons = null;
+        srcSeasonId = 0;
+        targetSeasonId = 0;
+        preview = null;
+        importSuccess = false;
+
+        if (string.IsNullOrWhiteSpace(searchEmail)) { searchError = "Please enter an email address."; return; }
+
+        isSearching = true;
+        var user = await UserManager.FindByEmailAsync(searchEmail.Trim());
+        isSearching = false;
+
+        if (user == null) { searchError = "No account found with that email address."; return; }
+        if (user.Id == currentUserId) { searchError = "You cannot import from your own account."; return; }
+
+        employeeUserId = user.Id;
+        employeeSeasons = Db.Seasons.Where(s => s.UserId == employeeUserId).OrderByDescending(s => s.Name).ToList();
+
+        if (!employeeSeasons.Any()) { searchError = "That user has no seasons to import from."; employeeSeasons = null; }
+    }
+
+    private void UpdatePreview()
+    {
+        preview = null;
+        importSuccess = false;
+        importError = null;
+        if (srcSeasonId <= 0 || targetSeasonId <= 0) return;
+
+        var levelIds = Db.TeamLevels.Where(t => t.SeasonId == srcSeasonId).Select(t => t.Id).ToList();
+        preview = new ImportPreview
+        {
+            MeetCount = Db.Meets.Count(m => m.SeasonId == srcSeasonId),
+            CoachCount = Db.Coaches.Count(c => c.SeasonId == srcSeasonId),
+            TeamLevelCount = levelIds.Count,
+            AthleteItemCount = Db.AthleteItems.Count(a => levelIds.Contains(a.TeamLevelId)),
+            BudgetItemCount = Db.BudgetLineItems.Count(b => b.SeasonId == srcSeasonId)
+        };
+    }
+
+    private async Task DoImport()
+    {
+        importError = null;
+        importSuccess = false;
+        isImporting = true;
+
+        try
+        {
+            // Load source data
+            var srcCoaches = Db.Coaches.Where(c => c.SeasonId == srcSeasonId).ToList();
+            var srcMeets = Db.Meets.Where(m => m.SeasonId == srcSeasonId).ToList();
+            var srcLevels = Db.TeamLevels.Where(t => t.SeasonId == srcSeasonId).ToList();
+            var srcLevelIds = srcLevels.Select(t => t.Id).ToList();
+            var srcAthleteItems = Db.AthleteItems.Where(a => srcLevelIds.Contains(a.TeamLevelId)).ToList();
+            var srcItems = Db.BudgetLineItems.Where(b => b.SeasonId == srcSeasonId).ToList();
+
+            // 1. Copy coaches
+            var coachMap = new Dictionary<int, int>();
+            foreach (var c in srcCoaches)
+            {
+                var newCoach = new Coach { Name = c.Name, Role = c.Role, IsActive = c.IsActive, SeasonId = targetSeasonId };
+                Db.Coaches.Add(newCoach);
+                await Db.SaveChangesAsync();
+                coachMap[c.Id] = newCoach.Id;
+            }
+
+            // 2. Copy meets
+            var meetMap = new Dictionary<int, int>();
+            foreach (var m in srcMeets)
+            {
+                var newMeet = new Meet { Name = m.Name, Date = m.Date, TravelType = m.TravelType, SeasonId = targetSeasonId };
+                Db.Meets.Add(newMeet);
+                await Db.SaveChangesAsync();
+                meetMap[m.Id] = newMeet.Id;
+            }
+
+            // 3. Copy team levels + athlete items
+            foreach (var level in srcLevels)
+            {
+                var newLevel = new TeamLevel { Name = level.Name, AthleteCount = level.AthleteCount, PaymentPlanMonths = level.PaymentPlanMonths, SeasonId = targetSeasonId };
+                Db.TeamLevels.Add(newLevel);
+                await Db.SaveChangesAsync();
+                foreach (var item in srcAthleteItems.Where(a => a.TeamLevelId == level.Id))
+                {
+                    Db.AthleteItems.Add(new AthleteItem { Name = item.Name, Cost = item.Cost, IsRequired = item.IsRequired, TeamLevelId = newLevel.Id });
+                }
+                await Db.SaveChangesAsync();
+            }
+
+            // 4. Copy budget line items (remap MeetId and CoachId)
+            foreach (var item in srcItems)
+            {
+                Db.BudgetLineItems.Add(new BudgetLineItem
+                {
+                    Category = item.Category,
+                    EntryFeeType = item.EntryFeeType,
+                    IsActual = item.IsActual,
+                    Rate = item.Rate,
+                    Quantity = item.Quantity,
+                    Notes = item.Notes,
+                    SeasonId = targetSeasonId,
+                    MeetId = item.MeetId.HasValue && meetMap.TryGetValue(item.MeetId.Value, out var newMeetId) ? newMeetId : null,
+                    CoachId = item.CoachId.HasValue && coachMap.TryGetValue(item.CoachId.Value, out var newCoachId) ? newCoachId : null
+                });
+            }
+            await Db.SaveChangesAsync();
+
+            importSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            importError = $"Import failed: {ex.Message}";
+        }
+        finally
+        {
+            isImporting = false;
+        }
+    }
+}

@@ -1,8 +1,11 @@
 @page "/seasons"
+@attribute [Authorize]
 @using GymBudgetApp.Models
 @using GymBudgetApp
+@using System.Security.Claims
 @inject AppDbContext Db
 @inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <h3>Seasons</h3>
 
@@ -73,6 +76,7 @@ else
     private List<Season>? seasons;
     private bool showForm = false;
     private Season? editingSeason;
+    private string? userId;
 
     private string formName = "";
     private int formAthleteCount = 0;
@@ -80,12 +84,14 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         await LoadSeasons();
     }
 
     private async Task LoadSeasons()
     {
-        seasons = await Task.FromResult(Db.Seasons.OrderByDescending(s => s.Name).ToList());
+        seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
     }
 
     private void ShowForm()
@@ -114,7 +120,8 @@ else
             {
                 Name = formName,
                 AthleteCount = formAthleteCount,
-                IsActive = formIsActive
+                IsActive = formIsActive,
+                UserId = userId ?? string.Empty
             };
             Db.Seasons.Add(newSeason);
         }

@@ -1,9 +1,77 @@
-﻿@page "/"
+@page "/"
+@attribute [Authorize]
+@using System.Security.Claims
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
-<PageTitle>Index</PageTitle>
+<PageTitle>Dashboard</PageTitle>
 
-<h1>Hello, world!</h1>
+<h3>Dashboard</h3>
 
-Welcome to your new app.
+<AuthorizeView>
+    <Authorized>
+        <p>Welcome, <strong>@context.User.Identity?.Name</strong>!</p>
+    </Authorized>
+</AuthorizeView>
 
-<SurveyPrompt Title="How is Blazor working for you?" />
+<div class="row mt-3">
+    <div class="col-md-4 mb-3">
+        <a href="/seasons" class="text-decoration-none">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><span class="oi oi-calendar me-2"></span>Seasons</h5>
+                    <p class="card-text text-muted">Create and manage your budget seasons.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4 mb-3">
+        <a href="/meets" class="text-decoration-none">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><span class="oi oi-map-marker me-2"></span>Meets</h5>
+                    <p class="card-text text-muted">Add and track competition meets.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4 mb-3">
+        <a href="/coaches" class="text-decoration-none">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><span class="oi oi-people me-2"></span>Coaches</h5>
+                    <p class="card-text text-muted">Manage your coaching staff.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4 mb-3">
+        <a href="/budget" class="text-decoration-none">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><span class="oi oi-dollar me-2"></span>Budget</h5>
+                    <p class="card-text text-muted">Enter budgeted and actual expenses.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4 mb-3">
+        <a href="/reports" class="text-decoration-none">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><span class="oi oi-document me-2"></span>Reports</h5>
+                    <p class="card-text text-muted">View budget vs. actual and cost per athlete.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4 mb-3">
+        <a href="/teamlevels" class="text-decoration-none">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><span class="oi oi-star me-2"></span>Team Levels</h5>
+                    <p class="card-text text-muted">Set up team levels and payment plans.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>

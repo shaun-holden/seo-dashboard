@@ -1,10 +1,23 @@
 @page "/reports"
+@attribute [Authorize]
 @using GymBudgetApp.Models
 @using GymBudgetApp
 @using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
 @inject AppDbContext Db
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
 
-<h3>Reports</h3>
+<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+    <h3 class="mb-0">Reports</h3>
+    @if (selectedSeasonId > 0)
+    {
+        <button class="btn btn-outline-secondary" @onclick="PrintReport">
+            <span class="oi oi-print me-1"></span> Export PDF
+        </button>
+    }
+</div>
+<h3 class="print-only">Reports</h3>
 
 @if (seasons == null)
 {
@@ -12,123 +25,234 @@
 }
 else
 {
-    <div class="mb-3">
-        <label>Select Season</label>
-        <select class="form-select w-auto d-inline-block ms-2" @onchange="OnSeasonChanged">
-            <option value="">-- Select Season --</option>
-            @foreach (var s in seasons)
-            {
-                <option value="@s.Id">@s.Name</option>
-            }
-        </select>
+    <div class="row g-2 align-items-center mb-3 no-print">
+        <div class="col-auto">
+            <label class="col-form-label fw-semibold">Season</label>
+        </div>
+        <div class="col-auto">
+            <select class="form-select" @onchange="OnSeasonChanged">
+                <option value="">-- Select Season --</option>
+                @foreach (var s in seasons)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        </div>
+
+        @if (selectedSeasonId > 0)
+        {
+            <div class="col-auto">
+                <label class="col-form-label fw-semibold">Meet</label>
+            </div>
+            <div class="col-auto">
+                <select class="form-select" @bind="selectedMeetFilter" @bind:after="ApplyFilters">
+                    <option value="0">All Meets</option>
+                    <option value="-1">Season-wide only</option>
+                    @foreach (var m in meets)
+                    {
+                        <option value="@m.Id">@m.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-auto">
+                <label class="col-form-label fw-semibold">Category</label>
+            </div>
+            <div class="col-auto">
+                <select class="form-select" @bind="selectedCategoryFilter" @bind:after="ApplyFilters">
+                    <option value="">All Categories</option>
+                    @foreach (var cat in Enum.GetValues<BudgetCategory>())
+                    {
+                        <option value="@cat">@cat</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-auto">
+                <label class="col-form-label fw-semibold">Show</label>
+            </div>
+            <div class="col-auto">
+                <select class="form-select" @bind="showFilter" @bind:after="ApplyFilters">
+                    <option value="both">Budgeted &amp; Actual</option>
+                    <option value="budget">Budgeted Only</option>
+                    <option value="actual">Actual Only</option>
+                </select>
+            </div>
+        }
     </div>
 
     @if (selectedSeasonId > 0 && selectedSeason != null)
     {
+        <div class="print-only mb-3">
+            <h5>@selectedSeason.Name &mdash; @FilterSummary</h5>
+            <small class="text-muted">Generated @DateTime.Now.ToString("MMMM d, yyyy h:mm tt")</small>
+            <hr />
+        </div>
+
         <div class="row mb-4">
-            <div class="col-md-3">
-                <div class="card text-white bg-primary">
-                    <div class="card-body">
-                        <h6>Total Budgeted</h6>
-                        <h4>$@budgetTotal.ToString("N2")</h4>
+            @if (showFilter != "actual")
+            {
+                <div class="col-md-3 mb-2">
+                    <div class="card text-white bg-primary">
+                        <div class="card-body">
+                            <h6>Total Budgeted</h6>
+                            <h4>$@filteredBudgetTotal.ToString("N2")</h4>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card text-white bg-success">
-                    <div class="card-body">
-                        <h6>Total Actual</h6>
-                        <h4>$@actualTotal.ToString("N2")</h4>
+            }
+            @if (showFilter != "budget")
+            {
+                <div class="col-md-3 mb-2">
+                    <div class="card text-white bg-success">
+                        <div class="card-body">
+                            <h6>Total Actual</h6>
+                            <h4>$@filteredActualTotal.ToString("N2")</h4>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card text-white bg-info">
-                    <div class="card-body">
-                        <h6>Cost Per Athlete</h6>
-                        <h4>$@costPerAthlete.ToString("N2")</h4>
+            }
+            @if (showFilter == "both")
+            {
+                <div class="col-md-3 mb-2">
+                    <div class="card text-white bg-info">
+                        <div class="card-body">
+                            <h6>Cost Per Athlete</h6>
+                            <h4>$@costPerAthlete.ToString("N2")</h4>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card text-white bg-warning">
-                    <div class="card-body">
-                        <h6>Variance</h6>
-                        <h4>$@(budgetTotal - actualTotal).ToString("N2")</h4>
+                <div class="col-md-3 mb-2">
+                    <div class="card text-white bg-warning">
+                        <div class="card-body">
+                            <h6>Variance</h6>
+                            <h4>$@(filteredBudgetTotal - filteredActualTotal).ToString("N2")</h4>
+                        </div>
                     </div>
                 </div>
-            </div>
+            }
         </div>
 
         <h5>Budget vs Actual by Category</h5>
         <table class="table table-striped mb-4">
             <thead>
-                <tr><th>Category</th><th>Budgeted</th><th>Actual</th><th>Variance</th></tr>
+                <tr>
+                    <th>Category</th>
+                    @if (showFilter != "actual") { <th>Budgeted</th> }
+                    @if (showFilter != "budget") { <th>Actual</th> }
+                    @if (showFilter == "both") { <th>Variance</th> }
+                </tr>
             </thead>
             <tbody>
-                @foreach (var cat in Enum.GetValues<BudgetCategory>())
+                @foreach (var cat in visibleCategories)
                 {
-                    var budgeted = lineItems.Where(i => i.Category == cat && !i.IsActual).Sum(i => i.Total);
-                    var actual = lineItems.Where(i => i.Category == cat && i.IsActual).Sum(i => i.Total);
+                    var budgeted = filteredItems.Where(i => i.Category == cat && !i.IsActual).Sum(i => i.Total);
+                    var actual = filteredItems.Where(i => i.Category == cat && i.IsActual).Sum(i => i.Total);
                     if (budgeted > 0 || actual > 0)
                     {
                         <tr>
                             <td>@cat</td>
-                            <td>$@budgeted.ToString("N2")</td>
-                            <td>$@actual.ToString("N2")</td>
-                            <td class="@(budgeted - actual >= 0 ? "text-success" : "text-danger")">
-                                $@((budgeted - actual).ToString("N2"))
-                            </td>
+                            @if (showFilter != "actual") { <td>$@budgeted.ToString("N2")</td> }
+                            @if (showFilter != "budget") { <td>$@actual.ToString("N2")</td> }
+                            @if (showFilter == "both")
+                            {
+                                <td class="@(budgeted - actual >= 0 ? "text-success" : "text-danger")">
+                                    $@((budgeted - actual).ToString("N2"))
+                                </td>
+                            }
                         </tr>
                     }
                 }
             </tbody>
+            <tfoot>
+                <tr class="fw-bold">
+                    <td>Total</td>
+                    @if (showFilter != "actual") { <td>$@filteredBudgetTotal.ToString("N2")</td> }
+                    @if (showFilter != "budget") { <td>$@filteredActualTotal.ToString("N2")</td> }
+                    @if (showFilter == "both")
+                    {
+                        <td class="@(filteredBudgetTotal - filteredActualTotal >= 0 ? "text-success" : "text-danger")">
+                            $@((filteredBudgetTotal - filteredActualTotal).ToString("N2"))
+                        </td>
+                    }
+                </tr>
+            </tfoot>
         </table>
 
-        <h5>Team Level Cost Breakdown</h5>
-        @foreach (var level in teamLevels)
+        @if (selectedMeetFilter == 0 && showFilter != "actual" && string.IsNullOrEmpty(selectedCategoryFilter) && teamLevels.Any())
         {
-            var items = athleteItems.Where(i => i.TeamLevelId == level.Id).ToList();
-            var itemsTotal = items.Sum(i => i.Cost);
-            var grandTotal = costPerAthlete + itemsTotal;
-            var monthly = level.PaymentPlanMonths > 0 ? grandTotal / level.PaymentPlanMonths : 0;
-            <div class="card mb-3">
-                <div class="card-header"><h6>@level.Name — @level.AthleteCount athletes</h6></div>
-                <div class="card-body">
-                    <table class="table table-sm">
-                        <tbody>
-                            <tr><td>Individual Share of Team Expenses</td><td>$@costPerAthlete.ToString("N2")</td></tr>
-                            @foreach (var item in items)
-                            {
-                                <tr><td>@item.Name @(item.IsRequired ? "" : "(optional)")</td><td>$@item.Cost.ToString("N2")</td></tr>
-                            }
-                        </tbody>
-                        <tfoot>
-                            <tr class="fw-bold"><td>Grand Total</td><td>$@grandTotal.ToString("N2")</td></tr>
-                            <tr class="text-primary fw-bold"><td>Payment Plan (@level.PaymentPlanMonths months)</td><td>$@monthly.ToString("N2")/month</td></tr>
-                        </tfoot>
-                    </table>
+            <h5>Team Level Cost Breakdown</h5>
+            @foreach (var level in teamLevels)
+            {
+                var items = athleteItems.Where(i => i.TeamLevelId == level.Id).ToList();
+                var itemsTotal = items.Sum(i => i.Cost);
+                var grandTotal = costPerAthlete + itemsTotal;
+                var monthly = level.PaymentPlanMonths > 0 ? grandTotal / level.PaymentPlanMonths : 0;
+                <div class="card mb-3">
+                    <div class="card-header"><h6>@level.Name — @level.AthleteCount athletes</h6></div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            <tbody>
+                                <tr><td>Individual Share of Team Expenses</td><td>$@costPerAthlete.ToString("N2")</td></tr>
+                                @foreach (var item in items)
+                                {
+                                    <tr><td>@item.Name @(item.IsRequired ? "" : "(optional)")</td><td>$@item.Cost.ToString("N2")</td></tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr class="fw-bold"><td>Grand Total</td><td>$@grandTotal.ToString("N2")</td></tr>
+                                <tr class="text-primary fw-bold"><td>Payment Plan (@level.PaymentPlanMonths months)</td><td>$@monthly.ToString("N2")/month</td></tr>
+                            </tfoot>
+                        </table>
+                    </div>
                 </div>
-            </div>
+            }
         }
     }
 }
 
 @code {
     private List<Season>? seasons;
+    private List<Meet> meets = new();
     private List<BudgetLineItem> lineItems = new();
+    private List<BudgetLineItem> filteredItems = new();
     private List<TeamLevel> teamLevels = new();
     private List<AthleteItem> athleteItems = new();
     private int selectedSeasonId;
     private Season? selectedSeason;
+    private int selectedMeetFilter = 0;
+    private string selectedCategoryFilter = "";
+    private string showFilter = "both";
+    private string? userId;
 
-    private decimal budgetTotal => lineItems.Where(i => !i.IsActual).Sum(i => i.Total);
-    private decimal actualTotal => lineItems.Where(i => i.IsActual).Sum(i => i.Total);
-    private decimal costPerAthlete => selectedSeason?.AthleteCount > 0 ? budgetTotal / selectedSeason!.AthleteCount : 0;
+    private IEnumerable<BudgetCategory> visibleCategories =>
+        string.IsNullOrEmpty(selectedCategoryFilter)
+            ? Enum.GetValues<BudgetCategory>()
+            : new[] { Enum.Parse<BudgetCategory>(selectedCategoryFilter) };
+
+    private decimal filteredBudgetTotal => filteredItems.Where(i => !i.IsActual).Sum(i => i.Total);
+    private decimal filteredActualTotal => filteredItems.Where(i => i.IsActual).Sum(i => i.Total);
+    private decimal costPerAthlete => selectedSeason?.AthleteCount > 0 ? filteredBudgetTotal / selectedSeason!.AthleteCount : 0;
+
+    private string FilterSummary
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (selectedMeetFilter == -1) parts.Add("Season-wide");
+            else if (selectedMeetFilter > 0) parts.Add(meets.FirstOrDefault(m => m.Id == selectedMeetFilter)?.Name ?? "");
+            else parts.Add("All Meets");
+            if (!string.IsNullOrEmpty(selectedCategoryFilter)) parts.Add(selectedCategoryFilter);
+            parts.Add(showFilter == "both" ? "Budgeted & Actual" : showFilter == "budget" ? "Budgeted Only" : "Actual Only");
+            return string.Join(" | ", parts);
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
-        seasons = await Task.FromResult(Db.Seasons.OrderByDescending(s => s.Name).ToList());
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
         var active = seasons.FirstOrDefault(s => s.IsActive);
         if (active != null) { selectedSeasonId = active.Id; selectedSeason = active; await LoadData(); }
     }
@@ -137,14 +261,44 @@ else
     {
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         selectedSeason = seasons?.FirstOrDefault(s => s.Id == selectedSeasonId);
+        selectedMeetFilter = 0;
+        selectedCategoryFilter = "";
+        showFilter = "both";
         await LoadData();
     }
 
     private async Task LoadData()
     {
+        meets = await Task.FromResult(Db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToList());
         lineItems = await Task.FromResult(Db.BudgetLineItems.Where(b => b.SeasonId == selectedSeasonId).ToList());
         teamLevels = await Task.FromResult(Db.TeamLevels.Where(t => t.SeasonId == selectedSeasonId).ToList());
         var levelIds = teamLevels.Select(t => t.Id).ToList();
         athleteItems = await Task.FromResult(Db.AthleteItems.Where(a => levelIds.Contains(a.TeamLevelId)).ToList());
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        var items = lineItems.AsEnumerable();
+
+        if (selectedMeetFilter == -1)
+            items = items.Where(i => i.MeetId == null);
+        else if (selectedMeetFilter > 0)
+            items = items.Where(i => i.MeetId == selectedMeetFilter);
+
+        if (!string.IsNullOrEmpty(selectedCategoryFilter) && Enum.TryParse<BudgetCategory>(selectedCategoryFilter, out var cat))
+            items = items.Where(i => i.Category == cat);
+
+        if (showFilter == "budget")
+            items = items.Where(i => !i.IsActual);
+        else if (showFilter == "actual")
+            items = items.Where(i => i.IsActual);
+
+        filteredItems = items.ToList();
+    }
+
+    private async Task PrintReport()
+    {
+        await JS.InvokeVoidAsync("printPage");
     }
 }

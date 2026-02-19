@@ -1,9 +1,12 @@
 @page "/mileage"
+@attribute [Authorize]
 @using GymBudgetApp.Models
 @using GymBudgetApp
 @using Microsoft.JSInterop
+@using System.Security.Claims
 @inject AppDbContext Db
 @inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <h3>Mileage</h3>
 
@@ -140,10 +143,13 @@ else
     private decimal defaultRate = 0.67m;
     private decimal formRatePerMile = 0.67m;
     private bool formIsActual = false;
+    private string? userId;
 
     protected override async Task OnInitializedAsync()
     {
-        seasons = await Task.FromResult(Db.Seasons.OrderByDescending(s => s.Name).ToList());
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
         var active = seasons.FirstOrDefault(s => s.IsActive);
         if (active != null) { selectedSeasonId = active.Id; await LoadMeets(); }
     }

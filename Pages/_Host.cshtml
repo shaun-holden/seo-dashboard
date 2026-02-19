@@ -28,6 +28,7 @@
     </div>
     <script src="_framework/blazor.server.js"></script>
     <script>
+        window.printPage = () => window.print();
         window.downloadFile = (filename, content) => {
             const blob = new Blob([content], { type: 'text/csv' });
             const url = URL.createObjectURL(blob);

@@ -1,7 +1,10 @@
 @page "/teamlevels"
+@attribute [Authorize]
 @using GymBudgetApp.Models
 @using GymBudgetApp
+@using System.Security.Claims
 @inject AppDbContext Db
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <h3>Team Levels</h3>
 
@@ -108,10 +111,13 @@ else
     private string newItemName = "";
     private decimal newItemCost = 0;
     private bool newItemRequired = true;
+    private string? userId;
 
     protected override async Task OnInitializedAsync()
     {
-        seasons = await Task.FromResult(Db.Seasons.OrderByDescending(s => s.Name).ToList());
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
         var active = seasons.FirstOrDefault(s => s.IsActive);
         if (active != null) { selectedSeasonId = active.Id; await LoadData(); }
     }
