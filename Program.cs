@@ -11,8 +11,11 @@ builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddSingleton<WeatherForecastService>();
 
+var dbFolder = Environment.GetEnvironmentVariable("DB_PATH")
+    ?? Directory.GetCurrentDirectory();
+var dbPath = Path.Combine(dbFolder, "gymbudget.db");
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=gymbudget.db"));
+    options.UseSqlite($"Data Source={dbPath}"));
 
 builder.Services.AddDefaultIdentity<IdentityUser>(options =>
 {
@@ -22,6 +25,12 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options =>
 .AddEntityFrameworkStores<AppDbContext>();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
 
 if (!app.Environment.IsDevelopment())
 {
