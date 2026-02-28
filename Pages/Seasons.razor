@@ -64,12 +64,65 @@ else
                     </td>
                     <td>
                         <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditSeason(season)">Edit</button>
+                        <button class="btn btn-sm btn-outline-success me-1" @onclick="() => StartCopy(season)">Copy Structure</button>
                         <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteSeason(season)">Delete</button>
                     </td>
                 </tr>
             }
         </tbody>
     </table>
+
+    @if (copySource != null)
+    {
+        <div class="card mb-4 p-3" style="max-width: 600px;">
+            <h5>Copy Structure from "@copySource.Name"</h5>
+            <p class="text-muted">Copies coaches, meets, and team levels (no budget amounts).</p>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Copy into</label>
+                <select class="form-select" @bind="copyTargetId" @bind:after="UpdateCopyPreview">
+                    <option value="0">-- Select Target Season --</option>
+                    @foreach (var s in seasons!.Where(s => s.Id != copySource.Id))
+                    {
+                        <option value="@s.Id">@s.Name</option>
+                    }
+                </select>
+            </div>
+
+            @if (copyTargetId > 0 && copyPreview != null)
+            {
+                <div class="alert alert-info">
+                    <strong>Will copy:</strong>
+                    <ul class="mb-0 mt-1">
+                        <li>@copyPreview.CoachCount coach(es)</li>
+                        <li>@copyPreview.MeetCount meet(s)</li>
+                        <li>@copyPreview.TeamLevelCount team level(s) with @copyPreview.AthleteItemCount athlete item(s)</li>
+                    </ul>
+                </div>
+            }
+
+            @if (copyError != null)
+            {
+                <div class="alert alert-danger py-2">@copyError</div>
+            }
+
+            @if (copySuccess)
+            {
+                <div class="alert alert-success py-2">Structure copied successfully!</div>
+            }
+
+            <div>
+                @if (!copySuccess && copyTargetId > 0 && copyPreview != null)
+                {
+                    <button class="btn btn-success me-2" @onclick="DoClone" disabled="@isCopying">
+                        @if (isCopying) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Copy
+                    </button>
+                }
+                <button class="btn btn-secondary" @onclick="CancelCopy">Cancel</button>
+            </div>
+        </div>
+    }
 }
 
 @code {
@@ -148,5 +201,112 @@ else
     private void CancelForm()
     {
         showForm = false;
+    }
+
+    // --- Copy Structure ---
+    private Season? copySource;
+    private int copyTargetId;
+    private bool isCopying;
+    private bool copySuccess;
+    private string? copyError;
+    private CopyPreview? copyPreview;
+
+    private class CopyPreview
+    {
+        public int CoachCount { get; set; }
+        public int MeetCount { get; set; }
+        public int TeamLevelCount { get; set; }
+        public int AthleteItemCount { get; set; }
+    }
+
+    private void StartCopy(Season season)
+    {
+        copySource = season;
+        copyTargetId = 0;
+        copyPreview = null;
+        copySuccess = false;
+        copyError = null;
+    }
+
+    private void CancelCopy()
+    {
+        copySource = null;
+        copyPreview = null;
+        copySuccess = false;
+        copyError = null;
+    }
+
+    private void UpdateCopyPreview()
+    {
+        copyPreview = null;
+        copySuccess = false;
+        copyError = null;
+        if (copySource == null || copyTargetId <= 0) return;
+
+        var levelIds = Db.TeamLevels.Where(t => t.SeasonId == copySource.Id).Select(t => t.Id).ToList();
+        copyPreview = new CopyPreview
+        {
+            CoachCount = Db.Coaches.Count(c => c.SeasonId == copySource.Id),
+            MeetCount = Db.Meets.Count(m => m.SeasonId == copySource.Id),
+            TeamLevelCount = levelIds.Count,
+            AthleteItemCount = Db.AthleteItems.Count(a => levelIds.Contains(a.TeamLevelId))
+        };
+    }
+
+    private async Task DoClone()
+    {
+        if (copySource == null || copyTargetId <= 0) return;
+        copyError = null;
+        copySuccess = false;
+        isCopying = true;
+
+        try
+        {
+            var srcId = copySource.Id;
+
+            // 1. Copy coaches
+            var srcCoaches = Db.Coaches.Where(c => c.SeasonId == srcId).ToList();
+            foreach (var c in srcCoaches)
+            {
+                Db.Coaches.Add(new Coach { Name = c.Name, Role = c.Role, IsActive = c.IsActive, SeasonId = copyTargetId });
+            }
+            await Db.SaveChangesAsync();
+
+            // 2. Copy meets
+            var srcMeets = Db.Meets.Where(m => m.SeasonId == srcId).ToList();
+            foreach (var m in srcMeets)
+            {
+                Db.Meets.Add(new Meet { Name = m.Name, Date = m.Date, TravelType = m.TravelType, SeasonId = copyTargetId });
+            }
+            await Db.SaveChangesAsync();
+
+            // 3. Copy team levels + athlete items
+            var srcLevels = Db.TeamLevels.Where(t => t.SeasonId == srcId).ToList();
+            var srcLevelIds = srcLevels.Select(t => t.Id).ToList();
+            var srcAthleteItems = Db.AthleteItems.Where(a => srcLevelIds.Contains(a.TeamLevelId)).ToList();
+
+            foreach (var level in srcLevels)
+            {
+                var newLevel = new TeamLevel { Name = level.Name, AthleteCount = level.AthleteCount, PaymentPlanMonths = level.PaymentPlanMonths, SeasonId = copyTargetId };
+                Db.TeamLevels.Add(newLevel);
+                await Db.SaveChangesAsync();
+
+                foreach (var item in srcAthleteItems.Where(a => a.TeamLevelId == level.Id))
+                {
+                    Db.AthleteItems.Add(new AthleteItem { Name = item.Name, Cost = item.Cost, IsRequired = item.IsRequired, TeamLevelId = newLevel.Id });
+                }
+                await Db.SaveChangesAsync();
+            }
+
+            copySuccess = true;
+        }
+        catch (Exception ex)
+        {
+            copyError = $"Copy failed: {ex.Message}";
+        }
+        finally
+        {
+            isCopying = false;
+        }
     }
 }
