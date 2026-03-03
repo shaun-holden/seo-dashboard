@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @using GymBudgetApp.Models
 @using GymBudgetApp
+@using GymBudgetApp.Services
 @using Microsoft.EntityFrameworkCore
 @using System.Security.Claims
 @inject AppDbContext Db
@@ -42,11 +43,11 @@ else
         @if (selectedSeasonId > 0)
         {
             <div class="col-auto">
-                <label class="col-form-label fw-semibold">Meet</label>
+                <label class="col-form-label fw-semibold">@labels.Meet</label>
             </div>
             <div class="col-auto">
                 <select class="form-select" @bind="selectedMeetFilter" @bind:after="ApplyFilters">
-                    <option value="0">All Meets</option>
+                    <option value="0">All @labels.Meets</option>
                     <option value="-1">Season-wide only</option>
                     @foreach (var m in meets)
                     {
@@ -181,7 +182,7 @@ else
 
         @if (selectedMeetFilter == 0 && showFilter != "actual" && string.IsNullOrEmpty(selectedCategoryFilter) && teamLevels.Any())
         {
-            <h5>Team Level Cost Breakdown</h5>
+            <h5>@labels.TeamLevel Cost Breakdown</h5>
             @foreach (var level in teamLevels)
             {
                 var items = athleteItems.Where(i => i.TeamLevelId == level.Id).ToList();
@@ -224,6 +225,7 @@ else
     private string selectedCategoryFilter = "";
     private string showFilter = "both";
     private string? userId;
+    private ProjectLabels labels = ProjectLabels.Default;
 
     private IEnumerable<BudgetCategory> visibleCategories =>
         string.IsNullOrEmpty(selectedCategoryFilter)
@@ -241,7 +243,7 @@ else
             var parts = new List<string>();
             if (selectedMeetFilter == -1) parts.Add("Season-wide");
             else if (selectedMeetFilter > 0) parts.Add(meets.FirstOrDefault(m => m.Id == selectedMeetFilter)?.Name ?? "");
-            else parts.Add("All Meets");
+            else parts.Add($"All {labels.Meets}");
             if (!string.IsNullOrEmpty(selectedCategoryFilter)) parts.Add(selectedCategoryFilter);
             parts.Add(showFilter == "both" ? "Budgeted & Actual" : showFilter == "budget" ? "Budgeted Only" : "Actual Only");
             return string.Join(" | ", parts);
@@ -254,13 +256,14 @@ else
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
         var active = seasons.FirstOrDefault(s => s.IsActive);
-        if (active != null) { selectedSeasonId = active.Id; selectedSeason = active; await LoadData(); }
+        if (active != null) { selectedSeasonId = active.Id; selectedSeason = active; labels = new ProjectLabels(active); await LoadData(); }
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)
     {
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         selectedSeason = seasons?.FirstOrDefault(s => s.Id == selectedSeasonId);
+        labels = new ProjectLabels(selectedSeason);
         selectedMeetFilter = 0;
         selectedCategoryFilter = "";
         showFilter = "both";

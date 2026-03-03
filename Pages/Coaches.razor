@@ -2,12 +2,13 @@
 @attribute [Authorize]
 @using GymBudgetApp.Models
 @using GymBudgetApp
+@using GymBudgetApp.Services
 @using Microsoft.EntityFrameworkCore
 @using System.Security.Claims
 @inject AppDbContext Db
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
-<h3>Coaches</h3>
+<h3>@labels.Coaches</h3>
 
 @if (seasons == null)
 {
@@ -28,12 +29,12 @@ else
 
     @if (selectedSeasonId > 0)
     {
-        <button class="btn btn-primary mb-3" @onclick="ShowForm">+ Add Coach</button>
+        <button class="btn btn-primary mb-3" @onclick="ShowForm">+ Add @labels.Coach</button>
 
         @if (showForm)
         {
             <div class="card mb-4 p-3">
-                <h5>@(editingCoach == null ? "Add Coach" : "Edit Coach")</h5>
+                <h5>@(editingCoach == null ? $"Add {labels.Coach}" : $"Edit {labels.Coach}")</h5>
                 <div class="mb-2">
                     <label>Name</label>
                     <input class="form-control" @bind="formName" />
@@ -96,6 +97,7 @@ else
     private string formRole = "";
     private bool formIsActive = true;
     private string? userId;
+    private ProjectLabels labels = ProjectLabels.Default;
 
     protected override async Task OnInitializedAsync()
     {
@@ -103,12 +105,13 @@ else
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
         var active = seasons.FirstOrDefault(s => s.IsActive);
-        if (active != null) { selectedSeasonId = active.Id; await LoadCoaches(); }
+        if (active != null) { selectedSeasonId = active.Id; labels = new ProjectLabels(active); await LoadCoaches(); }
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)
     {
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        labels = new ProjectLabels(seasons?.FirstOrDefault(s => s.Id == selectedSeasonId));
         await LoadCoaches();
     }
 

@@ -1,3 +1,10 @@
+@using GymBudgetApp
+@using GymBudgetApp.Models
+@using GymBudgetApp.Services
+@using System.Security.Claims
+@inject AppDbContext Db
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="">GymBudgetApp</a>
@@ -23,31 +30,40 @@
                 <span class="oi oi-calendar" aria-hidden="true"></span> Seasons
             </NavLink>
         </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="teamlevels">
-                <span class="oi oi-star" aria-hidden="true"></span> Team Levels
-            </NavLink>
-        </div>
+        @if (labels.EnableTeamLevels)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="teamlevels">
+                    <span class="oi oi-star" aria-hidden="true"></span> @labels.TeamLevels
+                </NavLink>
+            </div>
+        }
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="coaches">
-                <span class="oi oi-people" aria-hidden="true"></span> Coaches
+                <span class="oi oi-people" aria-hidden="true"></span> @labels.Coaches
             </NavLink>
         </div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="meets">
-                <span class="oi oi-map-marker" aria-hidden="true"></span> Meets
+                <span class="oi oi-map-marker" aria-hidden="true"></span> @labels.Meets
             </NavLink>
         </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="perdiem">
-                <span class="oi oi-fork" aria-hidden="true"></span> Per Diem
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="mileage">
-                <span class="oi oi-map" aria-hidden="true"></span> Mileage
-            </NavLink>
-        </div>
+        @if (labels.EnablePerDiem)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="perdiem">
+                    <span class="oi oi-fork" aria-hidden="true"></span> Per Diem
+                </NavLink>
+            </div>
+        }
+        @if (labels.EnableMileage)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="mileage">
+                    <span class="oi oi-map" aria-hidden="true"></span> Mileage
+                </NavLink>
+            </div>
+        }
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="reports">
                 <span class="oi oi-document" aria-hidden="true"></span> Reports
@@ -77,6 +93,19 @@
 @code {
     private bool collapseNavMenu = true;
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+    private ProjectLabels labels = ProjectLabels.Default;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId != null)
+        {
+            var activeSeason = Db.Seasons.Where(s => s.UserId == userId && s.IsActive).FirstOrDefault();
+            labels = new ProjectLabels(activeSeason);
+        }
+    }
+
     private void ToggleNavMenu()
     {
         collapseNavMenu = !collapseNavMenu;

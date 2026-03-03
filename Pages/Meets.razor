@@ -2,11 +2,12 @@
 @attribute [Authorize]
 @using GymBudgetApp.Models
 @using GymBudgetApp
+@using GymBudgetApp.Services
 @using System.Security.Claims
 @inject AppDbContext Db
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
-<h3>Meets</h3>
+<h3>@labels.Meets</h3>
 
 @if (seasons == null)
 {
@@ -27,15 +28,15 @@ else
 
     @if (selectedSeasonId > 0)
     {
-        <button class="btn btn-primary mb-3" @onclick="ShowForm">+ Add Meet</button>
+        <button class="btn btn-primary mb-3" @onclick="ShowForm">+ Add @labels.Meet</button>
 
         @if (showForm)
         {
             <div class="card mb-4 p-3">
-                <h5>@(editingMeet == null ? "Add Meet" : "Edit Meet")</h5>
+                <h5>@(editingMeet == null ? $"Add {labels.Meet}" : $"Edit {labels.Meet}")</h5>
                 <div class="mb-2">
-                    <label>Meet Name</label>
-                    <input class="form-control" @bind="formName" placeholder="e.g. Meet 1, State Meet" />
+                    <label>@labels.Meet Name</label>
+                    <input class="form-control" @bind="formName" placeholder="@($"e.g. {labels.Meet} 1")" />
                 </div>
                 <div class="mb-2">
                     <label>Date</label>
@@ -56,7 +57,7 @@ else
         <table class="table table-striped">
             <thead>
                 <tr>
-                    <th>Meet Name</th>
+                    <th>@labels.Meet Name</th>
                     <th>Date</th>
                     <th>Travel</th>
                     <th>Actions</th>
@@ -99,6 +100,7 @@ else
     private DateTime formDate = DateTime.Today;
     private TravelType formTravelType = TravelType.Drive;
     private string? userId;
+    private ProjectLabels labels = ProjectLabels.Default;
 
     protected override async Task OnInitializedAsync()
     {
@@ -106,12 +108,13 @@ else
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
         var active = seasons.FirstOrDefault(s => s.IsActive);
-        if (active != null) { selectedSeasonId = active.Id; await LoadMeets(); }
+        if (active != null) { selectedSeasonId = active.Id; labels = new ProjectLabels(active); await LoadMeets(); }
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)
     {
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        labels = new ProjectLabels(seasons?.FirstOrDefault(s => s.Id == selectedSeasonId));
         await LoadMeets();
     }
 

@@ -1,7 +1,11 @@
 @page "/"
 @attribute [Authorize]
 @using System.Security.Claims
+@using GymBudgetApp
+@using GymBudgetApp.Models
+@using GymBudgetApp.Services
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject AppDbContext Db
 
 <PageTitle>Dashboard</PageTitle>
 
@@ -28,8 +32,8 @@
         <a href="/meets" class="text-decoration-none">
             <div class="card h-100">
                 <div class="card-body">
-                    <h5 class="card-title"><span class="oi oi-map-marker me-2"></span>Meets</h5>
-                    <p class="card-text text-muted">Add and track competition meets.</p>
+                    <h5 class="card-title"><span class="oi oi-map-marker me-2"></span>@labels.Meets</h5>
+                    <p class="card-text text-muted">Add and track @labels.Meets.ToLower().</p>
                 </div>
             </div>
         </a>
@@ -38,8 +42,8 @@
         <a href="/coaches" class="text-decoration-none">
             <div class="card h-100">
                 <div class="card-body">
-                    <h5 class="card-title"><span class="oi oi-people me-2"></span>Coaches</h5>
-                    <p class="card-text text-muted">Manage your coaching staff.</p>
+                    <h5 class="card-title"><span class="oi oi-people me-2"></span>@labels.Coaches</h5>
+                    <p class="card-text text-muted">Manage your @labels.Coaches.ToLower().</p>
                 </div>
             </div>
         </a>
@@ -59,19 +63,37 @@
             <div class="card h-100">
                 <div class="card-body">
                     <h5 class="card-title"><span class="oi oi-document me-2"></span>Reports</h5>
-                    <p class="card-text text-muted">View budget vs. actual and cost per athlete.</p>
+                    <p class="card-text text-muted">View budget vs. actual reports.</p>
                 </div>
             </div>
         </a>
     </div>
-    <div class="col-md-4 mb-3">
-        <a href="/teamlevels" class="text-decoration-none">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5 class="card-title"><span class="oi oi-star me-2"></span>Team Levels</h5>
-                    <p class="card-text text-muted">Set up team levels and payment plans.</p>
+    @if (labels.EnableTeamLevels)
+    {
+        <div class="col-md-4 mb-3">
+            <a href="/teamlevels" class="text-decoration-none">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title"><span class="oi oi-star me-2"></span>@labels.TeamLevels</h5>
+                        <p class="card-text text-muted">Set up @labels.TeamLevels.ToLower() and payment plans.</p>
+                    </div>
                 </div>
-            </div>
-        </a>
-    </div>
+            </a>
+        </div>
+    }
 </div>
+
+@code {
+    private ProjectLabels labels = ProjectLabels.Default;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId != null)
+        {
+            var activeSeason = Db.Seasons.Where(s => s.UserId == userId && s.IsActive).FirstOrDefault();
+            labels = new ProjectLabels(activeSeason);
+        }
+    }
+}

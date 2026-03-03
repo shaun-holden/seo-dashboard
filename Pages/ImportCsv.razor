@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @using GymBudgetApp.Models
 @using GymBudgetApp
+@using GymBudgetApp.Services
 @using System.Security.Claims
 @using System.Globalization
 @inject AppDbContext Db
@@ -48,10 +49,10 @@
         <div class="alert alert-info">
             <strong>File preview:</strong>
             <ul class="mb-0 mt-1">
-                <li>@csvPreview.CoachCount coach(es)</li>
-                <li>@csvPreview.MeetCount meet(s)</li>
-                <li>@csvPreview.TeamLevelCount team level(s)</li>
-                <li>@csvPreview.AthleteItemCount athlete item(s)</li>
+                <li>@csvPreview.CoachCount @(labels.Coach)(es)</li>
+                <li>@csvPreview.MeetCount @(labels.Meet)(s)</li>
+                <li>@csvPreview.TeamLevelCount @(labels.TeamLevel)(s)</li>
+                <li>@csvPreview.AthleteItemCount @(labels.AthleteItem)(s)</li>
                 <li>@csvPreview.BudgetItemCount budget line item(s)</li>
                 <li>@csvPreview.PerDiemCount per diem entries</li>
                 <li>@csvPreview.MileageCount mileage entries</li>
@@ -110,6 +111,7 @@
 @code {
     private string? currentUserId;
     private List<Season> mySeasons = new();
+    private ProjectLabels labels = ProjectLabels.Default;
 
     // Export
     private int exportSeasonId;
@@ -147,6 +149,8 @@
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         currentUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         mySeasons = Db.Seasons.Where(s => s.UserId == currentUserId).OrderByDescending(s => s.Name).ToList();
+        var activeSeason = mySeasons.FirstOrDefault(s => s.IsActive);
+        labels = new ProjectLabels(activeSeason);
     }
 
     // ── Export ──────────────────────────────────────────────

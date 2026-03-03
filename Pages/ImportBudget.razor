@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @using GymBudgetApp.Models
 @using GymBudgetApp
+@using GymBudgetApp.Services
 @using Microsoft.AspNetCore.Identity
 @using System.Security.Claims
 @inject AppDbContext Db
@@ -130,9 +131,9 @@
             <div class="alert alert-info">
                 <strong>Preview — what will be imported:</strong>
                 <ul class="mb-0 mt-1">
-                    <li>@preview.MeetCount meet(s)</li>
-                    <li>@preview.CoachCount coach(es)</li>
-                    <li>@preview.TeamLevelCount team level(s) with @preview.AthleteItemCount athlete item(s)</li>
+                    <li>@preview.MeetCount @(labels.Meet)(s)</li>
+                    <li>@preview.CoachCount @(labels.Coach)(es)</li>
+                    <li>@preview.TeamLevelCount @(labels.TeamLevel)(s) with @preview.AthleteItemCount @(labels.AthleteItem)(s)</li>
                     <li>@preview.BudgetItemCount budget line item(s)</li>
                 </ul>
             </div>
@@ -145,7 +146,7 @@
             @if (importSuccess)
             {
                 <div class="alert alert-success py-2">
-                    Import complete! @preview.MeetCount meets, @preview.CoachCount coaches, @preview.TeamLevelCount team levels, and @preview.BudgetItemCount budget items were added to your season.
+                    Import complete! @preview.MeetCount @labels.Meets.ToLower(), @preview.CoachCount @labels.Coaches.ToLower(), @preview.TeamLevelCount @labels.TeamLevels.ToLower(), and @preview.BudgetItemCount budget items were added to your season.
                 </div>
             }
             else
@@ -195,6 +196,8 @@
     private string newSeasonName = "";
     private string? newSeasonError;
 
+    private ProjectLabels labels = ProjectLabels.Default;
+
     private class ImportPreview
     {
         public int MeetCount { get; set; }
@@ -210,6 +213,8 @@
         currentUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         mySeasons = Db.Seasons.Where(s => s.UserId == currentUserId).OrderByDescending(s => s.Name).ToList();
         myPin = Db.UserImportPins.FirstOrDefault(p => p.UserId == currentUserId);
+        var activeSeason = mySeasons.FirstOrDefault(s => s.IsActive);
+        labels = new ProjectLabels(activeSeason);
     }
 
     private async Task SavePin()

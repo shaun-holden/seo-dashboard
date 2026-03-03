@@ -21,6 +21,15 @@ else
     {
         <div class="card mb-4 p-3">
             <h5>@(editingSeason == null ? "Add Season" : "Edit Season")</h5>
+
+            <div class="mb-2">
+                <label>Project Type</label>
+                <select class="form-select" @bind="formProjectType">
+                    <option value="@ProjectType.Competition">Competition</option>
+                    <option value="@ProjectType.Custom">Custom</option>
+                </select>
+            </div>
+
             <div class="mb-2">
                 <label>Season Name (e.g. 2026-2027)</label>
                 <input class="form-control" @bind="formName" />
@@ -32,6 +41,47 @@ else
             <div class="mb-2">
                 <input type="checkbox" @bind="formIsActive" /> Active Season
             </div>
+
+            @if (formProjectType == ProjectType.Custom)
+            {
+                <hr />
+                <h6>Custom Labels</h6>
+                <p class="text-muted small">Rename entities to match your project. Defaults are gym terms.</p>
+                <div class="row mb-2">
+                    <div class="col-6">
+                        <label class="form-label small">What do you call "Meets"?</label>
+                        <input class="form-control form-control-sm" placeholder="e.g. Events" @bind="formMeetLabel" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">What do you call "Coaches"?</label>
+                        <input class="form-control form-control-sm" placeholder="e.g. Staff" @bind="formCoachLabel" />
+                    </div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-6">
+                        <label class="form-label small">What do you call "Team Levels"?</label>
+                        <input class="form-control form-control-sm" placeholder="e.g. Groups" @bind="formTeamLevelLabel" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">What do you call "Athlete Items"?</label>
+                        <input class="form-control form-control-sm" placeholder="e.g. Resources" @bind="formAthleteItemLabel" />
+                    </div>
+                </div>
+
+                <hr />
+                <h6>Features</h6>
+                <p class="text-muted small">Choose which features to enable for this season.</p>
+                <div class="mb-1">
+                    <input type="checkbox" @bind="formEnableTeamLevels" /> Enable @formTeamLevelLabel
+                </div>
+                <div class="mb-1">
+                    <input type="checkbox" @bind="formEnablePerDiem" /> Enable Per Diem
+                </div>
+                <div class="mb-2">
+                    <input type="checkbox" @bind="formEnableMileage" /> Enable Mileage
+                </div>
+            }
+
             <button class="btn btn-success me-2" @onclick="SaveSeason">Save</button>
             <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
         </div>
@@ -41,6 +91,7 @@ else
         <thead>
             <tr>
                 <th>Season</th>
+                <th>Type</th>
                 <th>Athletes</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -51,6 +102,16 @@ else
             {
                 <tr>
                     <td>@season.Name</td>
+                    <td>
+                        @if (season.ProjectType == ProjectType.Custom)
+                        {
+                            <span class="badge bg-info">Custom</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-primary">Competition</span>
+                        }
+                    </td>
                     <td>@season.AthleteCount</td>
                     <td>
                         @if (season.IsActive)
@@ -134,6 +195,14 @@ else
     private string formName = "";
     private int formAthleteCount = 0;
     private bool formIsActive = true;
+    private ProjectType formProjectType = ProjectType.Competition;
+    private string formMeetLabel = "Meet";
+    private string formCoachLabel = "Coach";
+    private string formTeamLevelLabel = "Team Level";
+    private string formAthleteItemLabel = "Athlete Item";
+    private bool formEnableTeamLevels = true;
+    private bool formEnablePerDiem = true;
+    private bool formEnableMileage = true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -153,6 +222,14 @@ else
         formName = "";
         formAthleteCount = 0;
         formIsActive = true;
+        formProjectType = ProjectType.Competition;
+        formMeetLabel = "Meet";
+        formCoachLabel = "Coach";
+        formTeamLevelLabel = "Team Level";
+        formAthleteItemLabel = "Athlete Item";
+        formEnableTeamLevels = true;
+        formEnablePerDiem = true;
+        formEnableMileage = true;
         showForm = true;
     }
 
@@ -162,6 +239,14 @@ else
         formName = season.Name;
         formAthleteCount = season.AthleteCount;
         formIsActive = season.IsActive;
+        formProjectType = season.ProjectType;
+        formMeetLabel = season.MeetLabel;
+        formCoachLabel = season.CoachLabel;
+        formTeamLevelLabel = season.TeamLevelLabel;
+        formAthleteItemLabel = season.AthleteItemLabel;
+        formEnableTeamLevels = season.EnableTeamLevels;
+        formEnablePerDiem = season.EnablePerDiem;
+        formEnableMileage = season.EnableMileage;
         showForm = true;
     }
 
@@ -174,7 +259,15 @@ else
                 Name = formName,
                 AthleteCount = formAthleteCount,
                 IsActive = formIsActive,
-                UserId = userId ?? string.Empty
+                UserId = userId ?? string.Empty,
+                ProjectType = formProjectType,
+                MeetLabel = formProjectType == ProjectType.Custom ? formMeetLabel : "Meet",
+                CoachLabel = formProjectType == ProjectType.Custom ? formCoachLabel : "Coach",
+                TeamLevelLabel = formProjectType == ProjectType.Custom ? formTeamLevelLabel : "Team Level",
+                AthleteItemLabel = formProjectType == ProjectType.Custom ? formAthleteItemLabel : "Athlete Item",
+                EnableTeamLevels = formProjectType == ProjectType.Custom ? formEnableTeamLevels : true,
+                EnablePerDiem = formProjectType == ProjectType.Custom ? formEnablePerDiem : true,
+                EnableMileage = formProjectType == ProjectType.Custom ? formEnableMileage : true
             };
             Db.Seasons.Add(newSeason);
         }
@@ -183,6 +276,14 @@ else
             editingSeason.Name = formName;
             editingSeason.AthleteCount = formAthleteCount;
             editingSeason.IsActive = formIsActive;
+            editingSeason.ProjectType = formProjectType;
+            editingSeason.MeetLabel = formProjectType == ProjectType.Custom ? formMeetLabel : "Meet";
+            editingSeason.CoachLabel = formProjectType == ProjectType.Custom ? formCoachLabel : "Coach";
+            editingSeason.TeamLevelLabel = formProjectType == ProjectType.Custom ? formTeamLevelLabel : "Team Level";
+            editingSeason.AthleteItemLabel = formProjectType == ProjectType.Custom ? formAthleteItemLabel : "Athlete Item";
+            editingSeason.EnableTeamLevels = formProjectType == ProjectType.Custom ? formEnableTeamLevels : true;
+            editingSeason.EnablePerDiem = formProjectType == ProjectType.Custom ? formEnablePerDiem : true;
+            editingSeason.EnableMileage = formProjectType == ProjectType.Custom ? formEnableMileage : true;
             Db.Seasons.Update(editingSeason);
         }
 

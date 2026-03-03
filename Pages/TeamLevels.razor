@@ -2,11 +2,12 @@
 @attribute [Authorize]
 @using GymBudgetApp.Models
 @using GymBudgetApp
+@using GymBudgetApp.Services
 @using System.Security.Claims
 @inject AppDbContext Db
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
-<h3>Team Levels</h3>
+<h3>@labels.TeamLevels</h3>
 
 @if (seasons == null)
 {
@@ -27,12 +28,12 @@ else
 
     @if (selectedSeasonId > 0)
     {
-        <button class="btn btn-primary mb-3" @onclick="ShowForm">+ Add Team Level</button>
+        <button class="btn btn-primary mb-3" @onclick="ShowForm">+ Add @labels.TeamLevel</button>
 
         @if (showForm)
         {
             <div class="card mb-4 p-3">
-                <h5>@(editingLevel == null ? "Add Team Level" : "Edit Team Level")</h5>
+                <h5>@(editingLevel == null ? $"Add {labels.TeamLevel}" : $"Edit {labels.TeamLevel}")</h5>
                 <div class="row">
                     <div class="col-md-4 mb-2">
                         <label>Level Name</label>
@@ -63,7 +64,7 @@ else
                     </div>
                 </div>
                 <div class="card-body">
-                    <h6>Athlete Items</h6>
+                    <h6>@labels.AthleteItems</h6>
                     <table class="table table-sm">
                         <thead><tr><th>Item</th><th>Cost</th><th>Required</th><th></th></tr></thead>
                         <tbody>
@@ -89,7 +90,7 @@ else
                             <input type="checkbox" @bind="newItemRequired" /> Required
                         </div>
                         <div class="col-md-3">
-                            <button class="btn btn-sm btn-success" @onclick="() => AddAthleteItem(level.Id)">+ Add Item</button>
+                            <button class="btn btn-sm btn-success" @onclick="() => AddAthleteItem(level.Id)">+ Add @labels.AthleteItem</button>
                         </div>
                     </div>
                 </div>
@@ -112,6 +113,7 @@ else
     private decimal newItemCost = 0;
     private bool newItemRequired = true;
     private string? userId;
+    private ProjectLabels labels = ProjectLabels.Default;
 
     protected override async Task OnInitializedAsync()
     {
@@ -119,12 +121,13 @@ else
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
         var active = seasons.FirstOrDefault(s => s.IsActive);
-        if (active != null) { selectedSeasonId = active.Id; await LoadData(); }
+        if (active != null) { selectedSeasonId = active.Id; labels = new ProjectLabels(active); await LoadData(); }
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)
     {
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        labels = new ProjectLabels(seasons?.FirstOrDefault(s => s.Id == selectedSeasonId));
         await LoadData();
     }
 

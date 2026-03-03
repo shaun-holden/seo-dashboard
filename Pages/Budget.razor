@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @using GymBudgetApp.Models
 @using GymBudgetApp
+@using GymBudgetApp.Services
 @using System.Security.Claims
 @inject AppDbContext Db
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -71,7 +72,7 @@ else
                         </select>
                     </div>
                     <div class="col-md-3 mb-2">
-                        <label>Meet (optional)</label>
+                        <label>@labels.Meet (optional)</label>
                         <select class="form-select" @bind="formMeetId">
                             <option value="0">Season-wide</option>
                             @foreach (var m in meets)
@@ -118,7 +119,7 @@ else
             <thead>
                 <tr>
                     <th>Category</th>
-                    <th>Meet</th>
+                    <th>@labels.Meet</th>
                     <th>Rate</th>
                     <th>Qty</th>
                     <th>Total</th>
@@ -174,6 +175,7 @@ else
     private decimal costPerAthlete => selectedSeason?.AthleteCount > 0 ? budgetTotal / selectedSeason!.AthleteCount : 0;
     private Season? selectedSeason;
     private string? userId;
+    private ProjectLabels labels = ProjectLabels.Default;
 
     protected override async Task OnInitializedAsync()
     {
@@ -181,13 +183,14 @@ else
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
         var active = seasons.FirstOrDefault(s => s.IsActive);
-        if (active != null) { selectedSeasonId = active.Id; selectedSeason = active; await LoadData(); }
+        if (active != null) { selectedSeasonId = active.Id; selectedSeason = active; labels = new ProjectLabels(active); await LoadData(); }
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)
     {
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         selectedSeason = seasons?.FirstOrDefault(s => s.Id == selectedSeasonId);
+        labels = new ProjectLabels(selectedSeason);
         await LoadData();
     }
 
