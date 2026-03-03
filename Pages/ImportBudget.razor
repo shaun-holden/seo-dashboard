@@ -97,14 +97,33 @@
         </div>
         <div class="mb-3">
             <label class="form-label fw-semibold">Import into (your season)</label>
-            <select class="form-select" @bind="targetSeasonId" @bind:after="UpdatePreview">
+            <select class="form-select" @bind="targetSeasonId" @bind:after="OnTargetSeasonChanged">
                 <option value="0">-- Select Season --</option>
                 @foreach (var s in mySeasons)
                 {
                     <option value="@s.Id">@s.Name</option>
                 }
+                <option value="-1">+ Create New Season</option>
             </select>
         </div>
+
+        @if (isCreatingNewSeason)
+        {
+            <div class="card bg-light p-3 mb-3">
+                <h6>New Season</h6>
+                <div class="mb-2">
+                    <input class="form-control" placeholder="Season name (e.g. 2026-2027)" @bind="newSeasonName" />
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-primary" @onclick="CreateSeason">Create</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelNewSeason">Cancel</button>
+                </div>
+                @if (newSeasonError != null)
+                {
+                    <div class="text-danger small mt-1">@newSeasonError</div>
+                }
+            </div>
+        }
 
         @if (srcSeasonId > 0 && targetSeasonId > 0 && preview != null)
         {
@@ -170,6 +189,11 @@
     private string? pinVerifyError;
     private int pinAttempts;
     private string? employeePinHash;
+
+    // Create new season
+    private bool isCreatingNewSeason;
+    private string newSeasonName = "";
+    private string? newSeasonError;
 
     private class ImportPreview
     {
@@ -292,6 +316,48 @@
                 pinVerifyError = $"Incorrect PIN. {3 - pinAttempts} attempt(s) remaining.";
             }
         }
+    }
+
+    private void OnTargetSeasonChanged()
+    {
+        if (targetSeasonId == -1)
+        {
+            isCreatingNewSeason = true;
+            targetSeasonId = 0;
+        }
+        else
+        {
+            isCreatingNewSeason = false;
+        }
+        UpdatePreview();
+    }
+
+    private async Task CreateSeason()
+    {
+        newSeasonError = null;
+        if (string.IsNullOrWhiteSpace(newSeasonName))
+        {
+            newSeasonError = "Please enter a season name.";
+            return;
+        }
+
+        var season = new Season { Name = newSeasonName.Trim(), UserId = currentUserId!, IsActive = true };
+        Db.Seasons.Add(season);
+        await Db.SaveChangesAsync();
+
+        mySeasons = Db.Seasons.Where(s => s.UserId == currentUserId).OrderByDescending(s => s.Name).ToList();
+        targetSeasonId = season.Id;
+        isCreatingNewSeason = false;
+        newSeasonName = "";
+        UpdatePreview();
+    }
+
+    private void CancelNewSeason()
+    {
+        isCreatingNewSeason = false;
+        newSeasonName = "";
+        newSeasonError = null;
+        targetSeasonId = 0;
     }
 
     private void UpdatePreview()

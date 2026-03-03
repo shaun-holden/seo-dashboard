@@ -1,0 +1,532 @@
+@page "/import-csv"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using System.Security.Claims
+@using System.Globalization
+@inject AppDbContext Db
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
+
+<h3>Import / Export CSV</h3>
+<p class="text-muted">Export a season to a CSV file, or import a CSV file into a season.</p>
+
+<!-- Export -->
+<div class="card mb-4 p-3" style="max-width: 600px;">
+    <h5>Export Season to CSV</h5>
+    <div class="mb-2">
+        <select class="form-select" @bind="exportSeasonId">
+            <option value="0">-- Select Season --</option>
+            @foreach (var s in mySeasons)
+            {
+                <option value="@s.Id">@s.Name</option>
+            }
+        </select>
+    </div>
+    <button class="btn btn-primary" @onclick="ExportCsv" disabled="@(exportSeasonId <= 0 || isExporting)">
+        @if (isExporting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+        Export
+    </button>
+</div>
+
+<!-- Import -->
+<div class="card mb-4 p-3" style="max-width: 600px;">
+    <h5>Import CSV into Season</h5>
+
+    <div class="mb-3">
+        <label class="form-label fw-semibold">CSV File</label>
+        <InputFile OnChange="HandleFileSelected" accept=".csv" class="form-control" />
+    </div>
+
+    @if (parseError != null)
+    {
+        <div class="alert alert-danger py-2">@parseError</div>
+    }
+
+    @if (csvPreview != null)
+    {
+        <div class="alert alert-info">
+            <strong>File preview:</strong>
+            <ul class="mb-0 mt-1">
+                <li>@csvPreview.CoachCount coach(es)</li>
+                <li>@csvPreview.MeetCount meet(s)</li>
+                <li>@csvPreview.TeamLevelCount team level(s)</li>
+                <li>@csvPreview.AthleteItemCount athlete item(s)</li>
+                <li>@csvPreview.BudgetItemCount budget line item(s)</li>
+                <li>@csvPreview.PerDiemCount per diem entries</li>
+                <li>@csvPreview.MileageCount mileage entries</li>
+            </ul>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label fw-semibold">Import into season</label>
+            <select class="form-select" @bind="importSeasonId" @bind:after="OnImportSeasonChanged">
+                <option value="0">-- Select Season --</option>
+                @foreach (var s in mySeasons)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+                <option value="-1">+ Create New Season</option>
+            </select>
+        </div>
+
+        @if (isCreatingNewSeason)
+        {
+            <div class="card bg-light p-3 mb-3">
+                <h6>New Season</h6>
+                <div class="mb-2">
+                    <input class="form-control" placeholder="Season name (e.g. 2026-2027)" @bind="newSeasonName" />
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-primary" @onclick="CreateSeason">Create</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelNewSeason">Cancel</button>
+                </div>
+                @if (newSeasonError != null)
+                {
+                    <div class="text-danger small mt-1">@newSeasonError</div>
+                }
+            </div>
+        }
+
+        @if (importError != null)
+        {
+            <div class="alert alert-danger py-2">@importError</div>
+        }
+
+        @if (importSuccess)
+        {
+            <div class="alert alert-success py-2">Import complete! All data has been added to your season.</div>
+        }
+        else if (importSeasonId > 0)
+        {
+            <button class="btn btn-success" @onclick="DoImport" disabled="@isImporting">
+                @if (isImporting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Import
+            </button>
+        }
+    }
+</div>
+
+@code {
+    private string? currentUserId;
+    private List<Season> mySeasons = new();
+
+    // Export
+    private int exportSeasonId;
+    private bool isExporting;
+
+    // Import - file
+    private string? parseError;
+    private CsvPreview? csvPreview;
+    private List<string[]> csvRows = new();
+
+    // Import - season
+    private int importSeasonId;
+    private bool isCreatingNewSeason;
+    private string newSeasonName = "";
+    private string? newSeasonError;
+
+    // Import - state
+    private bool isImporting;
+    private bool importSuccess;
+    private string? importError;
+
+    private class CsvPreview
+    {
+        public int CoachCount { get; set; }
+        public int MeetCount { get; set; }
+        public int TeamLevelCount { get; set; }
+        public int AthleteItemCount { get; set; }
+        public int BudgetItemCount { get; set; }
+        public int PerDiemCount { get; set; }
+        public int MileageCount { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        currentUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        mySeasons = Db.Seasons.Where(s => s.UserId == currentUserId).OrderByDescending(s => s.Name).ToList();
+    }
+
+    // ── Export ──────────────────────────────────────────────
+
+    private async Task ExportCsv()
+    {
+        isExporting = true;
+        try
+        {
+            var seasonId = exportSeasonId;
+            var season = mySeasons.First(s => s.Id == seasonId);
+            var coaches = Db.Coaches.Where(c => c.SeasonId == seasonId).ToList();
+            var meets = Db.Meets.Where(m => m.SeasonId == seasonId).ToList();
+            var levels = Db.TeamLevels.Where(t => t.SeasonId == seasonId).ToList();
+            var levelIds = levels.Select(t => t.Id).ToList();
+            var athleteItems = Db.AthleteItems.Where(a => levelIds.Contains(a.TeamLevelId)).ToList();
+            var budgetItems = Db.BudgetLineItems.Where(b => b.SeasonId == seasonId).ToList();
+            var perDiems = Db.PerDiemEntries.Where(p => p.MeetId != 0 && meets.Select(m => m.Id).Contains(p.MeetId)).ToList();
+            var mileages = Db.MileageEntries.Where(m => m.MeetId != 0 && meets.Select(mt => mt.Id).Contains(m.MeetId)).ToList();
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("RecordType,RefId,Col1,Col2,Col3,Col4,Col5,Col6,Col7,Col8");
+
+            // Coaches
+            var coachRefMap = new Dictionary<int, string>();
+            for (int i = 0; i < coaches.Count; i++)
+            {
+                var c = coaches[i];
+                var refId = $"C{i + 1}";
+                coachRefMap[c.Id] = refId;
+                sb.AppendLine($"Coach,{refId},{Esc(c.Name)},{Esc(c.Role)},{c.IsActive},,,,, ");
+            }
+
+            // Meets
+            var meetRefMap = new Dictionary<int, string>();
+            for (int i = 0; i < meets.Count; i++)
+            {
+                var m = meets[i];
+                var refId = $"M{i + 1}";
+                meetRefMap[m.Id] = refId;
+                sb.AppendLine($"Meet,{refId},{Esc(m.Name)},{m.Date:yyyy-MM-dd},{m.TravelType},,,,, ");
+            }
+
+            // TeamLevels
+            var levelRefMap = new Dictionary<int, string>();
+            for (int i = 0; i < levels.Count; i++)
+            {
+                var t = levels[i];
+                var refId = $"TL{i + 1}";
+                levelRefMap[t.Id] = refId;
+                sb.AppendLine($"TeamLevel,{refId},{Esc(t.Name)},{t.AthleteCount},{t.PaymentPlanMonths},,,,, ");
+            }
+
+            // AthleteItems
+            foreach (var a in athleteItems)
+            {
+                var tlRef = levelRefMap.GetValueOrDefault(a.TeamLevelId, "");
+                sb.AppendLine($"AthleteItem,,{Esc(a.Name)},{a.Cost},{a.IsRequired},{tlRef},,,, ");
+            }
+
+            // BudgetLineItems
+            foreach (var b in budgetItems)
+            {
+                var meetRef = b.MeetId.HasValue ? meetRefMap.GetValueOrDefault(b.MeetId.Value, "") : "";
+                var coachRef = b.CoachId.HasValue ? coachRefMap.GetValueOrDefault(b.CoachId.Value, "") : "";
+                sb.AppendLine($"BudgetLineItem,,{b.Category},{b.EntryFeeType?.ToString() ?? ""},{b.IsActual},{b.Rate},{b.Quantity},{Esc(b.Notes ?? "")},{meetRef},{coachRef}");
+            }
+
+            // PerDiemEntries
+            foreach (var p in perDiems)
+            {
+                var coachRef = coachRefMap.GetValueOrDefault(p.CoachId, "");
+                var meetRef = meetRefMap.GetValueOrDefault(p.MeetId, "");
+                sb.AppendLine($"PerDiemEntry,,{p.MealType},{p.Rate},{p.NumberOfDays},{p.IsActual},{coachRef},{meetRef},, ");
+            }
+
+            // MileageEntries
+            foreach (var m in mileages)
+            {
+                var coachRef = coachRefMap.GetValueOrDefault(m.CoachId, "");
+                var meetRef = meetRefMap.GetValueOrDefault(m.MeetId, "");
+                sb.AppendLine($"MileageEntry,,{m.Miles},{m.RatePerMile},{m.IsActual},{coachRef},{meetRef},,, ");
+            }
+
+            var filename = $"season_{season.Name.Replace(" ", "_")}_{DateTime.Today:yyyyMMdd}.csv";
+            await JS.InvokeVoidAsync("downloadFile", filename, sb.ToString());
+        }
+        finally
+        {
+            isExporting = false;
+        }
+    }
+
+    private static string Esc(string val)
+    {
+        if (val.Contains(',') || val.Contains('"') || val.Contains('\n'))
+            return "\"" + val.Replace("\"", "\"\"") + "\"";
+        return val;
+    }
+
+    // ── Import - File Handling ──────────────────────────────
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        parseError = null;
+        csvPreview = null;
+        csvRows.Clear();
+        importSuccess = false;
+        importError = null;
+        importSeasonId = 0;
+        isCreatingNewSeason = false;
+
+        try
+        {
+            using var reader = new System.IO.StreamReader(e.File.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024));
+            var content = await reader.ReadToEndAsync();
+            var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+            if (lines.Length < 2)
+            {
+                parseError = "CSV file is empty or has no data rows.";
+                return;
+            }
+
+            // Skip header row
+            for (int i = 1; i < lines.Length; i++)
+            {
+                var line = lines[i].Trim();
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                csvRows.Add(ParseCsvLine(line));
+            }
+
+            if (csvRows.Count == 0)
+            {
+                parseError = "No data rows found in CSV.";
+                return;
+            }
+
+            csvPreview = new CsvPreview
+            {
+                CoachCount = csvRows.Count(r => r[0] == "Coach"),
+                MeetCount = csvRows.Count(r => r[0] == "Meet"),
+                TeamLevelCount = csvRows.Count(r => r[0] == "TeamLevel"),
+                AthleteItemCount = csvRows.Count(r => r[0] == "AthleteItem"),
+                BudgetItemCount = csvRows.Count(r => r[0] == "BudgetLineItem"),
+                PerDiemCount = csvRows.Count(r => r[0] == "PerDiemEntry"),
+                MileageCount = csvRows.Count(r => r[0] == "MileageEntry")
+            };
+        }
+        catch (Exception ex)
+        {
+            parseError = $"Failed to read CSV: {ex.Message}";
+        }
+    }
+
+    private static string[] ParseCsvLine(string line)
+    {
+        var fields = new List<string>();
+        bool inQuotes = false;
+        var current = new System.Text.StringBuilder();
+
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (inQuotes)
+            {
+                if (c == '"')
+                {
+                    if (i + 1 < line.Length && line[i + 1] == '"')
+                    {
+                        current.Append('"');
+                        i++;
+                    }
+                    else
+                    {
+                        inQuotes = false;
+                    }
+                }
+                else
+                {
+                    current.Append(c);
+                }
+            }
+            else
+            {
+                if (c == '"') { inQuotes = true; }
+                else if (c == ',') { fields.Add(current.ToString().Trim()); current.Clear(); }
+                else { current.Append(c); }
+            }
+        }
+        fields.Add(current.ToString().Trim());
+        return fields.ToArray();
+    }
+
+    // ── Import - Season Selection ───────────────────────────
+
+    private void OnImportSeasonChanged()
+    {
+        if (importSeasonId == -1)
+        {
+            isCreatingNewSeason = true;
+            importSeasonId = 0;
+        }
+        else
+        {
+            isCreatingNewSeason = false;
+        }
+    }
+
+    private async Task CreateSeason()
+    {
+        newSeasonError = null;
+        if (string.IsNullOrWhiteSpace(newSeasonName))
+        {
+            newSeasonError = "Please enter a season name.";
+            return;
+        }
+
+        var season = new Season { Name = newSeasonName.Trim(), UserId = currentUserId!, IsActive = true };
+        Db.Seasons.Add(season);
+        await Db.SaveChangesAsync();
+
+        mySeasons = Db.Seasons.Where(s => s.UserId == currentUserId).OrderByDescending(s => s.Name).ToList();
+        importSeasonId = season.Id;
+        isCreatingNewSeason = false;
+        newSeasonName = "";
+    }
+
+    private void CancelNewSeason()
+    {
+        isCreatingNewSeason = false;
+        newSeasonName = "";
+        newSeasonError = null;
+        importSeasonId = 0;
+    }
+
+    // ── Import - Execute ────────────────────────────────────
+
+    private async Task DoImport()
+    {
+        importError = null;
+        importSuccess = false;
+        isImporting = true;
+
+        try
+        {
+            var targetId = importSeasonId;
+            var coachMap = new Dictionary<string, int>();
+            var meetMap = new Dictionary<string, int>();
+            var levelMap = new Dictionary<string, int>();
+
+            // 1. Coaches
+            foreach (var row in csvRows.Where(r => r[0] == "Coach"))
+            {
+                var refId = row[1];
+                var coach = new Coach
+                {
+                    Name = row[2],
+                    Role = row[3],
+                    IsActive = bool.TryParse(row[4], out var ia) && ia,
+                    SeasonId = targetId
+                };
+                Db.Coaches.Add(coach);
+                await Db.SaveChangesAsync();
+                if (!string.IsNullOrEmpty(refId)) coachMap[refId] = coach.Id;
+            }
+
+            // 2. Meets
+            foreach (var row in csvRows.Where(r => r[0] == "Meet"))
+            {
+                var refId = row[1];
+                var meet = new Meet
+                {
+                    Name = row[2],
+                    Date = DateTime.TryParse(row[3], CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : DateTime.Today,
+                    TravelType = Enum.TryParse<TravelType>(row[4], true, out var tt) ? tt : TravelType.Drive,
+                    SeasonId = targetId
+                };
+                Db.Meets.Add(meet);
+                await Db.SaveChangesAsync();
+                if (!string.IsNullOrEmpty(refId)) meetMap[refId] = meet.Id;
+            }
+
+            // 3. TeamLevels
+            foreach (var row in csvRows.Where(r => r[0] == "TeamLevel"))
+            {
+                var refId = row[1];
+                var level = new TeamLevel
+                {
+                    Name = row[2],
+                    AthleteCount = int.TryParse(row[3], out var ac) ? ac : 0,
+                    PaymentPlanMonths = int.TryParse(row[4], out var pm) ? pm : 1,
+                    SeasonId = targetId
+                };
+                Db.TeamLevels.Add(level);
+                await Db.SaveChangesAsync();
+                if (!string.IsNullOrEmpty(refId)) levelMap[refId] = level.Id;
+            }
+
+            // 4. AthleteItems
+            foreach (var row in csvRows.Where(r => r[0] == "AthleteItem"))
+            {
+                var tlRef = row.Length > 5 ? row[5] : "";
+                if (string.IsNullOrEmpty(tlRef) || !levelMap.ContainsKey(tlRef)) continue;
+                Db.AthleteItems.Add(new AthleteItem
+                {
+                    Name = row[2],
+                    Cost = decimal.TryParse(row[3], CultureInfo.InvariantCulture, out var cost) ? cost : 0,
+                    IsRequired = bool.TryParse(row[4], out var ir) && ir,
+                    TeamLevelId = levelMap[tlRef]
+                });
+            }
+            await Db.SaveChangesAsync();
+
+            // 5. BudgetLineItems
+            foreach (var row in csvRows.Where(r => r[0] == "BudgetLineItem"))
+            {
+                var meetRef = row.Length > 8 ? row[8] : "";
+                var coachRef = row.Length > 9 ? row[9] : "";
+                Db.BudgetLineItems.Add(new BudgetLineItem
+                {
+                    Category = Enum.TryParse<BudgetCategory>(row[2], true, out var cat) ? cat : BudgetCategory.OtherMisc,
+                    EntryFeeType = Enum.TryParse<EntryFeeType>(row[3], true, out var eft) ? eft : null,
+                    IsActual = bool.TryParse(row[4], out var isA) && isA,
+                    Rate = decimal.TryParse(row[5], CultureInfo.InvariantCulture, out var rate) ? rate : 0,
+                    Quantity = decimal.TryParse(row[6], CultureInfo.InvariantCulture, out var qty) ? qty : 0,
+                    Notes = row.Length > 7 && !string.IsNullOrWhiteSpace(row[7]) ? row[7] : null,
+                    SeasonId = targetId,
+                    MeetId = !string.IsNullOrEmpty(meetRef) && meetMap.TryGetValue(meetRef, out var mid) ? mid : null,
+                    CoachId = !string.IsNullOrEmpty(coachRef) && coachMap.TryGetValue(coachRef, out var cid) ? cid : null
+                });
+            }
+            await Db.SaveChangesAsync();
+
+            // 6. PerDiemEntries
+            foreach (var row in csvRows.Where(r => r[0] == "PerDiemEntry"))
+            {
+                var coachRef = row.Length > 6 ? row[6] : "";
+                var meetRef = row.Length > 7 ? row[7] : "";
+                if (string.IsNullOrEmpty(coachRef) || !coachMap.ContainsKey(coachRef)) continue;
+                if (string.IsNullOrEmpty(meetRef) || !meetMap.ContainsKey(meetRef)) continue;
+                Db.PerDiemEntries.Add(new PerDiemEntry
+                {
+                    MealType = Enum.TryParse<MealType>(row[2], true, out var mt) ? mt : MealType.Breakfast,
+                    Rate = decimal.TryParse(row[3], CultureInfo.InvariantCulture, out var r2) ? r2 : 0,
+                    NumberOfDays = int.TryParse(row[4], out var nd) ? nd : 0,
+                    IsActual = bool.TryParse(row[5], out var ia2) && ia2,
+                    CoachId = coachMap[coachRef],
+                    MeetId = meetMap[meetRef]
+                });
+            }
+            await Db.SaveChangesAsync();
+
+            // 7. MileageEntries
+            foreach (var row in csvRows.Where(r => r[0] == "MileageEntry"))
+            {
+                var coachRef = row.Length > 5 ? row[5] : "";
+                var meetRef = row.Length > 6 ? row[6] : "";
+                if (string.IsNullOrEmpty(coachRef) || !coachMap.ContainsKey(coachRef)) continue;
+                if (string.IsNullOrEmpty(meetRef) || !meetMap.ContainsKey(meetRef)) continue;
+                Db.MileageEntries.Add(new MileageEntry
+                {
+                    Miles = decimal.TryParse(row[2], CultureInfo.InvariantCulture, out var mi) ? mi : 0,
+                    RatePerMile = decimal.TryParse(row[3], CultureInfo.InvariantCulture, out var rpm) ? rpm : 0,
+                    IsActual = bool.TryParse(row[4], out var ia3) && ia3,
+                    CoachId = coachMap[coachRef],
+                    MeetId = meetMap[meetRef]
+                });
+            }
+            await Db.SaveChangesAsync();
+
+            importSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            importError = $"Import failed: {ex.Message}";
+        }
+        finally
+        {
+            isImporting = false;
+        }
+    }
+}
