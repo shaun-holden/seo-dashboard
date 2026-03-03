@@ -17,6 +17,7 @@ namespace GymBudgetApp
         public DbSet<TeamLevel> TeamLevels { get; set; }
         public DbSet<AthleteItem> AthleteItems { get; set; }
         public DbSet<MileageEntry> MileageEntries { get; set; }
+        public DbSet<UserImportPin> UserImportPins { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {

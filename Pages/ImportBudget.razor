@@ -11,6 +11,36 @@
 <h3>Import Budget</h3>
 <p class="text-muted">Copy a season's data (meets, coaches, team levels, and budget items) from another user's account into one of your seasons.</p>
 
+<!-- Your Import PIN -->
+<div class="card mb-4 p-3" style="max-width: 600px;">
+    <h5>Your Import PIN</h5>
+    <p class="text-muted small mb-2">Set a 4-digit PIN so other users can import your data. Without a PIN, no one can import from your account.</p>
+    @if (myPin != null && !isEditingPin)
+    {
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-success fs-6 font-monospace">@myPin.Pin</span>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="() => { isEditingPin = true; newPin = myPin.Pin; }">Change</button>
+            <button class="btn btn-sm btn-outline-danger" @onclick="RemovePin">Remove</button>
+        </div>
+    }
+    else
+    {
+        <div class="input-group" style="max-width: 260px;">
+            <input class="form-control" placeholder="4-digit PIN" @bind="newPin" maxlength="4" />
+            <button class="btn btn-primary" @onclick="SavePin">Save</button>
+            @if (isEditingPin)
+            {
+                <button class="btn btn-outline-secondary" @onclick="() => { isEditingPin = false; newPin = string.Empty; pinError = null; }">Cancel</button>
+            }
+        </div>
+        @if (pinError != null)
+        {
+            <div class="text-danger small mt-1">@pinError</div>
+        }
+    }
+</div>
+
+<!-- Step 1: Find Employee -->
 <div class="card mb-4 p-3" style="max-width: 600px;">
     <h5>Step 1: Find Employee</h5>
     <div class="input-group mb-2">
@@ -26,10 +56,35 @@
     }
 </div>
 
-@if (employeeSeasons != null)
+<!-- Step 2: Enter PIN -->
+@if (requiresPin)
 {
     <div class="card mb-4 p-3" style="max-width: 600px;">
-        <h5>Step 2: Select Seasons</h5>
+        <h5>Step 2: Enter Import PIN</h5>
+        <p class="text-muted small mb-2">This user requires a PIN to import their data. Ask them for their 4-digit import PIN.</p>
+        @if (pinAttempts >= 3)
+        {
+            <div class="alert alert-danger py-2">Too many incorrect attempts. Please search for the user again.</div>
+        }
+        else
+        {
+            <div class="input-group" style="max-width: 260px;">
+                <input class="form-control" placeholder="4-digit PIN" @bind="enteredPin" maxlength="4" />
+                <button class="btn btn-primary" @onclick="VerifyPin">Verify</button>
+            </div>
+            @if (pinVerifyError != null)
+            {
+                <div class="text-danger small mt-1">@pinVerifyError</div>
+            }
+        }
+    </div>
+}
+
+<!-- Step 3: Select Seasons -->
+@if (employeeSeasons != null && pinVerified)
+{
+    <div class="card mb-4 p-3" style="max-width: 600px;">
+        <h5>Step @(requiresPin ? "3" : "2"): Select Seasons</h5>
         <div class="mb-3">
             <label class="form-label fw-semibold">Import from (employee season)</label>
             <select class="form-select" @bind="srcSeasonId" @bind:after="UpdatePreview">
@@ -102,6 +157,20 @@
     private bool importSuccess;
     private string? importError;
 
+    // PIN management
+    private UserImportPin? myPin;
+    private string newPin = "";
+    private string? pinError;
+    private bool isEditingPin;
+
+    // PIN verification
+    private bool requiresPin;
+    private bool pinVerified;
+    private string enteredPin = "";
+    private string? pinVerifyError;
+    private int pinAttempts;
+    private string? employeePinHash;
+
     private class ImportPreview
     {
         public int MeetCount { get; set; }
@@ -116,6 +185,40 @@
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         currentUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         mySeasons = Db.Seasons.Where(s => s.UserId == currentUserId).OrderByDescending(s => s.Name).ToList();
+        myPin = Db.UserImportPins.FirstOrDefault(p => p.UserId == currentUserId);
+    }
+
+    private async Task SavePin()
+    {
+        pinError = null;
+        if (string.IsNullOrWhiteSpace(newPin) || newPin.Length != 4 || !newPin.All(char.IsDigit))
+        {
+            pinError = "PIN must be exactly 4 digits.";
+            return;
+        }
+
+        if (myPin == null)
+        {
+            myPin = new UserImportPin { UserId = currentUserId!, Pin = newPin };
+            Db.UserImportPins.Add(myPin);
+        }
+        else
+        {
+            myPin.Pin = newPin;
+        }
+        await Db.SaveChangesAsync();
+        isEditingPin = false;
+        newPin = "";
+    }
+
+    private async Task RemovePin()
+    {
+        if (myPin != null)
+        {
+            Db.UserImportPins.Remove(myPin);
+            await Db.SaveChangesAsync();
+            myPin = null;
+        }
     }
 
     private async Task SearchUser()
@@ -126,6 +229,12 @@
         targetSeasonId = 0;
         preview = null;
         importSuccess = false;
+        requiresPin = false;
+        pinVerified = false;
+        enteredPin = "";
+        pinVerifyError = null;
+        pinAttempts = 0;
+        employeePinHash = null;
 
         if (string.IsNullOrWhiteSpace(searchEmail)) { searchError = "Please enter an email address."; return; }
 
@@ -136,10 +245,53 @@
         if (user == null) { searchError = "No account found with that email address."; return; }
         if (user.Id == currentUserId) { searchError = "You cannot import from your own account."; return; }
 
-        employeeUserId = user.Id;
-        employeeSeasons = Db.Seasons.Where(s => s.UserId == employeeUserId).OrderByDescending(s => s.Name).ToList();
+        // Check if the user has an import PIN set
+        var userPin = Db.UserImportPins.FirstOrDefault(p => p.UserId == user.Id);
+        if (userPin == null)
+        {
+            searchError = "This user has not enabled imports. They need to set an Import PIN on their account first.";
+            return;
+        }
 
-        if (!employeeSeasons.Any()) { searchError = "That user has no seasons to import from."; employeeSeasons = null; }
+        employeeUserId = user.Id;
+        employeePinHash = userPin.Pin;
+        requiresPin = true;
+    }
+
+    private void VerifyPin()
+    {
+        pinVerifyError = null;
+
+        if (string.IsNullOrWhiteSpace(enteredPin))
+        {
+            pinVerifyError = "Please enter the PIN.";
+            return;
+        }
+
+        if (enteredPin == employeePinHash)
+        {
+            pinVerified = true;
+            employeeSeasons = Db.Seasons.Where(s => s.UserId == employeeUserId).OrderByDescending(s => s.Name).ToList();
+            if (!employeeSeasons.Any())
+            {
+                searchError = "That user has no seasons to import from.";
+                employeeSeasons = null;
+                requiresPin = false;
+                pinVerified = false;
+            }
+        }
+        else
+        {
+            pinAttempts++;
+            if (pinAttempts >= 3)
+            {
+                pinVerifyError = null; // The "too many attempts" message handles this
+            }
+            else
+            {
+                pinVerifyError = $"Incorrect PIN. {3 - pinAttempts} attempt(s) remaining.";
+            }
+        }
     }
 
     private void UpdatePreview()
