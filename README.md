@@ -1,16 +1,17 @@
 # GymBudgetApp
 
-A budget tracking application for gymnastics programs. Track revenue, expenses, payroll, and financial metrics across seasons.
+A budget tracking application for gymnastics programs and other project types. Track revenue, expenses, payroll, and financial metrics across seasons.
 
 ## Features
 
+- **Project Types** — Choose between Competition (gym-specific defaults) or Custom (define your own labels and features)
 - **Season Management** — Create and manage budget seasons (e.g., 2026-2027)
 - **Budget Tracking** — Track revenue and expenses by category with budget vs. actual comparison
-- **Coach Management** — Manage coaching staff and assignments
-- **Meet Scheduling** — Track competitions with travel type (drive/fly)
-- **Per Diem** — Calculate meal allowances per coach per meet
-- **Mileage Tracking** — Track travel mileage and reimbursement
-- **Team Levels** — Organize athletes by level with payment plan calculations
+- **Coach Management** — Manage coaching staff and assignments (or custom-labeled staff)
+- **Meet Scheduling** — Track competitions with travel type (drive/fly) (or custom-labeled events)
+- **Per Diem** — Calculate meal allowances per coach per meet (optional per project type)
+- **Mileage Tracking** — Track travel mileage and reimbursement (optional per project type)
+- **Team Levels** — Organize athletes by level with payment plan calculations (optional per project type)
 - **Reports** — Generate financial reports by season or meet
 - **Copy Structure** — Copy coaches, meets, and team levels from one season to another
 - **Import Budget** — Import a full season's data from another user's account
@@ -36,7 +37,7 @@ cd GymBudgetApp
 dotnet run
 ```
 
-The app will be available at `https://localhost:5001`.
+The app will be available at `http://localhost:5224`.
 
 ### Environment Variables
 
@@ -57,6 +58,9 @@ The app will be available at `https://localhost:5001`.
 - Click **Seasons** in the sidebar
 - Click **+ New Season**
 - Enter a season name (e.g., "2026-2027"), total athlete count, and check "Active Season"
+- Choose a **Project Type**:
+  - **Competition** — Uses default gym terminology (Meets, Coaches, Team Levels, Athlete Items) with all features enabled
+  - **Custom** — Define your own labels for each entity and choose which features to enable (Team Levels, Per Diem, Mileage)
 - Click **Save**
 
 ### 3. Add Coaches
