@@ -4,8 +4,11 @@
 @using GymBudgetApp
 @using GymBudgetApp.Services
 @using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject GymBudgetApp.Services.NotesPanelState NotesPanelState
 
 <h3>@labels.TeamLevels</h3>
 
@@ -24,11 +27,614 @@ else
                 <option value="@s.Id">@s.Name</option>
             }
         </select>
+        @if (selectedSeasonId > 0)
+        {
+            <button class="btn btn-outline-secondary btn-sm ms-2" @onclick="RefreshData" title="Refresh data"><span class="oi oi-reload"></span></button>
+        }
     </div>
 
     @if (selectedSeasonId > 0)
     {
-        <button class="btn btn-primary mb-3" @onclick="ShowForm">+ Add @labels.TeamLevel</button>
+        <button class="btn btn-primary mb-3 me-2" @onclick="ShowForm">+ Add @labels.TeamLevel</button>
+        @if (teamLevels.Any())
+        {
+            <button class="btn btn-outline-success mb-3 me-2" @onclick="ShowItemForm">+ Add @labels.AthleteItem</button>
+        }
+        <button class="btn btn-outline-warning mb-3" @onclick="ShowSharedFeeForm">+ Add Shared Fee</button>
+
+        @if (showAddItemForm)
+        {
+            <div class="card mb-4 p-3 border-success">
+                <h5>Add @labels.AthleteItem</h5>
+                <div class="row">
+                    <div class="col-md-4 mb-2">
+                        <label>Item Name</label>
+                        <input class="form-control" placeholder="Item name" @bind="bulkItemName" />
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label>Cost</label>
+                        <input type="number" step="0.01" class="form-control" placeholder="Cost" @bind="bulkItemCost" />
+                    </div>
+                    <div class="col-md-2 mb-2">
+                        <label>&nbsp;</label>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" @bind="bulkItemRequired" />
+                            <label class="form-check-label">Required</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="fw-bold me-2">Add to:</label>
+                    <div class="btn-group" role="group">
+                        <button type="button" class="@(addToAllLevels ? "btn btn-primary" : "btn btn-outline-primary")"
+                                @onclick="() => { addToAllLevels = true; selectedGroupIdsForItem.Clear(); }">All @labels.TeamLevels</button>
+                        <button type="button" class="@(!addToAllLevels ? "btn btn-primary" : "btn btn-outline-primary")"
+                                @onclick="() => addToAllLevels = false">Select Groups</button>
+                    </div>
+                </div>
+                @if (!addToAllLevels)
+                {
+                    <div class="d-flex flex-wrap gap-3 mb-2 p-2 bg-light rounded">
+                        @foreach (var g in seasonGroups)
+                        {
+                            var gId = g.Id;
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" checked="@selectedGroupIdsForItem.Contains(gId)"
+                                       @onchange="(e) => ToggleSelectedGroupForItem(gId, (bool)e.Value!)" />
+                                <label class="form-check-label">@g.Name</label>
+                            </div>
+                        }
+                    </div>
+                }
+                <div>
+                    <button class="btn btn-success me-2" @onclick="SaveBulkAthleteItem">Save</button>
+                    <button class="btn btn-secondary" @onclick="CancelItemForm">Cancel</button>
+                </div>
+            </div>
+        }
+
+        @if (showSharedFeeForm)
+        {
+            <div class="card mb-4 p-3 border-warning">
+                <h5>Add Shared Fee</h5>
+                <div class="row">
+                    <div class="col-md-4 mb-2">
+                        <label>Category</label>
+                        <select class="form-select" @onchange="OnSharedFeeCategoryChanged">
+                            @foreach (var cat in Enum.GetValues<SharedFeeCategory>())
+                            {
+                                <option value="@cat" selected="@(cat == sharedFeeCategory)">@FormatSharedFeeCategory(cat)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <label>Name (optional)</label>
+                        <input class="form-control" placeholder="Custom description" @bind="sharedFeeName" />
+                    </div>
+                </div>
+
+                <div class="card mt-2 mb-2 p-3 bg-light border-info">
+                    <h6>@FormatSharedFeeCategory(sharedFeeCategory) Calculator</h6>
+
+                    @if (sharedFeeCategory == SharedFeeCategory.Mileage)
+                    {
+                        @if (coaches.Any())
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select @labels.Coaches</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var coach in coaches)
+                                    {
+                                        var cId = coach.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcCoachIds.Contains(cId)"
+                                                   @onchange="(e) => ToggleCalcCoach(cId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@coach.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @if (meets.Any())
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select @labels.Meets</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var meet in meets)
+                                    {
+                                        var mId = meet.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcMeetIds.Contains(mId)"
+                                                   @onchange="(e) => ToggleCalcMeet(mId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@meet.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        <div class="row">
+                            <div class="col-md-3 mb-2">
+                                <label>Miles</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcMiles" />
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <label>Rate per Mile ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcRatePerMile" />
+                            </div>
+                        </div>
+                        <div class="text-muted mb-2">
+                            @calcMiles mi × $@calcRatePerMile.ToString("N2")/mi × @Math.Max(calcCoachIds.Count, 1) coach(es) × @Math.Max(calcMeetIds.Count, 1) @(labels.Meet)(s) = <strong>$@((calcMiles * calcRatePerMile * Math.Max(calcCoachIds.Count, 1) * Math.Max(calcMeetIds.Count, 1)).ToString("N2"))</strong>
+                        </div>
+                        <button class="btn btn-sm btn-info" @onclick="CalculateMileage">Calculate</button>
+                    }
+
+                    else if (sharedFeeCategory == SharedFeeCategory.PerDiem)
+                    {
+                        @if (coaches.Any())
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select @labels.Coaches</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var coach in coaches)
+                                    {
+                                        var cId = coach.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcCoachIds.Contains(cId)"
+                                                   @onchange="(e) => ToggleCalcCoach(cId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@coach.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @if (meets.Any())
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select @labels.Meets</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var meet in meets)
+                                    {
+                                        var mId = meet.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcMeetIds.Contains(mId)"
+                                                   @onchange="(e) => ToggleCalcMeet(mId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@meet.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        <div class="row">
+                            <div class="col-md-2 mb-2">
+                                <label>Breakfast ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcBreakfast" />
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label>Lunch ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcLunch" />
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label>Dinner ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcDinner" />
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label>Days</label>
+                                <input type="number" class="form-control" @bind="calcDays" />
+                            </div>
+                        </div>
+                        <div class="text-muted mb-2">
+                            ($@calcBreakfast.ToString("N2") + $@calcLunch.ToString("N2") + $@calcDinner.ToString("N2")) × @calcDays day(s) × @Math.Max(calcCoachIds.Count, 1) coach(es) × @Math.Max(calcMeetIds.Count, 1) @(labels.Meet)(s) = <strong>$@(((calcBreakfast + calcLunch + calcDinner) * calcDays * Math.Max(calcCoachIds.Count, 1) * Math.Max(calcMeetIds.Count, 1)).ToString("N2"))</strong>
+                        </div>
+                        <button class="btn btn-sm btn-info" @onclick="CalculatePerDiem">Calculate</button>
+                    }
+
+                    else if (sharedFeeCategory == SharedFeeCategory.TeamFees)
+                    {
+                        @if (seasonGroups.Any())
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select Groups</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var group in seasonGroups)
+                                    {
+                                        var gId = group.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcLevelIds.Contains(gId)"
+                                                   @onchange="(e) => ToggleCalcLevel(gId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@group.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @if (meets.Any())
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select @labels.Meets</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var meet in meets)
+                                    {
+                                        var mId = meet.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcMeetIds.Contains(mId)"
+                                                   @onchange="(e) => ToggleCalcMeet(mId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@meet.Name ($@meet.BudgetAmount.ToString("N2"))</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        <div class="row">
+                            <div class="col-md-3 mb-2">
+                                <label>Rate ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcRate" />
+                            </div>
+                        </div>
+                        <div class="text-muted mb-2">
+                            $@calcRate.ToString("N2") × @Math.Max(calcLevelIds.Count, 1) group(s) = <strong>$@((calcRate * Math.Max(calcLevelIds.Count, 1)).ToString("N2"))</strong>
+                            @if (calcMeetIds.Any())
+                            {
+                                var meetTotal = meets.Where(m => calcMeetIds.Contains(m.Id)).Sum(m => m.BudgetAmount);
+                                <span> + $@meetTotal.ToString("N2") @(labels.Meet) fees = <strong>$@((calcRate * Math.Max(calcLevelIds.Count, 1) + meetTotal).ToString("N2"))</strong></span>
+                            }
+                        </div>
+                        <button class="btn btn-sm btn-info" @onclick="CalculateTeamFees">Calculate</button>
+                    }
+
+                    else if (sharedFeeCategory == SharedFeeCategory.RentalCar)
+                    {
+                        @if (meets.Any())
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select @labels.Meets</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var meet in meets)
+                                    {
+                                        var mId = meet.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcMeetIds.Contains(mId)"
+                                                   @onchange="(e) => ToggleCalcMeet(mId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@meet.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        <div class="row">
+                            <div class="col-md-3 mb-2">
+                                <label>Rate per Day ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcRate" />
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label>Days</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcQuantity" />
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label>Insurance ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcInsurance" />
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label>Tolls ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcTolls" />
+                            </div>
+                        </div>
+                        <div class="text-muted mb-2">
+                            (($@calcRate.ToString("N2") × @calcQuantity days) + $@calcInsurance.ToString("N2") + $@calcTolls.ToString("N2")) × @Math.Max(calcMeetIds.Count, 1) @(labels.Meet)(s) = <strong>$@((((calcRate * calcQuantity) + calcInsurance + calcTolls) * Math.Max(calcMeetIds.Count, 1)).ToString("N2"))</strong>
+                        </div>
+                        <button class="btn btn-sm btn-info" @onclick="CalculateRentalCar">Calculate</button>
+                    }
+
+                    else if (sharedFeeCategory == SharedFeeCategory.BankFees)
+                    {
+                        <div class="row">
+                            <div class="col-md-3 mb-2">
+                                <label>Rate ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcRate" />
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <label>Quantity</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcQuantity" />
+                            </div>
+                        </div>
+                        <div class="text-muted mb-2">
+                            $@calcRate.ToString("N2") × @calcQuantity = <strong>$@((calcRate * calcQuantity).ToString("N2"))</strong>
+                        </div>
+                        <button class="btn btn-sm btn-info" @onclick="CalculateBankFees">Calculate</button>
+                    }
+
+                    else if (sharedFeeCategory == SharedFeeCategory.SessionFees)
+                    {
+                        @if (coaches.Any())
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select @labels.Coaches</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var coach in coaches)
+                                    {
+                                        var cId = coach.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcCoachIds.Contains(cId)"
+                                                   @onchange="(e) => ToggleCalcCoach(cId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@coach.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @if (meets.Any())
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select @labels.Meets</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var meet in meets)
+                                    {
+                                        var mId = meet.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcMeetIds.Contains(mId)"
+                                                   @onchange="(e) => ToggleCalcMeet(mId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@meet.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        <div class="row">
+                            <div class="col-md-3 mb-2">
+                                <label>Rate ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcRate" />
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <label>Quantity</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcQuantity" />
+                            </div>
+                        </div>
+                        <div class="text-muted mb-2">
+                            $@calcRate.ToString("N2") × @calcQuantity × @Math.Max(calcCoachIds.Count, 1) coach(es) × @Math.Max(calcMeetIds.Count, 1) @(labels.Meet)(s) = <strong>$@((calcRate * calcQuantity * Math.Max(calcCoachIds.Count, 1) * Math.Max(calcMeetIds.Count, 1)).ToString("N2"))</strong>
+                        </div>
+                        <button class="btn btn-sm btn-info" @onclick="CalculateSessionFees">Calculate</button>
+                    }
+
+                    else if (sharedFeeCategory == SharedFeeCategory.ProcessFees)
+                    {
+                        @if (meets.Any())
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select @labels.Meets</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var meet in meets)
+                                    {
+                                        var mId = meet.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcMeetIds.Contains(mId)"
+                                                   @onchange="(e) => ToggleCalcMeet(mId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@meet.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        <div class="row">
+                            <div class="col-md-3 mb-2">
+                                <label>Rate ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcRate" />
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <label>Quantity</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcQuantity" />
+                            </div>
+                        </div>
+                        <div class="text-muted mb-2">
+                            $@calcRate.ToString("N2") × @calcQuantity × @Math.Max(calcMeetIds.Count, 1) @(labels.Meet)(s) = <strong>$@((calcRate * calcQuantity * Math.Max(calcMeetIds.Count, 1)).ToString("N2"))</strong>
+                        </div>
+                        <button class="btn btn-sm btn-info" @onclick="CalculateProcessFees">Calculate</button>
+                    }
+
+                    else if (sharedFeeCategory == SharedFeeCategory.Banquet)
+                    {
+                        <div class="row">
+                            <div class="col-md-3 mb-2">
+                                <label>Facility ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcFacility" />
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <label>Gymnast Gift ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcGymnastGift" />
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label>Food ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcFood" />
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label>Misc ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcMisc" />
+                            </div>
+                        </div>
+                        <div class="text-muted mb-2">
+                            $@calcFacility.ToString("N2") + $@calcGymnastGift.ToString("N2") + $@calcFood.ToString("N2") + $@calcMisc.ToString("N2") = <strong>$@((calcFacility + calcGymnastGift + calcFood + calcMisc).ToString("N2"))</strong>
+                        </div>
+                        <button class="btn btn-sm btn-info" @onclick="CalculateBanquet">Calculate</button>
+                    }
+
+                    else if (sharedFeeCategory == SharedFeeCategory.Flights)
+                    {
+                        @if (coaches.Any())
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select @labels.Coaches</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var coach in coaches)
+                                    {
+                                        var cId = coach.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcCoachIds.Contains(cId)"
+                                                   @onchange="(e) => ToggleCalcCoach(cId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@coach.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @if (meets.Any(m => m.TravelType == TravelType.Fly))
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select Fly @labels.Meets</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var meet in meets.Where(m => m.TravelType == TravelType.Fly))
+                                    {
+                                        var mId = meet.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcMeetIds.Contains(mId)"
+                                                   @onchange="(e) => ToggleCalcMeet(mId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@meet.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        <div class="row">
+                            <div class="col-md-3 mb-2">
+                                <label>Rate ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcRate" />
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <label>Quantity</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcQuantity" />
+                            </div>
+                        </div>
+                        <div class="text-muted mb-2">
+                            $@calcRate.ToString("N2") × @calcQuantity × @Math.Max(calcCoachIds.Count, 1) coach(es) × @Math.Max(calcMeetIds.Count, 1) @(labels.Meet)(s) = <strong>$@((calcRate * calcQuantity * Math.Max(calcCoachIds.Count, 1) * Math.Max(calcMeetIds.Count, 1)).ToString("N2"))</strong>
+                        </div>
+                        <button class="btn btn-sm btn-info" @onclick="CalculateFlights">Calculate</button>
+                    }
+
+                    else if (sharedFeeCategory == SharedFeeCategory.Hotel)
+                    {
+                        @if (coaches.Any())
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select @labels.Coaches</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var coach in coaches)
+                                    {
+                                        var cId = coach.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcCoachIds.Contains(cId)"
+                                                   @onchange="(e) => ToggleCalcCoach(cId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@coach.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @if (meets.Any())
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select @labels.Meets</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var meet in meets)
+                                    {
+                                        var mId = meet.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcMeetIds.Contains(mId)"
+                                                   @onchange="(e) => ToggleCalcMeet(mId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@meet.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        <div class="row">
+                            <div class="col-md-3 mb-2">
+                                <label>Rate per Night ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcRate" />
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <label># of Days</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcQuantity" />
+                            </div>
+                        </div>
+                        <div class="text-muted mb-2">
+                            $@calcRate.ToString("N2") × @calcQuantity day(s) × @Math.Max(calcCoachIds.Count, 1) coach(es) × @Math.Max(calcMeetIds.Count, 1) @(labels.Meet)(s) = <strong>$@((calcRate * calcQuantity * Math.Max(calcCoachIds.Count, 1) * Math.Max(calcMeetIds.Count, 1)).ToString("N2"))</strong>
+                        </div>
+                        <button class="btn btn-sm btn-info" @onclick="CalculateHotel">Calculate</button>
+                    }
+
+                    else
+                    {
+                        @if (coaches.Any())
+                        {
+                            <div class="mb-2">
+                                <label class="fw-bold mb-1">Select @labels.Coaches</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var coach in coaches)
+                                    {
+                                        var cId = coach.Id;
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@calcCoachIds.Contains(cId)"
+                                                   @onchange="(e) => ToggleCalcCoach(cId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@coach.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        <div class="row">
+                            <div class="col-md-3 mb-2">
+                                <label>Rate ($)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcRate" />
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <label>Quantity</label>
+                                <input type="number" step="0.01" class="form-control" @bind="calcQuantity" />
+                            </div>
+                        </div>
+                        <div class="text-muted mb-2">
+                            $@calcRate.ToString("N2") × @calcQuantity × @Math.Max(calcCoachIds.Count, 1) coach(es) = <strong>$@((calcRate * calcQuantity * Math.Max(calcCoachIds.Count, 1)).ToString("N2"))</strong>
+                        </div>
+                        <button class="btn btn-sm btn-info" @onclick="CalculateGeneric">Calculate</button>
+                    }
+                </div>
+
+                <div class="row mt-2">
+                    <div class="col-md-3 mb-2">
+                        <label>Amount</label>
+                        <input type="number" step="0.01" class="form-control" @bind="sharedFeeAmount" />
+                    </div>
+                </div>
+
+                <div class="mt-2">
+                    <button class="btn btn-success me-2" @onclick="SaveSharedFee">Save</button>
+                    <button class="btn btn-secondary" @onclick="CancelSharedFeeForm">Cancel</button>
+                </div>
+            </div>
+        }
+
+        @if (sharedFees.Any())
+        {
+            <div class="card mb-4 border-warning">
+                <div class="card-header bg-warning bg-opacity-25 d-flex justify-content-between">
+                    <h5 class="mb-0">Shared Fees</h5>
+                    <span class="fw-bold">Total: $@sharedFees.Sum(f => f.Amount).ToString("N2")</span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Category</th><th>Name</th><th>Amount</th><th>In Budget</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var fee in sharedFees)
+                            {
+                                <tr>
+                                    <td>@FormatSharedFeeCategory(fee.Category)</td>
+                                    <td>@fee.DisplayName</td>
+                                    <td>$@fee.Amount.ToString("N2")</td>
+                                    <td>@(fee.IsIncludedInBudget ? "Yes" : "No")</td>
+                                    <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteSharedFee(fee)">Remove</button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
 
         @if (showForm)
         {
@@ -40,61 +646,82 @@ else
                         <input class="form-control" @bind="formName" placeholder="e.g. Gym Stars, Elite/HOPE" />
                     </div>
                     <div class="col-md-4 mb-2">
-                        <label>Athlete Count</label>
-                        <input type="number" class="form-control" @bind="formAthleteCount" />
-                    </div>
-                    <div class="col-md-4 mb-2">
                         <label>Payment Plan (months)</label>
                         <input type="number" class="form-control" @bind="formPaymentMonths" />
                     </div>
                 </div>
+                @if (seasonGroups.Any())
+                {
+                    <div class="mt-2 mb-2 p-2 bg-light rounded">
+                        <label class="fw-bold mb-1">Groups (optional)</label>
+                        <div class="d-flex flex-wrap gap-3">
+                            @foreach (var g in seasonGroups)
+                            {
+                                var gId = g.Id;
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" checked="@formGroupIds.Contains(gId)"
+                                           @onchange="(e) => ToggleFormGroup(gId, (bool)e.Value!)" />
+                                    <label class="form-check-label">@g.Name</label>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                @if (meets.Any())
+                {
+                    <div class="mt-2 mb-2 p-2 bg-light rounded">
+                        <label class="fw-bold mb-1">@labels.Meets (optional)</label>
+                        <div class="d-flex flex-wrap gap-3">
+                            @foreach (var m in meets)
+                            {
+                                var mId = m.Id;
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" checked="@formMeetIds.Contains(mId)"
+                                           @onchange="(e) => ToggleFormMeet(mId, (bool)e.Value!)" />
+                                    <label class="form-check-label">@m.Name</label>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
                 <button class="btn btn-success me-2" @onclick="SaveLevel">Save</button>
                 <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
             </div>
         }
 
-        @foreach (var level in teamLevels)
+        @* Grouped team levels *@
+        @foreach (var group in seasonGroups)
         {
-            <div class="card mb-3">
-                <div class="card-header d-flex justify-content-between">
-                    <h5>@level.Name — @level.AthleteCount athletes</h5>
-                    <div>
-                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditLevel(level)">Edit</button>
-                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteLevel(level)">Delete</button>
-                    </div>
+            var groupLevelIds = levelGroupAssignments.Where(a => a.SeasonGroupId == group.Id).Select(a => a.TeamLevelId).ToHashSet();
+            var groupLevels = teamLevels.Where(t => groupLevelIds.Contains(t.Id)).ToList();
+            <div class="card mb-4 border-primary">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">@group.Name</h5>
                 </div>
-                <div class="card-body">
-                    <h6>@labels.AthleteItems</h6>
-                    <table class="table table-sm">
-                        <thead><tr><th>Item</th><th>Cost</th><th>Required</th><th></th></tr></thead>
-                        <tbody>
-                            @foreach (var item in athleteItems.Where(i => i.TeamLevelId == level.Id))
-                            {
-                                <tr>
-                                    <td>@item.Name</td>
-                                    <td>$@item.Cost.ToString("N2")</td>
-                                    <td>@(item.IsRequired ? "Yes" : "No")</td>
-                                    <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAthleteItem(item)">Remove</button></td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                    <div class="row mt-2">
-                        <div class="col-md-4">
-                            <input class="form-control" placeholder="Item name" @bind="newItemName" />
-                        </div>
-                        <div class="col-md-3">
-                            <input type="number" step="0.01" class="form-control" placeholder="Cost" @bind="newItemCost" />
-                        </div>
-                        <div class="col-md-2">
-                            <input type="checkbox" @bind="newItemRequired" /> Required
-                        </div>
-                        <div class="col-md-3">
-                            <button class="btn btn-sm btn-success" @onclick="() => AddAthleteItem(level.Id)">+ Add @labels.AthleteItem</button>
-                        </div>
-                    </div>
+                <div class="card-body p-2">
+                    @if (groupLevels.Any())
+                    {
+                        @foreach (var level in groupLevels)
+                        {
+                            @RenderLevelCard(level)
+                        }
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0 fst-italic">No @labels.TeamLevels assigned to this group yet.</p>
+                    }
                 </div>
             </div>
+        }
+
+        @* Ungrouped team levels *@
+        @if (teamLevels.Any(t => !levelGroupAssignments.Any(a => a.TeamLevelId == t.Id)) && seasonGroups.Any())
+        {
+            <h5 class="mt-3 text-muted">Ungrouped</h5>
+        }
+        @foreach (var level in teamLevels.Where(t => !levelGroupAssignments.Any(a => a.TeamLevelId == t.Id)))
+        {
+            @RenderLevelCard(level)
         }
     }
 }
@@ -103,83 +730,421 @@ else
     private List<Season>? seasons;
     private List<TeamLevel> teamLevels = new();
     private List<AthleteItem> athleteItems = new();
+    private List<SeasonGroup> seasonGroups = new();
+    private List<TeamLevelGroupAssignment> levelGroupAssignments = new();
+    private List<Meet> meets = new();
+    private List<MeetTeamLevelAssignment> meetLevelAssignments = new();
     private int selectedSeasonId;
     private bool showForm;
     private TeamLevel? editingLevel;
     private string formName = "";
-    private int formAthleteCount = 0;
     private int formPaymentMonths = 5;
+    private HashSet<int> formGroupIds = new();
+    private HashSet<int> formMeetIds = new();
     private string newItemName = "";
     private decimal newItemCost = 0;
     private bool newItemRequired = true;
+    private bool showAddItemForm;
+    private string bulkItemName = "";
+    private decimal bulkItemCost = 0;
+    private bool bulkItemRequired = true;
+    private bool addToAllLevels = true;
+    private HashSet<int> selectedGroupIdsForItem = new();
+    private List<SharedFee> sharedFees = new();
+    private List<Coach> coaches = new();
+    private bool showSharedFeeForm;
+    private SharedFeeCategory sharedFeeCategory = SharedFeeCategory.Mileage;
+    private string sharedFeeName = "";
+    private decimal sharedFeeAmount = 0;
+    private HashSet<int> calcCoachIds = new();
+    private decimal calcMiles = 0;
+    private decimal calcRatePerMile = 0;
+    private decimal calcBreakfast = 0;
+    private decimal calcLunch = 0;
+    private decimal calcDinner = 0;
+    private int calcDays = 0;
+    private decimal calcRate = 0;
+    private decimal calcQuantity = 0;
+    private HashSet<int> calcLevelIds = new();
+    private HashSet<int> calcMeetIds = new();
+    private decimal calcInsurance = 0;
+    private decimal calcTolls = 0;
+    private decimal calcFacility = 0;
+    private decimal calcGymnastGift = 0;
+    private decimal calcFood = 0;
+    private decimal calcMisc = 0;
     private string? userId;
     private ProjectLabels labels = ProjectLabels.Default;
+
+    private RenderFragment RenderLevelCard(TeamLevel level) => __builder =>
+    {
+        var levelGroups = levelGroupAssignments.Where(a => a.TeamLevelId == level.Id).ToList();
+        var assignedGroups = seasonGroups.Where(g => levelGroups.Any(a => a.SeasonGroupId == g.Id)).ToList();
+        var assignedMeetIds = meetLevelAssignments.Where(a => a.TeamLevelId == level.Id).Select(a => a.MeetId).ToHashSet();
+        var assignedMeets = meets.Where(m => assignedMeetIds.Contains(m.Id)).ToList();
+
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between">
+                <div>
+                    <h5 class="mb-0 d-inline">@level.Name</h5>
+                    @if (assignedGroups.Any())
+                    {
+                        <span class="badge bg-success ms-2">@assignedGroups.Count group(s)</span>
+                    }
+                    @if (assignedMeets.Any())
+                    {
+                        <span class="badge bg-info ms-2">@assignedMeets.Count @labels.Meets</span>
+                    }
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditLevel(level)">Edit</button>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteLevel(level)">Delete</button>
+                </div>
+            </div>
+            <div class="card-body">
+                @if (assignedMeets.Any())
+                {
+                    <h6>@labels.Meets</h6>
+                    <table class="table table-sm mb-3">
+                        <thead><tr><th>@labels.Meet</th><th>Date</th><th>Budget</th></tr></thead>
+                        <tbody>
+                            @foreach (var m in assignedMeets)
+                            {
+                                <tr>
+                                    <td>@m.Name</td>
+                                    <td>@m.Date.ToString("MMM dd, yyyy")</td>
+                                    <td>$@m.BudgetAmount.ToString("N2")</td>
+                                </tr>
+                            }
+                            <tr class="fw-bold">
+                                <td colspan="2">Total @labels.Meets Budget</td>
+                                <td>$@assignedMeets.Sum(m => m.BudgetAmount).ToString("N2")</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                }
+                <h6>@labels.AthleteItems</h6>
+                <table class="table table-sm">
+                    <thead><tr><th>Item</th><th>Cost</th><th>Required</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var item in athleteItems.Where(i => i.TeamLevelId == level.Id))
+                        {
+                            <tr>
+                                <td>@item.Name</td>
+                                <td>$@item.Cost.ToString("N2")</td>
+                                <td>@(item.IsRequired ? "Yes" : "No")</td>
+                                <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAthleteItem(item)">Remove</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="row mt-2">
+                    <div class="col-md-4">
+                        <input class="form-control" placeholder="Item name" @bind="newItemName" />
+                    </div>
+                    <div class="col-md-3">
+                        <input type="number" step="0.01" class="form-control" placeholder="Cost" @bind="newItemCost" />
+                    </div>
+                    <div class="col-md-2">
+                        <input type="checkbox" @bind="newItemRequired" /> Required
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-sm btn-success" @onclick="() => AddAthleteItem(level.Id)">+ Add @labels.AthleteItem</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
-        var active = seasons.FirstOrDefault(s => s.IsActive);
-        if (active != null) { selectedSeasonId = active.Id; labels = new ProjectLabels(active); await LoadData(); }
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)
     {
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         labels = new ProjectLabels(seasons?.FirstOrDefault(s => s.Id == selectedSeasonId));
+        NotesPanelState.SeasonId = selectedSeasonId;
         await LoadData();
     }
 
+    private async Task RefreshData() => await LoadData();
+
     private async Task LoadData()
     {
-        teamLevels = await Task.FromResult(Db.TeamLevels.Where(t => t.SeasonId == selectedSeasonId).ToList());
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasonGroups = await db.SeasonGroups.AsNoTracking().Where(g => g.SeasonId == selectedSeasonId).OrderBy(g => g.SortOrder).ToListAsync();
+        teamLevels = await db.TeamLevels.AsNoTracking().Where(t => t.SeasonId == selectedSeasonId).ToListAsync();
         var levelIds = teamLevels.Select(t => t.Id).ToList();
-        athleteItems = await Task.FromResult(Db.AthleteItems.Where(a => levelIds.Contains(a.TeamLevelId)).ToList());
+        levelGroupAssignments = await db.TeamLevelGroupAssignments.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
+
+        // Auto-create a team level for each season group that doesn't have one
+        var groupsWithLevels = levelGroupAssignments.Select(a => a.SeasonGroupId).ToHashSet();
+        var groupsNeedingLevels = seasonGroups.Where(g => !groupsWithLevels.Contains(g.Id)).ToList();
+        if (groupsNeedingLevels.Any())
+        {
+            using var writeDb = await DbFactory.CreateDbContextAsync();
+            foreach (var group in groupsNeedingLevels)
+            {
+                var newLevel = new TeamLevel { Name = group.Name, SeasonId = selectedSeasonId };
+                writeDb.TeamLevels.Add(newLevel);
+                await writeDb.SaveChangesAsync();
+                writeDb.TeamLevelGroupAssignments.Add(new TeamLevelGroupAssignment { TeamLevelId = newLevel.Id, SeasonGroupId = group.Id });
+            }
+            await writeDb.SaveChangesAsync();
+            // Reload with fresh context
+            using var db2 = await DbFactory.CreateDbContextAsync();
+            teamLevels = await db2.TeamLevels.AsNoTracking().Where(t => t.SeasonId == selectedSeasonId).ToListAsync();
+            levelIds = teamLevels.Select(t => t.Id).ToList();
+            levelGroupAssignments = await db2.TeamLevelGroupAssignments.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
+        }
+
+        athleteItems = await db.AthleteItems.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
+        meets = await db.Meets.AsNoTracking().Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToListAsync();
+        meetLevelAssignments = await db.MeetTeamLevelAssignments.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
+        sharedFees = await db.SharedFees.AsNoTracking().Where(f => f.SeasonId == selectedSeasonId).ToListAsync();
+        coaches = await db.Coaches.AsNoTracking().Where(c => c.SeasonId == selectedSeasonId && c.IsActive).ToListAsync();
+        StateHasChanged();
     }
 
-    private void ShowForm() { editingLevel = null; formName = ""; formAthleteCount = 0; formPaymentMonths = 5; showForm = true; }
+    private void ToggleFormGroup(int groupId, bool isChecked)
+    {
+        if (isChecked) formGroupIds.Add(groupId);
+        else formGroupIds.Remove(groupId);
+    }
+
+    private void ToggleFormMeet(int meetId, bool isChecked)
+    {
+        if (isChecked) formMeetIds.Add(meetId);
+        else formMeetIds.Remove(meetId);
+    }
+
+    private void ShowForm() { editingLevel = null; formName = ""; formPaymentMonths = 5; formGroupIds.Clear(); formMeetIds.Clear(); showForm = true; showAddItemForm = false; }
     private void CancelForm() { showForm = false; }
+
+    private void ShowItemForm() { bulkItemName = ""; bulkItemCost = 0; bulkItemRequired = true; addToAllLevels = true; selectedGroupIdsForItem.Clear(); showAddItemForm = true; showForm = false; }
+    private void CancelItemForm() { showAddItemForm = false; }
+
+    private void ToggleSelectedGroupForItem(int groupId, bool isChecked)
+    {
+        if (isChecked) selectedGroupIdsForItem.Add(groupId);
+        else selectedGroupIdsForItem.Remove(groupId);
+    }
+
+    private async Task SaveBulkAthleteItem()
+    {
+        if (string.IsNullOrWhiteSpace(bulkItemName)) return;
+        List<int> targetLevelIds;
+        if (addToAllLevels)
+        {
+            targetLevelIds = teamLevels.Select(t => t.Id).ToList();
+        }
+        else
+        {
+            targetLevelIds = levelGroupAssignments
+                .Where(a => selectedGroupIdsForItem.Contains(a.SeasonGroupId))
+                .Select(a => a.TeamLevelId)
+                .Distinct()
+                .ToList();
+        }
+        if (!targetLevelIds.Any()) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        foreach (var id in targetLevelIds)
+        {
+            db.AthleteItems.Add(new AthleteItem { Name = bulkItemName, Cost = bulkItemCost, IsRequired = bulkItemRequired, TeamLevelId = id });
+        }
+        await db.SaveChangesAsync();
+        await LoadData();
+        showAddItemForm = false;
+    }
 
     private void EditLevel(TeamLevel level)
     {
-        editingLevel = level; formName = level.Name; formAthleteCount = level.AthleteCount; formPaymentMonths = level.PaymentPlanMonths; showForm = true;
+        editingLevel = level; formName = level.Name; formPaymentMonths = level.PaymentPlanMonths;
+        formGroupIds = levelGroupAssignments.Where(a => a.TeamLevelId == level.Id).Select(a => a.SeasonGroupId).ToHashSet();
+        formMeetIds = meetLevelAssignments.Where(a => a.TeamLevelId == level.Id).Select(a => a.MeetId).ToHashSet();
+        showForm = true;
     }
 
     private async Task SaveLevel()
     {
+        using var db = await DbFactory.CreateDbContextAsync();
+        TeamLevel level;
         if (editingLevel == null)
-            Db.TeamLevels.Add(new TeamLevel { Name = formName, AthleteCount = formAthleteCount, PaymentPlanMonths = formPaymentMonths, SeasonId = selectedSeasonId });
+        {
+            level = new TeamLevel { Name = formName, PaymentPlanMonths = formPaymentMonths, SeasonId = selectedSeasonId };
+            db.TeamLevels.Add(level);
+            await db.SaveChangesAsync();
+        }
         else
         {
-            editingLevel.Name = formName; editingLevel.AthleteCount = formAthleteCount; editingLevel.PaymentPlanMonths = formPaymentMonths;
-            Db.TeamLevels.Update(editingLevel);
+            level = await db.TeamLevels.FindAsync(editingLevel.Id) ?? new TeamLevel { Id = editingLevel.Id };
+            level.Name = formName;
+            level.PaymentPlanMonths = formPaymentMonths;
+            var existing = db.TeamLevelGroupAssignments.Where(a => a.TeamLevelId == level.Id).ToList();
+            db.TeamLevelGroupAssignments.RemoveRange(existing);
+            await db.SaveChangesAsync();
         }
-        await Db.SaveChangesAsync();
+        foreach (var gId in formGroupIds)
+        {
+            if (!db.TeamLevelGroupAssignments.Any(a => a.TeamLevelId == level.Id && a.SeasonGroupId == gId))
+                db.TeamLevelGroupAssignments.Add(new TeamLevelGroupAssignment { TeamLevelId = level.Id, SeasonGroupId = gId });
+        }
+        var existingMeets = db.MeetTeamLevelAssignments.Where(a => a.TeamLevelId == level.Id).ToList();
+        db.MeetTeamLevelAssignments.RemoveRange(existingMeets);
+        foreach (var mId in formMeetIds)
+        {
+            db.MeetTeamLevelAssignments.Add(new MeetTeamLevelAssignment { TeamLevelId = level.Id, MeetId = mId });
+        }
+        await db.SaveChangesAsync();
         await LoadData();
         showForm = false;
     }
 
     private async Task DeleteLevel(TeamLevel level)
     {
-        Db.TeamLevels.Remove(level);
-        await Db.SaveChangesAsync();
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.TeamLevels.FindAsync(level.Id);
+        if (entity != null) { db.TeamLevels.Remove(entity); await db.SaveChangesAsync(); }
         await LoadData();
     }
 
     private async Task AddAthleteItem(int levelId)
     {
         if (string.IsNullOrWhiteSpace(newItemName)) return;
-        Db.AthleteItems.Add(new AthleteItem { Name = newItemName, Cost = newItemCost, IsRequired = newItemRequired, TeamLevelId = levelId });
-        await Db.SaveChangesAsync();
+        using var db = await DbFactory.CreateDbContextAsync();
+        db.AthleteItems.Add(new AthleteItem { Name = newItemName, Cost = newItemCost, IsRequired = newItemRequired, TeamLevelId = levelId });
+        await db.SaveChangesAsync();
         newItemName = ""; newItemCost = 0; newItemRequired = true;
         await LoadData();
     }
 
     private async Task DeleteAthleteItem(AthleteItem item)
     {
-        Db.AthleteItems.Remove(item);
-        await Db.SaveChangesAsync();
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.AthleteItems.FindAsync(item.Id);
+        if (entity != null) { db.AthleteItems.Remove(entity); await db.SaveChangesAsync(); }
         await LoadData();
     }
+
+    private void ShowSharedFeeForm() { sharedFeeCategory = SharedFeeCategory.Mileage; sharedFeeName = ""; sharedFeeAmount = 0; ResetCalcFields(); showSharedFeeForm = true; showForm = false; showAddItemForm = false; }
+    private void CancelSharedFeeForm() { showSharedFeeForm = false; }
+
+    private void ResetCalcFields()
+    {
+        calcCoachIds.Clear(); calcLevelIds.Clear(); calcMeetIds.Clear();
+        calcMiles = 0; calcRatePerMile = 0; calcBreakfast = 0; calcLunch = 0; calcDinner = 0; calcDays = 0;
+        calcRate = 0; calcQuantity = 0; calcInsurance = 0; calcTolls = 0;
+        calcFacility = 0; calcGymnastGift = 0; calcFood = 0; calcMisc = 0;
+    }
+
+    private void OnSharedFeeCategoryChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<SharedFeeCategory>(e.Value?.ToString(), out var cat)) sharedFeeCategory = cat;
+        ResetCalcFields(); sharedFeeAmount = 0;
+    }
+
+    private void ToggleCalcCoach(int coachId, bool isChecked)
+    {
+        if (isChecked) calcCoachIds.Add(coachId); else calcCoachIds.Remove(coachId);
+    }
+
+    private void ToggleCalcLevel(int levelId, bool isChecked)
+    {
+        if (isChecked) calcLevelIds.Add(levelId); else calcLevelIds.Remove(levelId);
+    }
+
+    private void ToggleCalcMeet(int meetId, bool isChecked)
+    {
+        if (isChecked) calcMeetIds.Add(meetId); else calcMeetIds.Remove(meetId);
+    }
+
+    private void CalculateMileage()
+    {
+        sharedFeeAmount = calcMiles * calcRatePerMile * Math.Max(calcCoachIds.Count, 1) * Math.Max(calcMeetIds.Count, 1);
+    }
+
+    private void CalculatePerDiem()
+    {
+        sharedFeeAmount = (calcBreakfast + calcLunch + calcDinner) * calcDays * Math.Max(calcCoachIds.Count, 1) * Math.Max(calcMeetIds.Count, 1);
+    }
+
+    private void CalculateTeamFees()
+    {
+        var meetTotal = meets.Where(m => calcMeetIds.Contains(m.Id)).Sum(m => m.BudgetAmount);
+        sharedFeeAmount = calcRate * Math.Max(calcLevelIds.Count, 1) + meetTotal;
+    }
+
+    private void CalculateRentalCar()
+    {
+        sharedFeeAmount = ((calcRate * calcQuantity) + calcInsurance + calcTolls) * Math.Max(calcMeetIds.Count, 1);
+    }
+
+    private void CalculateHotel()
+    {
+        sharedFeeAmount = calcRate * calcQuantity * Math.Max(calcCoachIds.Count, 1) * Math.Max(calcMeetIds.Count, 1);
+    }
+
+    private void CalculateBankFees()
+    {
+        sharedFeeAmount = calcRate * calcQuantity;
+    }
+
+    private void CalculateProcessFees()
+    {
+        sharedFeeAmount = calcRate * calcQuantity * Math.Max(calcMeetIds.Count, 1);
+    }
+
+    private void CalculateBanquet()
+    {
+        sharedFeeAmount = calcFacility + calcGymnastGift + calcFood + calcMisc;
+    }
+
+    private void CalculateFlights()
+    {
+        sharedFeeAmount = calcRate * calcQuantity * Math.Max(calcCoachIds.Count, 1) * Math.Max(calcMeetIds.Count, 1);
+    }
+
+    private void CalculateSessionFees()
+    {
+        sharedFeeAmount = calcRate * calcQuantity * Math.Max(calcCoachIds.Count, 1) * Math.Max(calcMeetIds.Count, 1);
+    }
+
+    private void CalculateGeneric()
+    {
+        sharedFeeAmount = calcRate * calcQuantity * Math.Max(calcCoachIds.Count, 1);
+    }
+
+    private async Task SaveSharedFee()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        db.SharedFees.Add(new SharedFee { Category = sharedFeeCategory, Name = sharedFeeName, Amount = sharedFeeAmount, IsIncludedInBudget = true, SeasonId = selectedSeasonId });
+        await db.SaveChangesAsync();
+        await LoadData();
+        showSharedFeeForm = false;
+    }
+
+    private async Task DeleteSharedFee(SharedFee fee)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.SharedFees.FindAsync(fee.Id);
+        if (entity != null) { db.SharedFees.Remove(entity); await db.SaveChangesAsync(); }
+        await LoadData();
+    }
+
+    private string FormatSharedFeeCategory(SharedFeeCategory cat) => cat switch
+    {
+        SharedFeeCategory.PerDiem => "Per Diem",
+        SharedFeeCategory.TeamFees => "Team Fees",
+        SharedFeeCategory.SessionFees => "Session Fees",
+        SharedFeeCategory.CoachMembership => "Coach Membership",
+        SharedFeeCategory.RentalCar => "Rental Car",
+        SharedFeeCategory.MiscExpense => "Misc Expense",
+        SharedFeeCategory.BankFees => "Bank Fees",
+        SharedFeeCategory.ProcessFees => "Process Fees",
+        _ => cat.ToString()
+    };
 }

@@ -4,8 +4,11 @@
 @using GymBudgetApp
 @using GymBudgetApp.Services
 @using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject GymBudgetApp.Services.NotesPanelState NotesPanelState
 
 <h3>Per Diem</h3>
 
@@ -150,8 +153,6 @@ else
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
-        var active = seasons.FirstOrDefault(s => s.IsActive);
-        if (active != null) { selectedSeasonId = active.Id; labels = new ProjectLabels(active); await LoadMeets(); }
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)
@@ -159,6 +160,7 @@ else
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         selectedMeetId = 0;
         labels = new ProjectLabels(seasons?.FirstOrDefault(s => s.Id == selectedSeasonId));
+        NotesPanelState.SeasonId = selectedSeasonId;
         await LoadMeets();
     }
 
@@ -170,8 +172,9 @@ else
 
     private async Task LoadMeets()
     {
-        meets = await Task.FromResult(Db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToList());
-        coaches = await Task.FromResult(Db.Coaches.Where(c => c.SeasonId == selectedSeasonId).ToList());
+        Db.ChangeTracker.Clear();
+        meets = Db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToList();
+        coaches = Db.Coaches.Where(c => c.SeasonId == selectedSeasonId).ToList();
     }
 
     private async Task LoadEntries()

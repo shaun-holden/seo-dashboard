@@ -6,9 +6,11 @@
 @using Microsoft.EntityFrameworkCore
 @using System.Security.Claims
 @inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject GymBudgetApp.Services.NotesPanelState NotesPanelState
 
-<h3>@labels.Coaches</h3>
+<h3>@labels.Coach</h3>
 
 @if (seasons == null)
 {
@@ -22,7 +24,7 @@ else
             <option value="">-- Select Season --</option>
             @foreach (var s in seasons)
             {
-                <option value="@s.Id">@s.Name</option>
+                <option value="@s.Id" selected="@(s.Id == selectedSeasonId)">@s.Name</option>
             }
         </select>
     </div>
@@ -35,112 +37,306 @@ else
         {
             <div class="card mb-4 p-3">
                 <h5>@(editingCoach == null ? $"Add {labels.Coach}" : $"Edit {labels.Coach}")</h5>
-                <div class="mb-2">
-                    <label>Name</label>
-                    <input class="form-control" @bind="formName" />
+                <div class="row">
+                    <div class="col-md-4 mb-2">
+                        <label>Name</label>
+                        <input class="form-control" @bind="formName" />
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <label>Role</label>
+                        <input class="form-control" @bind="formRole" placeholder="e.g. Head Coach, Compulsory 1" />
+                    </div>
+                    <div class="col-md-2 mb-2">
+                        <label>&nbsp;</label>
+                        <div><input type="checkbox" @bind="formIsActive" /> Active</div>
+                    </div>
                 </div>
-                <div class="mb-2">
-                    <label>Role</label>
-                    <input class="form-control" @bind="formRole" placeholder="e.g. Head Coach, Compulsory 1" />
-                </div>
-                <div class="mb-2">
-                    <input type="checkbox" @bind="formIsActive" /> Active
-                </div>
+                @if (seasonGroups.Any())
+                {
+                    <div class="mt-2 mb-2 p-2 bg-light rounded">
+                        <label class="fw-bold mb-1">Groups (optional)</label>
+                        <div class="d-flex flex-wrap gap-3">
+                            @foreach (var g in seasonGroups)
+                            {
+                                var gId = g.Id;
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" checked="@formGroupIds.Contains(gId)"
+                                           @onchange="(e) => ToggleFormGroup(gId, (bool)e.Value!)" />
+                                    <label class="form-check-label">@g.Name</label>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
                 <button class="btn btn-success me-2" @onclick="SaveCoach">Save</button>
                 <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
             </div>
         }
 
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Role</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var coach in coaches)
-                {
-                    <tr>
-                        <td>@coach.Name</td>
-                        <td>@coach.Role</td>
-                        <td>
-                            @if (coach.IsActive)
-                            {
-                                <span class="badge bg-success">Active</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-secondary">Inactive</span>
-                            }
-                        </td>
-                        <td>
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditCoach(coach)">Edit</button>
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteCoach(coach)">Delete</button>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+        @* Grouped coaches *@
+        @foreach (var group in seasonGroups)
+        {
+            var groupCoachIds = coachGroupAssignments.Where(a => a.SeasonGroupId == group.Id).Select(a => a.CoachId).ToHashSet();
+            var groupCoaches = coaches.Where(c => groupCoachIds.Contains(c.Id)).ToList();
+            @if (groupCoaches.Any())
+            {
+                <div class="card mb-4 border-primary">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0">@group.Name</h5>
+                    </div>
+                    <div class="card-body p-2">
+                        @foreach (var coach in groupCoaches)
+                        {
+                            @RenderCoachCard(coach)
+                        }
+                    </div>
+                </div>
+            }
+        }
+
+        @* Ungrouped coaches *@
+        @if (coaches.Any(c => !coachGroupAssignments.Any(a => a.CoachId == c.Id)) && seasonGroups.Any())
+        {
+            <h5 class="mt-3 text-muted">Ungrouped</h5>
+        }
+        @foreach (var coach in coaches.Where(c => !coachGroupAssignments.Any(a => a.CoachId == c.Id)))
+        {
+            @RenderCoachCard(coach)
+        }
     }
 }
 
 @code {
     private List<Season>? seasons;
     private List<Coach> coaches = new();
+    private List<Meet> meets = new();
+    private List<CoachMeetAssignment> assignments = new();
+    private List<SeasonGroup> seasonGroups = new();
+    private HashSet<int> expandedCoaches = new();
     private int selectedSeasonId;
     private bool showForm;
     private Coach? editingCoach;
     private string formName = "";
     private string formRole = "";
     private bool formIsActive = true;
+    private HashSet<int> formGroupIds = new();
+    private List<CoachGroupAssignment> coachGroupAssignments = new();
     private string? userId;
     private ProjectLabels labels = ProjectLabels.Default;
+
+    // Bulk assign state
+    private int? bulkAssignCoachId;
+    private HashSet<int> selectedMeetIds = new();
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
-        var active = seasons.FirstOrDefault(s => s.IsActive);
-        if (active != null) { selectedSeasonId = active.Id; labels = new ProjectLabels(active); await LoadCoaches(); }
+        seasons = Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList();
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)
     {
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         labels = new ProjectLabels(seasons?.FirstOrDefault(s => s.Id == selectedSeasonId));
-        await LoadCoaches();
+        NotesPanelState.SeasonId = selectedSeasonId;
+        await LoadData();
     }
 
-    private async Task LoadCoaches()
+    private async Task LoadData()
     {
-        coaches = await Task.FromResult(Db.Coaches.Where(c => c.SeasonId == selectedSeasonId).ToList());
+        Db.ChangeTracker.Clear();
+        coaches = Db.Coaches.Where(c => c.SeasonId == selectedSeasonId).ToList();
+        meets = Db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToList();
+        var coachIds = coaches.Select(c => c.Id).ToList();
+        assignments = Db.CoachMeetAssignments.Where(a => coachIds.Contains(a.CoachId)).ToList();
+        seasonGroups = Db.SeasonGroups.Where(g => g.SeasonId == selectedSeasonId).OrderBy(g => g.SortOrder).ToList();
+        var coachIds2 = coaches.Select(c => c.Id).ToList();
+        coachGroupAssignments = Db.CoachGroupAssignments.Where(a => coachIds2.Contains(a.CoachId)).ToList();
+        await Task.CompletedTask;
     }
 
-    private void ShowForm() { editingCoach = null; formName = ""; formRole = ""; formIsActive = true; showForm = true; }
+    private RenderFragment RenderCoachCard(Coach coach) => __builder =>
+    {
+        var coachAssignments = assignments.Where(a => a.CoachId == coach.Id).ToList();
+        var assignedMeets = meets.Where(m => coachAssignments.Any(a => a.MeetId == m.Id)).ToList();
+        var coachGroups = coachGroupAssignments.Where(a => a.CoachId == coach.Id).ToList();
+        var assignedGroupsList = seasonGroups.Where(g => coachGroups.Any(a => a.SeasonGroupId == g.Id)).ToList();
+        var isExpanded = expandedCoaches.Contains(coach.Id);
+
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 @onclick="() => ToggleExpand(coach.Id)" style="cursor: pointer;">
+                <div>
+                    <strong>@coach.Name</strong>
+                    <span class="text-muted ms-2">@coach.Role</span>
+                    @if (coach.IsActive)
+                    {
+                        <span class="badge bg-success ms-2">Active</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-secondary ms-2">Inactive</span>
+                    }
+                    <span class="badge bg-info ms-1">@assignedMeets.Count @labels.Meets</span>
+                    @if (assignedGroupsList.Any())
+                    {
+                        <span class="badge bg-success ms-1">@assignedGroupsList.Count group(s)</span>
+                    }
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditCoach(coach)" @onclick:stopPropagation="true">Edit</button>
+                    <button class="btn btn-sm btn-outline-danger me-2" @onclick="() => DeleteCoach(coach)" @onclick:stopPropagation="true">Delete</button>
+                    <span class="oi @(isExpanded ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+                </div>
+            </div>
+
+            @if (isExpanded)
+            {
+                <div class="card-body">
+                    <h6>Assigned @labels.Meets</h6>
+                    @if (assignedMeets.Any())
+                    {
+                        <table class="table table-sm">
+                            <thead><tr><th>@labels.Meet</th><th>Date</th><th>Travel</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var meet in assignedMeets)
+                                {
+                                    <tr>
+                                        <td>@meet.Name</td>
+                                        <td>@meet.Date.ToString("MM/dd/yyyy")</td>
+                                        <td><span class="badge bg-@(meet.TravelType == TravelType.Fly ? "info" : "secondary")">@meet.TravelType</span></td>
+                                        <td><button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveAssignment(coach.Id, meet.Id)">Remove</button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No @labels.Meets.ToLower() assigned yet.</p>
+                    }
+
+                    @{
+                        var unassignedMeets = meets.Where(m => !coachAssignments.Any(a => a.MeetId == m.Id)).ToList();
+                    }
+                    @if (unassignedMeets.Any())
+                    {
+                        <div class="mt-3 p-2 bg-light rounded">
+                            <h6>Assign @labels.Meets</h6>
+                            <div class="d-flex flex-wrap gap-3 mb-2">
+                                @foreach (var meet in unassignedMeets)
+                                {
+                                    var meetId = meet.Id;
+                                    var isSelected = bulkAssignCoachId == coach.Id && selectedMeetIds.Contains(meetId);
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" checked="@isSelected"
+                                               @onchange="(e) => ToggleMeetSelection(coach.Id, meetId, (bool)e.Value!)" />
+                                        <label class="form-check-label">@meet.Name (@meet.Date.ToString("MM/dd"))</label>
+                                    </div>
+                                }
+                            </div>
+                            <button class="btn btn-sm btn-success me-1"
+                                    disabled="@(bulkAssignCoachId != coach.Id || !selectedMeetIds.Any())"
+                                    @onclick="() => BulkAssignMeets(coach.Id)">
+                                Assign Selected (@(bulkAssignCoachId == coach.Id ? selectedMeetIds.Count : 0))
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    @onclick="() => SelectAllMeets(coach.Id, unassignedMeets)">Select All</button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    };
+
+    private void ToggleExpand(int coachId)
+    {
+        if (!expandedCoaches.Remove(coachId))
+            expandedCoaches.Add(coachId);
+    }
+
+    private void ToggleMeetSelection(int coachId, int meetId, bool isChecked)
+    {
+        if (bulkAssignCoachId != coachId)
+        {
+            bulkAssignCoachId = coachId;
+            selectedMeetIds.Clear();
+        }
+        if (isChecked) selectedMeetIds.Add(meetId);
+        else selectedMeetIds.Remove(meetId);
+    }
+
+    private void SelectAllMeets(int coachId, List<Meet> unassigned)
+    {
+        bulkAssignCoachId = coachId;
+        selectedMeetIds = unassigned.Select(m => m.Id).ToHashSet();
+    }
+
+    private async Task BulkAssignMeets(int coachId)
+    {
+        foreach (var meetId in selectedMeetIds)
+        {
+            Db.CoachMeetAssignments.Add(new CoachMeetAssignment { CoachId = coachId, MeetId = meetId });
+        }
+        await Db.SaveChangesAsync();
+        selectedMeetIds.Clear();
+        bulkAssignCoachId = null;
+        await LoadData();
+    }
+
+    private async Task RemoveAssignment(int coachId, int meetId)
+    {
+        var assignment = assignments.FirstOrDefault(a => a.CoachId == coachId && a.MeetId == meetId);
+        if (assignment != null)
+        {
+            Db.CoachMeetAssignments.Remove(assignment);
+            await Db.SaveChangesAsync();
+            await LoadData();
+        }
+    }
+
+    private void ToggleFormGroup(int groupId, bool isChecked)
+    {
+        if (isChecked) formGroupIds.Add(groupId);
+        else formGroupIds.Remove(groupId);
+    }
+
+    private void ShowForm() { editingCoach = null; formName = ""; formRole = ""; formIsActive = true; formGroupIds.Clear(); showForm = true; }
     private void CancelForm() { showForm = false; }
 
     private void EditCoach(Coach coach)
     {
-        editingCoach = coach; formName = coach.Name; formRole = coach.Role; formIsActive = coach.IsActive; showForm = true;
+        editingCoach = coach; formName = coach.Name; formRole = coach.Role; formIsActive = coach.IsActive;
+        formGroupIds = coachGroupAssignments.Where(a => a.CoachId == coach.Id).Select(a => a.SeasonGroupId).ToHashSet();
+        showForm = true;
     }
 
     private async Task SaveCoach()
     {
+        Coach coach;
         if (editingCoach == null)
         {
-            Db.Coaches.Add(new Coach { Name = formName, Role = formRole, IsActive = formIsActive, SeasonId = selectedSeasonId });
+            coach = new Coach { Name = formName, Role = formRole, IsActive = formIsActive, SeasonId = selectedSeasonId, SeasonGroupId = formGroupIds.Any() ? formGroupIds.First() : null };
+            Db.Coaches.Add(coach);
+            await Db.SaveChangesAsync();
         }
         else
         {
-            editingCoach.Name = formName; editingCoach.Role = formRole; editingCoach.IsActive = formIsActive;
-            Db.Coaches.Update(editingCoach);
+            coach = editingCoach;
+            coach.Name = formName; coach.Role = formRole; coach.IsActive = formIsActive; coach.SeasonGroupId = formGroupIds.Any() ? formGroupIds.First() : null;
+            Db.Coaches.Update(coach);
+            var existing = Db.CoachGroupAssignments.Where(a => a.CoachId == coach.Id).ToList();
+            Db.CoachGroupAssignments.RemoveRange(existing);
+            await Db.SaveChangesAsync();
+        }
+        foreach (var gId in formGroupIds)
+        {
+            if (!Db.CoachGroupAssignments.Any(a => a.CoachId == coach.Id && a.SeasonGroupId == gId))
+                Db.CoachGroupAssignments.Add(new CoachGroupAssignment { CoachId = coach.Id, SeasonGroupId = gId });
         }
         await Db.SaveChangesAsync();
-        await LoadCoaches();
+        await LoadData();
         showForm = false;
     }
 
@@ -148,6 +344,6 @@ else
     {
         Db.Coaches.Remove(coach);
         await Db.SaveChangesAsync();
-        await LoadCoaches();
+        await LoadData();
     }
 }

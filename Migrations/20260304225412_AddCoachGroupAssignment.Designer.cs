@@ -3,6 +3,7 @@ using System;
 using GymBudgetApp;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GymBudgetApp.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260304225412_AddCoachGroupAssignment")]
+    partial class AddCoachGroupAssignment
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.3");
@@ -174,9 +177,6 @@ namespace GymBudgetApp.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<decimal>("BudgetAmount")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<DateTime>("Date")
                         .HasColumnType("TEXT");
 
@@ -222,28 +222,6 @@ namespace GymBudgetApp.Migrations
                         .IsUnique();
 
                     b.ToTable("MeetGroupAssignments");
-                });
-
-            modelBuilder.Entity("GymBudgetApp.Models.MeetTeamLevelAssignment", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("MeetId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TeamLevelId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TeamLevelId");
-
-                    b.HasIndex("MeetId", "TeamLevelId")
-                        .IsUnique();
-
-                    b.ToTable("MeetTeamLevelAssignments");
                 });
 
             modelBuilder.Entity("GymBudgetApp.Models.MileageEntry", b =>
@@ -385,57 +363,6 @@ namespace GymBudgetApp.Migrations
                     b.ToTable("SeasonGroups");
                 });
 
-            modelBuilder.Entity("GymBudgetApp.Models.SeasonNote", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("SeasonId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SeasonId");
-
-                    b.ToTable("SeasonNotes");
-                });
-
-            modelBuilder.Entity("GymBudgetApp.Models.SharedFee", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<int>("Category")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("IsIncludedInBudget")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Name")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("SeasonId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SeasonId");
-
-                    b.ToTable("SharedFees");
-                });
-
             modelBuilder.Entity("GymBudgetApp.Models.TeamLevel", b =>
                 {
                     b.Property<int>("Id")
@@ -460,28 +387,6 @@ namespace GymBudgetApp.Migrations
                     b.HasIndex("SeasonId");
 
                     b.ToTable("TeamLevels");
-                });
-
-            modelBuilder.Entity("GymBudgetApp.Models.TeamLevelGroupAssignment", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("SeasonGroupId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TeamLevelId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SeasonGroupId");
-
-                    b.HasIndex("TeamLevelId", "SeasonGroupId")
-                        .IsUnique();
-
-                    b.ToTable("TeamLevelGroupAssignments");
                 });
 
             modelBuilder.Entity("GymBudgetApp.Models.UserImportPin", b =>
@@ -833,25 +738,6 @@ namespace GymBudgetApp.Migrations
                     b.Navigation("SeasonGroup");
                 });
 
-            modelBuilder.Entity("GymBudgetApp.Models.MeetTeamLevelAssignment", b =>
-                {
-                    b.HasOne("GymBudgetApp.Models.Meet", "Meet")
-                        .WithMany("TeamLevelAssignments")
-                        .HasForeignKey("MeetId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("GymBudgetApp.Models.TeamLevel", "TeamLevel")
-                        .WithMany("MeetAssignments")
-                        .HasForeignKey("TeamLevelId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Meet");
-
-                    b.Navigation("TeamLevel");
-                });
-
             modelBuilder.Entity("GymBudgetApp.Models.MileageEntry", b =>
                 {
                     b.HasOne("GymBudgetApp.Models.Coach", "Coach")
@@ -901,28 +787,6 @@ namespace GymBudgetApp.Migrations
                     b.Navigation("Season");
                 });
 
-            modelBuilder.Entity("GymBudgetApp.Models.SeasonNote", b =>
-                {
-                    b.HasOne("GymBudgetApp.Models.Season", "Season")
-                        .WithMany("SeasonNotes")
-                        .HasForeignKey("SeasonId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Season");
-                });
-
-            modelBuilder.Entity("GymBudgetApp.Models.SharedFee", b =>
-                {
-                    b.HasOne("GymBudgetApp.Models.Season", "Season")
-                        .WithMany("SharedFees")
-                        .HasForeignKey("SeasonId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Season");
-                });
-
             modelBuilder.Entity("GymBudgetApp.Models.TeamLevel", b =>
                 {
                     b.HasOne("GymBudgetApp.Models.Season", "Season")
@@ -932,25 +796,6 @@ namespace GymBudgetApp.Migrations
                         .IsRequired();
 
                     b.Navigation("Season");
-                });
-
-            modelBuilder.Entity("GymBudgetApp.Models.TeamLevelGroupAssignment", b =>
-                {
-                    b.HasOne("GymBudgetApp.Models.SeasonGroup", "SeasonGroup")
-                        .WithMany("TeamLevelAssignments")
-                        .HasForeignKey("SeasonGroupId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("GymBudgetApp.Models.TeamLevel", "TeamLevel")
-                        .WithMany("GroupAssignments")
-                        .HasForeignKey("TeamLevelId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("SeasonGroup");
-
-                    b.Navigation("TeamLevel");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -1024,8 +869,6 @@ namespace GymBudgetApp.Migrations
                     b.Navigation("GroupAssignments");
 
                     b.Navigation("PerDiemEntries");
-
-                    b.Navigation("TeamLevelAssignments");
                 });
 
             modelBuilder.Entity("GymBudgetApp.Models.Season", b =>
@@ -1035,10 +878,6 @@ namespace GymBudgetApp.Migrations
                     b.Navigation("Meets");
 
                     b.Navigation("SeasonGroups");
-
-                    b.Navigation("SeasonNotes");
-
-                    b.Navigation("SharedFees");
 
                     b.Navigation("TeamLevels");
                 });
@@ -1054,17 +893,11 @@ namespace GymBudgetApp.Migrations
                     b.Navigation("MeetAssignments");
 
                     b.Navigation("Meets");
-
-                    b.Navigation("TeamLevelAssignments");
                 });
 
             modelBuilder.Entity("GymBudgetApp.Models.TeamLevel", b =>
                 {
                     b.Navigation("AthleteItems");
-
-                    b.Navigation("GroupAssignments");
-
-                    b.Navigation("MeetAssignments");
                 });
 #pragma warning restore 612, 618
         }

@@ -4,8 +4,11 @@
 @using GymBudgetApp
 @using GymBudgetApp.Services
 @using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject GymBudgetApp.Services.NotesPanelState NotesPanelState
 
 <h3>@labels.Meets</h3>
 
@@ -21,7 +24,7 @@ else
             <option value="">-- Select Season --</option>
             @foreach (var s in seasons)
             {
-                <option value="@s.Id">@s.Name</option>
+                <option value="@s.Id" selected="@(s.Id == selectedSeasonId)">@s.Name</option>
             }
         </select>
     </div>
@@ -34,123 +37,308 @@ else
         {
             <div class="card mb-4 p-3">
                 <h5>@(editingMeet == null ? $"Add {labels.Meet}" : $"Edit {labels.Meet}")</h5>
-                <div class="mb-2">
-                    <label>@labels.Meet Name</label>
-                    <input class="form-control" @bind="formName" placeholder="@($"e.g. {labels.Meet} 1")" />
+                <div class="row">
+                    <div class="col-md-4 mb-2">
+                        <label>@labels.Meet Name</label>
+                        <input class="form-control" @bind="formName" placeholder="@($"e.g. {labels.Meet} 1")" />
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label>Date</label>
+                        <input type="date" class="form-control" @bind="formDate" />
+                    </div>
+                    <div class="col-md-2 mb-2">
+                        <label>Travel Type</label>
+                        <select class="form-select" @bind="formTravelType">
+                            <option value="Drive">Drive</option>
+                            <option value="Fly">Fly</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label>Budget Amount</label>
+                        <input type="number" step="0.01" class="form-control" @bind="formBudgetAmount" placeholder="0.00" />
+                    </div>
                 </div>
-                <div class="mb-2">
-                    <label>Date</label>
-                    <input type="date" class="form-control" @bind="formDate" />
-                </div>
-                <div class="mb-2">
-                    <label>Travel Type</label>
-                    <select class="form-select" @bind="formTravelType">
-                        <option value="Drive">Drive</option>
-                        <option value="Fly">Fly</option>
-                    </select>
-                </div>
+                @if (seasonGroups.Any())
+                {
+                    <div class="mt-2 mb-2 p-2 bg-light rounded">
+                        <label class="fw-bold mb-1">Groups (optional)</label>
+                        <div class="d-flex flex-wrap gap-3">
+                            @foreach (var g in seasonGroups)
+                            {
+                                var gId = g.Id;
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" checked="@formGroupIds.Contains(gId)"
+                                           @onchange="(e) => ToggleFormGroup(gId, (bool)e.Value!)" />
+                                    <label class="form-check-label">@g.Name</label>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
                 <button class="btn btn-success me-2" @onclick="SaveMeet">Save</button>
                 <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
             </div>
         }
 
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>@labels.Meet Name</th>
-                    <th>Date</th>
-                    <th>Travel</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var meet in meets)
-                {
-                    <tr>
-                        <td>@meet.Name</td>
-                        <td>@meet.Date.ToString("MM/dd/yyyy")</td>
-                        <td>
-                            @if (meet.TravelType == TravelType.Fly)
-                            {
-                                <span class="badge bg-info text-dark">Fly</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-secondary">Drive</span>
-                            }
-                        </td>
-                        <td>
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditMeet(meet)">Edit</button>
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteMeet(meet)">Delete</button>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+        @foreach (var meet in meets)
+        {
+            @RenderMeetCard(meet)
+        }
     }
 }
 
 @code {
     private List<Season>? seasons;
     private List<Meet> meets = new();
+    private List<SeasonGroup> seasonGroups = new();
+    private List<MeetGroupAssignment> groupAssignments = new();
+    private List<MeetTeamLevelAssignment> teamLevelAssignments = new();
+    private List<TeamLevel> teamLevels = new();
+    private HashSet<int> expandedMeets = new();
     private int selectedSeasonId;
     private bool showForm;
     private Meet? editingMeet;
     private string formName = "";
     private DateTime formDate = DateTime.Today;
     private TravelType formTravelType = TravelType.Drive;
+    private decimal formBudgetAmount = 0;
+    private HashSet<int> formGroupIds = new();
     private string? userId;
     private ProjectLabels labels = ProjectLabels.Default;
+
+    // Bulk assign state
+    private int? bulkAssignMeetId;
+    private HashSet<int> selectedGroupIds = new();
+
+    private RenderFragment RenderMeetCard(Meet meet) => __builder =>
+    {
+        var meetAssignments = groupAssignments.Where(a => a.MeetId == meet.Id).ToList();
+        var assignedGroups = seasonGroups.Where(g => meetAssignments.Any(a => a.SeasonGroupId == g.Id)).ToList();
+        var meetLevelIds = teamLevelAssignments.Where(a => a.MeetId == meet.Id).Select(a => a.TeamLevelId).ToHashSet();
+        var assignedLevels = teamLevels.Where(t => meetLevelIds.Contains(t.Id)).ToList();
+        var isExpanded = expandedMeets.Contains(meet.Id);
+
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 @onclick="() => ToggleExpand(meet.Id)" style="cursor: pointer;">
+                <div>
+                    <strong>@meet.Name</strong>
+                    <span class="text-muted ms-2">@meet.Date.ToString("MM/dd/yyyy")</span>
+                    <span class="badge bg-@(meet.TravelType == TravelType.Fly ? "info" : "secondary") ms-2">@meet.TravelType</span>
+                    @if (meet.BudgetAmount > 0)
+                    {
+                        <span class="badge bg-warning text-dark ms-1">$@meet.BudgetAmount.ToString("N2")</span>
+                    }
+                    @if (assignedGroups.Any())
+                    {
+                        <span class="badge bg-success ms-1">@assignedGroups.Count group(s)</span>
+                    }
+                    @if (assignedLevels.Any())
+                    {
+                        <span class="badge bg-primary ms-1">@assignedLevels.Count @(labels.TeamLevels)</span>
+                    }
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditMeet(meet)" @onclick:stopPropagation="true">Edit</button>
+                    <button class="btn btn-sm btn-outline-danger me-2" @onclick="() => DeleteMeet(meet)" @onclick:stopPropagation="true">Delete</button>
+                    <span class="oi @(isExpanded ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+                </div>
+            </div>
+
+            @if (isExpanded)
+            {
+                <div class="card-body">
+                    <h6>Assigned Groups</h6>
+                    @if (assignedGroups.Any())
+                    {
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            @foreach (var group in assignedGroups)
+                            {
+                                <span class="badge bg-primary d-flex align-items-center gap-1 p-2">
+                                    @group.Name
+                                    <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.6rem;"
+                                            @onclick="() => RemoveGroupAssignment(meet.Id, group.Id)"></button>
+                                </span>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No groups assigned yet.</p>
+                    }
+
+                    <h6>Assigned @labels.TeamLevels</h6>
+                    @if (assignedLevels.Any())
+                    {
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            @foreach (var level in assignedLevels)
+                            {
+                                <span class="badge bg-primary p-2">@level.Name</span>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No @labels.TeamLevels assigned yet. Assign from the @labels.TeamLevels page.</p>
+                    }
+
+                    @if (seasonGroups.Any())
+                    {
+                        var unassignedGroups = seasonGroups.Where(g => !meetAssignments.Any(a => a.SeasonGroupId == g.Id)).ToList();
+                        @if (unassignedGroups.Any())
+                        {
+                            <div class="mt-2 p-2 bg-light rounded">
+                                <h6>Assign Groups</h6>
+                                <div class="d-flex flex-wrap gap-3 mb-2">
+                                    @foreach (var group in unassignedGroups)
+                                    {
+                                        var gId = group.Id;
+                                        var isSelected = bulkAssignMeetId == meet.Id && selectedGroupIds.Contains(gId);
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@isSelected"
+                                                   @onchange="(e) => ToggleGroupSelection(meet.Id, gId, (bool)e.Value!)" />
+                                            <label class="form-check-label">@group.Name</label>
+                                        </div>
+                                    }
+                                </div>
+                                <button class="btn btn-sm btn-success me-1"
+                                        disabled="@(bulkAssignMeetId != meet.Id || !selectedGroupIds.Any())"
+                                        @onclick="() => BulkAssignGroups(meet.Id)">
+                                    Assign Selected (@(bulkAssignMeetId == meet.Id ? selectedGroupIds.Count : 0))
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        @onclick="() => SelectAllGroups(meet.Id, unassignedGroups)">Select All</button>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    };
+
+    private void ToggleExpand(int meetId)
+    {
+        if (!expandedMeets.Remove(meetId))
+            expandedMeets.Add(meetId);
+    }
+
+    private void ToggleGroupSelection(int meetId, int groupId, bool isChecked)
+    {
+        if (bulkAssignMeetId != meetId)
+        {
+            bulkAssignMeetId = meetId;
+            selectedGroupIds.Clear();
+        }
+        if (isChecked) selectedGroupIds.Add(groupId);
+        else selectedGroupIds.Remove(groupId);
+    }
+
+    private void SelectAllGroups(int meetId, List<SeasonGroup> unassigned)
+    {
+        bulkAssignMeetId = meetId;
+        selectedGroupIds = unassigned.Select(g => g.Id).ToHashSet();
+    }
+
+    private async Task BulkAssignGroups(int meetId)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        foreach (var groupId in selectedGroupIds)
+        {
+            db.MeetGroupAssignments.Add(new MeetGroupAssignment { MeetId = meetId, SeasonGroupId = groupId });
+        }
+        await db.SaveChangesAsync();
+        selectedGroupIds.Clear();
+        bulkAssignMeetId = null;
+        await LoadMeets();
+    }
+
+    private async Task RemoveGroupAssignment(int meetId, int groupId)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var assignment = await db.MeetGroupAssignments.FirstOrDefaultAsync(a => a.MeetId == meetId && a.SeasonGroupId == groupId);
+        if (assignment != null)
+        {
+            db.MeetGroupAssignments.Remove(assignment);
+            await db.SaveChangesAsync();
+            await LoadMeets();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
-        var active = seasons.FirstOrDefault(s => s.IsActive);
-        if (active != null) { selectedSeasonId = active.Id; labels = new ProjectLabels(active); await LoadMeets(); }
+        seasons = Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList();
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)
     {
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         labels = new ProjectLabels(seasons?.FirstOrDefault(s => s.Id == selectedSeasonId));
+        NotesPanelState.SeasonId = selectedSeasonId;
         await LoadMeets();
     }
 
     private async Task LoadMeets()
     {
-        meets = await Task.FromResult(Db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToList());
+        using var db = await DbFactory.CreateDbContextAsync();
+        meets = await db.Meets.AsNoTracking().Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToListAsync();
+        seasonGroups = await db.SeasonGroups.AsNoTracking().Where(g => g.SeasonId == selectedSeasonId).OrderBy(g => g.SortOrder).ToListAsync();
+        var meetIds = meets.Select(m => m.Id).ToList();
+        groupAssignments = await db.MeetGroupAssignments.AsNoTracking().Where(a => meetIds.Contains(a.MeetId)).ToListAsync();
+        teamLevelAssignments = await db.MeetTeamLevelAssignments.AsNoTracking().Where(a => meetIds.Contains(a.MeetId)).ToListAsync();
+        teamLevels = await db.TeamLevels.AsNoTracking().Where(t => t.SeasonId == selectedSeasonId).ToListAsync();
     }
 
-    private void ShowForm() { editingMeet = null; formName = ""; formDate = DateTime.Today; formTravelType = TravelType.Drive; showForm = true; }
+    private void ToggleFormGroup(int groupId, bool isChecked)
+    {
+        if (isChecked) formGroupIds.Add(groupId);
+        else formGroupIds.Remove(groupId);
+    }
+
+    private void ShowForm() { editingMeet = null; formName = ""; formDate = DateTime.Today; formTravelType = TravelType.Drive; formBudgetAmount = 0; formGroupIds.Clear(); showForm = true; }
     private void CancelForm() { showForm = false; }
 
     private void EditMeet(Meet meet)
     {
-        editingMeet = meet; formName = meet.Name; formDate = meet.Date; formTravelType = meet.TravelType; showForm = true;
+        editingMeet = meet; formName = meet.Name; formDate = meet.Date; formTravelType = meet.TravelType; formBudgetAmount = meet.BudgetAmount;
+        formGroupIds = groupAssignments.Where(a => a.MeetId == meet.Id).Select(a => a.SeasonGroupId).ToHashSet();
+        showForm = true;
     }
 
     private async Task SaveMeet()
     {
+        using var db = await DbFactory.CreateDbContextAsync();
+        Meet meet;
         if (editingMeet == null)
         {
-            Db.Meets.Add(new Meet { Name = formName, Date = formDate, TravelType = formTravelType, SeasonId = selectedSeasonId });
+            meet = new Meet { Name = formName, Date = formDate, TravelType = formTravelType, BudgetAmount = formBudgetAmount, SeasonId = selectedSeasonId, SeasonGroupId = formGroupIds.Any() ? formGroupIds.First() : null };
+            db.Meets.Add(meet);
+            await db.SaveChangesAsync();
         }
         else
         {
-            editingMeet.Name = formName; editingMeet.Date = formDate; editingMeet.TravelType = formTravelType;
-            Db.Meets.Update(editingMeet);
+            meet = await db.Meets.FindAsync(editingMeet.Id) ?? editingMeet;
+            meet.Name = formName; meet.Date = formDate; meet.TravelType = formTravelType; meet.BudgetAmount = formBudgetAmount; meet.SeasonGroupId = formGroupIds.Any() ? formGroupIds.First() : null;
+            var existing = db.MeetGroupAssignments.Where(a => a.MeetId == meet.Id).ToList();
+            db.MeetGroupAssignments.RemoveRange(existing);
+            await db.SaveChangesAsync();
         }
-        await Db.SaveChangesAsync();
+        foreach (var gId in formGroupIds)
+        {
+            if (!db.MeetGroupAssignments.Any(a => a.MeetId == meet.Id && a.SeasonGroupId == gId))
+                db.MeetGroupAssignments.Add(new MeetGroupAssignment { MeetId = meet.Id, SeasonGroupId = gId });
+        }
+        await db.SaveChangesAsync();
         await LoadMeets();
         showForm = false;
     }
 
     private async Task DeleteMeet(Meet meet)
     {
-        Db.Meets.Remove(meet);
-        await Db.SaveChangesAsync();
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Meets.FindAsync(meet.Id);
+        if (entity != null) { db.Meets.Remove(entity); await db.SaveChangesAsync(); }
         await LoadMeets();
     }
 }

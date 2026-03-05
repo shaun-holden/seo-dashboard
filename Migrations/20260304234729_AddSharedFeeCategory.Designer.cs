@@ -3,6 +3,7 @@ using System;
 using GymBudgetApp;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GymBudgetApp.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260304234729_AddSharedFeeCategory")]
+    partial class AddSharedFeeCategory
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.3");
@@ -383,29 +386,6 @@ namespace GymBudgetApp.Migrations
                     b.HasIndex("SeasonId");
 
                     b.ToTable("SeasonGroups");
-                });
-
-            modelBuilder.Entity("GymBudgetApp.Models.SeasonNote", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("SeasonId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SeasonId");
-
-                    b.ToTable("SeasonNotes");
                 });
 
             modelBuilder.Entity("GymBudgetApp.Models.SharedFee", b =>
@@ -901,17 +881,6 @@ namespace GymBudgetApp.Migrations
                     b.Navigation("Season");
                 });
 
-            modelBuilder.Entity("GymBudgetApp.Models.SeasonNote", b =>
-                {
-                    b.HasOne("GymBudgetApp.Models.Season", "Season")
-                        .WithMany("SeasonNotes")
-                        .HasForeignKey("SeasonId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Season");
-                });
-
             modelBuilder.Entity("GymBudgetApp.Models.SharedFee", b =>
                 {
                     b.HasOne("GymBudgetApp.Models.Season", "Season")
@@ -1035,8 +1004,6 @@ namespace GymBudgetApp.Migrations
                     b.Navigation("Meets");
 
                     b.Navigation("SeasonGroups");
-
-                    b.Navigation("SeasonNotes");
 
                     b.Navigation("SharedFees");
 

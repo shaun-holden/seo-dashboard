@@ -15,8 +15,10 @@ namespace GymBudgetApp.Models
         public int SeasonId { get; set; }
         public int? MeetId { get; set; }
         public int? CoachId { get; set; }
+        public int? SeasonGroupId { get; set; }
         public Season Season { get; set; } = null!;
         public Meet? Meet { get; set; }
         public Coach? Coach { get; set; }
+        public SeasonGroup? SeasonGroup { get; set; }
     }
 }

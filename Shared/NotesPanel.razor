@@ -1,0 +1,115 @@
+@using GymBudgetApp.Models
+@using GymBudgetApp.Services
+@inject AppDbContext Db
+@inject NotesPanelState PanelState
+@implements IDisposable
+
+<div class="notes-toggle" @onclick="Toggle">
+    <span class="oi oi-pencil"></span>
+</div>
+
+@if (isOpen)
+{
+    <div class="notes-panel">
+        <div class="notes-header">
+            <h6 class="mb-0">Notes</h6>
+            <button class="btn btn-sm btn-close" @onclick="Toggle"></button>
+        </div>
+
+        @if (PanelState.SeasonId > 0)
+        {
+            <div class="notes-input">
+                <textarea class="form-control form-control-sm" rows="2" placeholder="Add a note..." @bind="newNote"></textarea>
+                <button class="btn btn-sm btn-primary mt-1 w-100" @onclick="AddNote">Add Note</button>
+            </div>
+
+            <div class="notes-list">
+                @foreach (var note in notes)
+                {
+                    <div class="note-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <small class="text-muted">@note.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy h:mm tt")</small>
+                            <button class="btn btn-sm btn-outline-danger p-0 px-1" style="font-size: 0.7rem; line-height: 1;" @onclick="() => DeleteNote(note)">x</button>
+                        </div>
+                        <div class="note-content">@note.Content</div>
+                    </div>
+                }
+                @if (!notes.Any())
+                {
+                    <p class="text-muted small text-center mt-3">No notes yet.</p>
+                }
+            </div>
+        }
+        else
+        {
+            <p class="text-muted small text-center mt-3 px-2">Select a season to view notes.</p>
+        }
+    </div>
+}
+
+@code {
+    private bool isOpen;
+    private string newNote = "";
+    private List<SeasonNote> notes = new();
+
+    protected override void OnInitialized()
+    {
+        PanelState.OnChange += OnSeasonChanged;
+    }
+
+    private void OnSeasonChanged()
+    {
+        LoadNotes();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void Toggle()
+    {
+        isOpen = !isOpen;
+        if (isOpen && PanelState.SeasonId > 0)
+        {
+            LoadNotes();
+        }
+    }
+
+    private void LoadNotes()
+    {
+        if (PanelState.SeasonId > 0)
+        {
+            notes = Db.SeasonNotes
+                .Where(n => n.SeasonId == PanelState.SeasonId)
+                .OrderByDescending(n => n.CreatedAt)
+                .ToList();
+        }
+        else
+        {
+            notes = new();
+        }
+    }
+
+    private async Task AddNote()
+    {
+        if (string.IsNullOrWhiteSpace(newNote) || PanelState.SeasonId <= 0) return;
+        Db.SeasonNotes.Add(new SeasonNote
+        {
+            Content = newNote.Trim(),
+            CreatedAt = DateTime.UtcNow,
+            SeasonId = PanelState.SeasonId
+        });
+        await Db.SaveChangesAsync();
+        newNote = "";
+        LoadNotes();
+    }
+
+    private async Task DeleteNote(SeasonNote note)
+    {
+        Db.SeasonNotes.Remove(note);
+        await Db.SaveChangesAsync();
+        LoadNotes();
+    }
+
+    public void Dispose()
+    {
+        PanelState.OnChange -= OnSeasonChanged;
+    }
+}

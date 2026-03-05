@@ -10,12 +10,15 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddSingleton<WeatherForecastService>();
+builder.Services.AddScoped<GymBudgetApp.Services.NotesPanelState>();
 
 var dbFolder = Environment.GetEnvironmentVariable("DB_PATH")
     ?? Directory.GetCurrentDirectory();
 var dbPath = Path.Combine(dbFolder, "gymbudget.db");
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}"));
+builder.Services.AddDbContextFactory<AppDbContext>(options =>
+    options.UseSqlite($"Data Source={dbPath}"), ServiceLifetime.Scoped);
 
 builder.Services.AddDefaultIdentity<IdentityUser>(options =>
 {

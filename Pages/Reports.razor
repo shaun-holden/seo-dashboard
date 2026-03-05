@@ -6,8 +6,10 @@
 @using Microsoft.EntityFrameworkCore
 @using System.Security.Claims
 @inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JS
+@inject GymBudgetApp.Services.NotesPanelState NotesPanelState
 
 <div class="d-flex justify-content-between align-items-center mb-3 no-print">
     <h3 class="mb-0">Reports</h3>
@@ -255,8 +257,6 @@ else
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
-        var active = seasons.FirstOrDefault(s => s.IsActive);
-        if (active != null) { selectedSeasonId = active.Id; selectedSeason = active; labels = new ProjectLabels(active); await LoadData(); }
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)
@@ -264,6 +264,7 @@ else
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         selectedSeason = seasons?.FirstOrDefault(s => s.Id == selectedSeasonId);
         labels = new ProjectLabels(selectedSeason);
+        NotesPanelState.SeasonId = selectedSeasonId;
         selectedMeetFilter = 0;
         selectedCategoryFilter = "";
         showFilter = "both";
@@ -272,11 +273,12 @@ else
 
     private async Task LoadData()
     {
-        meets = await Task.FromResult(Db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToList());
-        lineItems = await Task.FromResult(Db.BudgetLineItems.Where(b => b.SeasonId == selectedSeasonId).ToList());
-        teamLevels = await Task.FromResult(Db.TeamLevels.Where(t => t.SeasonId == selectedSeasonId).ToList());
+        Db.ChangeTracker.Clear();
+        meets = Db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToList();
+        lineItems = Db.BudgetLineItems.Where(b => b.SeasonId == selectedSeasonId).ToList();
+        teamLevels = Db.TeamLevels.Where(t => t.SeasonId == selectedSeasonId).ToList();
         var levelIds = teamLevels.Select(t => t.Id).ToList();
-        athleteItems = await Task.FromResult(Db.AthleteItems.Where(a => levelIds.Contains(a.TeamLevelId)).ToList());
+        athleteItems = Db.AthleteItems.Where(a => levelIds.Contains(a.TeamLevelId)).ToList();
         ApplyFilters();
     }
 

@@ -1,0 +1,70 @@
+.notes-toggle {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    background: linear-gradient(180deg, rgb(5, 39, 103), #3a0647);
+    color: white;
+    padding: 10px 8px;
+    border-radius: 8px 0 0 8px;
+    cursor: pointer;
+    z-index: 1050;
+    writing-mode: vertical-rl;
+    font-size: 0.85rem;
+}
+
+.notes-toggle:hover {
+    padding-right: 12px;
+}
+
+.notes-panel {
+    position: fixed;
+    right: 0;
+    top: 0;
+    width: 320px;
+    height: 100vh;
+    background: #fff;
+    border-left: 2px solid #ddd;
+    box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+    z-index: 1040;
+    display: flex;
+    flex-direction: column;
+}
+
+.notes-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f8f9fa;
+}
+
+.notes-input {
+    padding: 12px 16px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.notes-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 16px;
+}
+
+.note-item {
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.note-content {
+    margin-top: 4px;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+@media (max-width: 640.98px) {
+    .notes-panel {
+        width: 100%;
+    }
+}

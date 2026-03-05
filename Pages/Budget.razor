@@ -4,8 +4,11 @@
 @using GymBudgetApp
 @using GymBudgetApp.Services
 @using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject GymBudgetApp.Services.NotesPanelState NotesPanelState
 
 <h3>Budget</h3>
 
@@ -97,12 +100,57 @@ else
                         </select>
                     </div>
                 </div>
+                @if (seasonGroups.Any())
+                {
+                    <div class="row">
+                        <div class="col-md-3 mb-2">
+                            <label>Group (optional)</label>
+                            <select class="form-select" @bind="formSeasonGroupId">
+                                <option value="0">-- None --</option>
+                                @foreach (var g in seasonGroups)
+                                {
+                                    <option value="@g.Id">@g.Name</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                }
                 <div class="mb-2">
                     <label>Notes</label>
                     <input class="form-control" @bind="formNotes" />
                 </div>
                 <button class="btn btn-success me-2" @onclick="SaveItem">Save</button>
                 <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+            </div>
+        }
+
+        @if (sharedFees.Any())
+        {
+            <div class="card mb-4 border-warning">
+                <div class="card-header bg-warning bg-opacity-25 d-flex justify-content-between">
+                    <h5 class="mb-0">Shared Fees</h5>
+                    <span class="fw-bold">Included: $@sharedFeesTotal.ToString("N2")</span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Include</th><th>Category</th><th>Name</th><th>Amount</th></tr></thead>
+                        <tbody>
+                            @foreach (var fee in sharedFees)
+                            {
+                                var feeId = fee.Id;
+                                <tr>
+                                    <td>
+                                        <input class="form-check-input" type="checkbox" checked="@fee.IsIncludedInBudget"
+                                               @onchange="(e) => ToggleSharedFee(feeId, (bool)e.Value!)" />
+                                    </td>
+                                    <td>@fee.DisplayName</td>
+                                    <td>@fee.Name</td>
+                                    <td>$@fee.Amount.ToString("N2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
             </div>
         }
 
@@ -115,7 +163,59 @@ else
             </li>
         </ul>
 
-        <table class="table table-striped">
+        @foreach (var group in seasonGroups)
+        {
+            var groupItems = lineItems.Where(i => i.IsActual == showActual && i.SeasonGroupId == group.Id).ToList();
+            @if (groupItems.Any())
+            {
+                <div class="card mb-3 border-primary">
+                    <div class="card-header bg-light d-flex justify-content-between">
+                        <h5 class="mb-0">@group.Name</h5>
+                        <span class="fw-bold">$@groupItems.Sum(i => i.Total).ToString("N2")</span>
+                    </div>
+                    <div class="card-body p-0">
+                        @RenderBudgetTable(groupItems)
+                    </div>
+                </div>
+            }
+        }
+
+        @if (lineItems.Any(i => i.IsActual == showActual && i.SeasonGroupId == null) && seasonGroups.Any())
+        {
+            <h5 class="mt-3 text-muted">Ungrouped</h5>
+        }
+        @if (lineItems.Any(i => i.IsActual == showActual && i.SeasonGroupId == null))
+        {
+            @RenderBudgetTable(lineItems.Where(i => i.IsActual == showActual && i.SeasonGroupId == null).ToList())
+        }
+
+        <div class="fw-bold mt-2 p-2 bg-light rounded">
+            Total: $@lineItems.Where(i => i.IsActual == showActual).Sum(i => i.Total).ToString("N2")
+        </div>
+    }
+}
+
+@code {
+    private List<Season>? seasons;
+    private List<Meet> meets = new();
+    private List<BudgetLineItem> lineItems = new();
+    private List<SeasonGroup> seasonGroups = new();
+    private List<SharedFee> sharedFees = new();
+    private int selectedSeasonId;
+    private bool showForm;
+    private bool showActual = false;
+    private BudgetLineItem? editingItem;
+    private BudgetCategory formCategory = BudgetCategory.TeamEntry;
+    private int formMeetId = 0;
+    private int formSeasonGroupId = 0;
+    private decimal formRate = 0;
+    private decimal formQuantity = 0;
+    private bool formIsActual = false;
+    private string formNotes = "";
+
+    private RenderFragment RenderBudgetTable(List<BudgetLineItem> items) => __builder =>
+    {
+        <table class="table table-striped mb-0">
             <thead>
                 <tr>
                     <th>Category</th>
@@ -128,7 +228,7 @@ else
                 </tr>
             </thead>
             <tbody>
-                @foreach (var item in lineItems.Where(i => i.IsActual == showActual))
+                @foreach (var item in items)
                 {
                     <tr>
                         <td>@item.Category</td>
@@ -144,33 +244,11 @@ else
                     </tr>
                 }
             </tbody>
-            <tfoot>
-                <tr class="fw-bold">
-                    <td colspan="4">Total</td>
-                    <td>$@lineItems.Where(i => i.IsActual == showActual).Sum(i => i.Total).ToString("N2")</td>
-                    <td colspan="2"></td>
-                </tr>
-            </tfoot>
         </table>
-    }
-}
+    };
 
-@code {
-    private List<Season>? seasons;
-    private List<Meet> meets = new();
-    private List<BudgetLineItem> lineItems = new();
-    private int selectedSeasonId;
-    private bool showForm;
-    private bool showActual = false;
-    private BudgetLineItem? editingItem;
-    private BudgetCategory formCategory = BudgetCategory.TeamEntry;
-    private int formMeetId = 0;
-    private decimal formRate = 0;
-    private decimal formQuantity = 0;
-    private bool formIsActual = false;
-    private string formNotes = "";
-
-    private decimal budgetTotal => lineItems.Where(i => !i.IsActual).Sum(i => i.Total);
+    private decimal sharedFeesTotal => sharedFees.Where(f => f.IsIncludedInBudget).Sum(f => f.Amount);
+    private decimal budgetTotal => lineItems.Where(i => !i.IsActual).Sum(i => i.Total) + sharedFeesTotal;
     private decimal actualTotal => lineItems.Where(i => i.IsActual).Sum(i => i.Total);
     private decimal costPerAthlete => selectedSeason?.AthleteCount > 0 ? budgetTotal / selectedSeason!.AthleteCount : 0;
     private Season? selectedSeason;
@@ -182,8 +260,6 @@ else
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
-        var active = seasons.FirstOrDefault(s => s.IsActive);
-        if (active != null) { selectedSeasonId = active.Id; selectedSeason = active; labels = new ProjectLabels(active); await LoadData(); }
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)
@@ -191,40 +267,46 @@ else
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         selectedSeason = seasons?.FirstOrDefault(s => s.Id == selectedSeasonId);
         labels = new ProjectLabels(selectedSeason);
+        NotesPanelState.SeasonId = selectedSeasonId;
         await LoadData();
     }
 
     private async Task LoadData()
     {
-        meets = await Task.FromResult(Db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToList());
-        lineItems = await Task.FromResult(Db.BudgetLineItems.Where(b => b.SeasonId == selectedSeasonId).ToList());
+        Db.ChangeTracker.Clear();
+        meets = Db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToList();
+        lineItems = Db.BudgetLineItems.Where(b => b.SeasonId == selectedSeasonId).ToList();
+        seasonGroups = Db.SeasonGroups.Where(g => g.SeasonId == selectedSeasonId).OrderBy(g => g.SortOrder).ToList();
+        sharedFees = Db.SharedFees.Where(f => f.SeasonId == selectedSeasonId).ToList();
+        await Task.CompletedTask;
     }
 
-    private void ShowForm() { editingItem = null; formCategory = BudgetCategory.TeamEntry; formMeetId = 0; formRate = 0; formQuantity = 0; formIsActual = false; formNotes = ""; showForm = true; }
+    private void ShowForm() { editingItem = null; formCategory = BudgetCategory.TeamEntry; formMeetId = 0; formSeasonGroupId = 0; formRate = 0; formQuantity = 0; formIsActual = false; formNotes = ""; showForm = true; }
     private void CancelForm() { showForm = false; }
 
     private void EditItem(BudgetLineItem item)
     {
-        editingItem = item; formCategory = item.Category; formMeetId = item.MeetId ?? 0;
+        editingItem = item; formCategory = item.Category; formMeetId = item.MeetId ?? 0; formSeasonGroupId = item.SeasonGroupId ?? 0;
         formRate = item.Rate; formQuantity = item.Quantity; formIsActual = item.IsActual; formNotes = item.Notes ?? ""; showForm = true;
     }
 
     private async Task SaveItem()
     {
+        int? groupId = formSeasonGroupId > 0 ? formSeasonGroupId : null;
         if (editingItem == null)
         {
             Db.BudgetLineItems.Add(new BudgetLineItem
             {
                 Category = formCategory, MeetId = formMeetId > 0 ? formMeetId : null,
                 Rate = formRate, Quantity = formQuantity, IsActual = formIsActual,
-                Notes = formNotes, SeasonId = selectedSeasonId
+                Notes = formNotes, SeasonId = selectedSeasonId, SeasonGroupId = groupId
             });
         }
         else
         {
             editingItem.Category = formCategory; editingItem.MeetId = formMeetId > 0 ? formMeetId : null;
             editingItem.Rate = formRate; editingItem.Quantity = formQuantity;
-            editingItem.IsActual = formIsActual; editingItem.Notes = formNotes;
+            editingItem.IsActual = formIsActual; editingItem.Notes = formNotes; editingItem.SeasonGroupId = groupId;
             Db.BudgetLineItems.Update(editingItem);
         }
         await Db.SaveChangesAsync();
@@ -237,5 +319,16 @@ else
         Db.BudgetLineItems.Remove(item);
         await Db.SaveChangesAsync();
         await LoadData();
+    }
+
+    private async Task ToggleSharedFee(int feeId, bool isIncluded)
+    {
+        var fee = sharedFees.FirstOrDefault(f => f.Id == feeId);
+        if (fee != null)
+        {
+            fee.IsIncludedInBudget = isIncluded;
+            Db.SharedFees.Update(fee);
+            await Db.SaveChangesAsync();
+        }
     }
 }
