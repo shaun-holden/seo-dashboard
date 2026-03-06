@@ -138,6 +138,18 @@
                 </ul>
             </div>
 
+            @if (preview.OverlapMeets.Any() || preview.OverlapCoaches.Any() || preview.OverlapLevels.Any())
+            {
+                <div class="alert alert-warning">
+                    <strong>⚠️ The following items already exist and will be replaced:</strong>
+                    <ul class="mb-0 mt-1">
+                        @foreach (var name in preview.OverlapMeets) { <li>@labels.Meet: @name</li> }
+                        @foreach (var name in preview.OverlapCoaches) { <li>@labels.Coach: @name</li> }
+                        @foreach (var name in preview.OverlapLevels) { <li>@labels.TeamLevel: @name</li> }
+                    </ul>
+                </div>
+            }
+
             @if (importError != null)
             {
                 <div class="alert alert-danger py-2">@importError</div>
@@ -146,7 +158,20 @@
             @if (importSuccess)
             {
                 <div class="alert alert-success py-2">
-                    Import complete! @preview.MeetCount @labels.Meets.ToLower(), @preview.CoachCount @labels.Coaches.ToLower(), @preview.TeamLevelCount @labels.TeamLevels.ToLower(), and @preview.BudgetItemCount budget items were added to your season.
+                    Import complete! @preview.MeetCount @labels.Meets.ToLower(), @preview.CoachCount @labels.Coaches.ToLower(), @preview.TeamLevelCount @labels.TeamLevels.ToLower(), and @preview.BudgetItemCount budget items were imported to your season.
+                </div>
+            }
+            else if (showOverrideConfirm)
+            {
+                <div class="alert alert-danger">
+                    <strong>Are you sure?</strong> This will delete and replace the existing items listed above with the imported data. This cannot be undone.
+                    <div class="mt-2">
+                        <button class="btn btn-danger me-2" @onclick="ConfirmImport" disabled="@isImporting">
+                            @if (isImporting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            Yes, Replace &amp; Import
+                        </button>
+                        <button class="btn btn-secondary" @onclick="() => showOverrideConfirm = false">Cancel</button>
+                    </div>
                 </div>
             }
             else
@@ -196,6 +221,9 @@
     private string newSeasonName = "";
     private string? newSeasonError;
 
+    // Override confirmation
+    private bool showOverrideConfirm;
+
     private ProjectLabels labels = ProjectLabels.Default;
 
     private class ImportPreview
@@ -205,6 +233,9 @@
         public int TeamLevelCount { get; set; }
         public int AthleteItemCount { get; set; }
         public int BudgetItemCount { get; set; }
+        public List<string> OverlapMeets { get; set; } = new();
+        public List<string> OverlapCoaches { get; set; } = new();
+        public List<string> OverlapLevels { get; set; } = new();
     }
 
     protected override async Task OnInitializedAsync()
@@ -370,24 +401,48 @@
         preview = null;
         importSuccess = false;
         importError = null;
+        showOverrideConfirm = false;
         if (srcSeasonId <= 0 || targetSeasonId <= 0) return;
 
+        var srcMeetNames = Db.Meets.Where(m => m.SeasonId == srcSeasonId).Select(m => m.Name).ToList();
+        var srcCoachNames = Db.Coaches.Where(c => c.SeasonId == srcSeasonId).Select(c => c.Name).ToList();
+        var srcLevelNames = Db.TeamLevels.Where(t => t.SeasonId == srcSeasonId).Select(t => t.Name).ToList();
         var levelIds = Db.TeamLevels.Where(t => t.SeasonId == srcSeasonId).Select(t => t.Id).ToList();
+
+        var existingMeetNames = Db.Meets.Where(m => m.SeasonId == targetSeasonId).Select(m => m.Name).ToList();
+        var existingCoachNames = Db.Coaches.Where(c => c.SeasonId == targetSeasonId).Select(c => c.Name).ToList();
+        var existingLevelNames = Db.TeamLevels.Where(t => t.SeasonId == targetSeasonId).Select(t => t.Name).ToList();
+
         preview = new ImportPreview
         {
-            MeetCount = Db.Meets.Count(m => m.SeasonId == srcSeasonId),
-            CoachCount = Db.Coaches.Count(c => c.SeasonId == srcSeasonId),
-            TeamLevelCount = levelIds.Count,
+            MeetCount = srcMeetNames.Count,
+            CoachCount = srcCoachNames.Count,
+            TeamLevelCount = srcLevelNames.Count,
             AthleteItemCount = Db.AthleteItems.Count(a => levelIds.Contains(a.TeamLevelId)),
-            BudgetItemCount = Db.BudgetLineItems.Count(b => b.SeasonId == srcSeasonId)
+            BudgetItemCount = Db.BudgetLineItems.Count(b => b.SeasonId == srcSeasonId),
+            OverlapMeets = srcMeetNames.Where(n => existingMeetNames.Contains(n)).ToList(),
+            OverlapCoaches = srcCoachNames.Where(n => existingCoachNames.Contains(n)).ToList(),
+            OverlapLevels = srcLevelNames.Where(n => existingLevelNames.Contains(n)).ToList()
         };
     }
 
     private async Task DoImport()
     {
+        // If there are overlaps, show confirmation first
+        if (preview != null && (preview.OverlapMeets.Any() || preview.OverlapCoaches.Any() || preview.OverlapLevels.Any()))
+        {
+            showOverrideConfirm = true;
+            return;
+        }
+        await ConfirmImport();
+    }
+
+    private async Task ConfirmImport()
+    {
         importError = null;
         importSuccess = false;
         isImporting = true;
+        showOverrideConfirm = false;
 
         try
         {
@@ -398,6 +453,56 @@
             var srcLevelIds = srcLevels.Select(t => t.Id).ToList();
             var srcAthleteItems = Db.AthleteItems.Where(a => srcLevelIds.Contains(a.TeamLevelId)).ToList();
             var srcItems = Db.BudgetLineItems.Where(b => b.SeasonId == srcSeasonId).ToList();
+
+            // Remove existing items that overlap by name
+            if (preview != null)
+            {
+                // Remove overlapping meets (and their related budget line items)
+                if (preview.OverlapMeets.Any())
+                {
+                    var existingMeets = Db.Meets.Where(m => m.SeasonId == targetSeasonId && preview.OverlapMeets.Contains(m.Name)).ToList();
+                    var existingMeetIds = existingMeets.Select(m => m.Id).ToList();
+                    var relatedBudgetItems = Db.BudgetLineItems.Where(b => b.MeetId.HasValue && existingMeetIds.Contains(b.MeetId.Value)).ToList();
+                    Db.BudgetLineItems.RemoveRange(relatedBudgetItems);
+                    var relatedMeetGroups = Db.MeetGroupAssignments.Where(a => existingMeetIds.Contains(a.MeetId)).ToList();
+                    Db.MeetGroupAssignments.RemoveRange(relatedMeetGroups);
+                    var relatedMeetLevels = Db.MeetTeamLevelAssignments.Where(a => existingMeetIds.Contains(a.MeetId)).ToList();
+                    Db.MeetTeamLevelAssignments.RemoveRange(relatedMeetLevels);
+                    var relatedCoachMeets = Db.CoachMeetAssignments.Where(a => existingMeetIds.Contains(a.MeetId)).ToList();
+                    Db.CoachMeetAssignments.RemoveRange(relatedCoachMeets);
+                    Db.Meets.RemoveRange(existingMeets);
+                }
+
+                // Remove overlapping coaches (and their related data)
+                if (preview.OverlapCoaches.Any())
+                {
+                    var existingCoaches = Db.Coaches.Where(c => c.SeasonId == targetSeasonId && preview.OverlapCoaches.Contains(c.Name)).ToList();
+                    var existingCoachIds = existingCoaches.Select(c => c.Id).ToList();
+                    var relatedBudgetItems = Db.BudgetLineItems.Where(b => b.CoachId.HasValue && existingCoachIds.Contains(b.CoachId.Value)).ToList();
+                    Db.BudgetLineItems.RemoveRange(relatedBudgetItems);
+                    var relatedCoachGroups = Db.CoachGroupAssignments.Where(a => existingCoachIds.Contains(a.CoachId)).ToList();
+                    Db.CoachGroupAssignments.RemoveRange(relatedCoachGroups);
+                    var relatedCoachMeets = Db.CoachMeetAssignments.Where(a => existingCoachIds.Contains(a.CoachId)).ToList();
+                    Db.CoachMeetAssignments.RemoveRange(relatedCoachMeets);
+                    Db.Coaches.RemoveRange(existingCoaches);
+                }
+
+                // Remove overlapping team levels (and their athlete items, assignments)
+                if (preview.OverlapLevels.Any())
+                {
+                    var existingLevels = Db.TeamLevels.Where(t => t.SeasonId == targetSeasonId && preview.OverlapLevels.Contains(t.Name)).ToList();
+                    var existingLevelIds = existingLevels.Select(t => t.Id).ToList();
+                    var relatedAthleteItems = Db.AthleteItems.Where(a => existingLevelIds.Contains(a.TeamLevelId)).ToList();
+                    Db.AthleteItems.RemoveRange(relatedAthleteItems);
+                    var relatedGroupAssigns = Db.TeamLevelGroupAssignments.Where(a => existingLevelIds.Contains(a.TeamLevelId)).ToList();
+                    Db.TeamLevelGroupAssignments.RemoveRange(relatedGroupAssigns);
+                    var relatedMeetAssigns = Db.MeetTeamLevelAssignments.Where(a => existingLevelIds.Contains(a.TeamLevelId)).ToList();
+                    Db.MeetTeamLevelAssignments.RemoveRange(relatedMeetAssigns);
+                    Db.TeamLevels.RemoveRange(existingLevels);
+                }
+
+                await Db.SaveChangesAsync();
+            }
 
             // 1. Copy coaches
             var coachMap = new Dictionary<int, int>();
