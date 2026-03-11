@@ -697,15 +697,6 @@ else
             </div>
         }
 
-        @* Ungrouped team levels *@
-        @if (teamLevels.Any(t => !levelGroupAssignments.Any(a => a.TeamLevelId == t.Id)) && seasonGroups.Any())
-        {
-            <h5 class="mt-3 text-muted">Ungrouped</h5>
-        }
-        @foreach (var level in teamLevels.Where(t => !levelGroupAssignments.Any(a => a.TeamLevelId == t.Id)))
-        {
-            @RenderLevelCard(level)
-        }
     }
 }
 
