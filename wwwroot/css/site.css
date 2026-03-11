@@ -67,6 +67,50 @@ a, .btn-link {
         content: "An error has occurred."
     }
 
+/* Notes panel in sidebar */
+.notes-sidebar-section {
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    margin-top: 0.5rem;
+}
+
+.notes-sidebar-toggle {
+    display: flex;
+    align-items: center;
+    padding: 0.6rem 1rem;
+    color: rgba(255, 255, 255, 0.75);
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.notes-sidebar-toggle:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.notes-sidebar-body {
+    padding: 0 0.75rem 0.75rem;
+    max-height: 350px;
+    overflow-y: auto;
+}
+
+.notes-sidebar-body textarea {
+    font-size: 0.8rem;
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.notes-sidebar-body .note-item {
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.notes-sidebar-body .note-content {
+    margin-top: 2px;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.85);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 .print-only {
     display: none;
 }

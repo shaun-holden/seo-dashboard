@@ -231,19 +231,26 @@ else
                     var groupLevels = teamLevels.Where(t => groupLevelIds.Contains(t.Id)).ToList();
                     if (groupLevels.Any())
                     {
-                        var groupTotal = groupLevels.Sum(l => GetLevelTotal(l.Id));
-                        <div class="card mb-4 border-primary">
-                            <div class="card-header bg-light d-flex justify-content-between">
-                                <h6 class="mb-0">@group.Name</h6>
-                                <span class="fw-bold">$@groupTotal.ToString("N2")</span>
+                        @if (groupLevels.Count == 1 && string.Equals(groupLevels[0].Name?.Trim(), group.Name?.Trim(), StringComparison.OrdinalIgnoreCase))
+                        {
+                            @RenderLevelBreakdown(groupLevels[0])
+                        }
+                        else
+                        {
+                            var groupTotal = groupLevels.Sum(l => GetLevelTotal(l.Id));
+                            <div class="card mb-4 border-primary">
+                                <div class="card-header bg-light d-flex justify-content-between">
+                                    <h6 class="mb-0">@group.Name</h6>
+                                    <span class="fw-bold">$@groupTotal.ToString("N2")</span>
+                                </div>
+                                <div class="card-body">
+                                    @foreach (var level in groupLevels)
+                                    {
+                                        @RenderLevelBreakdown(level)
+                                    }
+                                </div>
                             </div>
-                            <div class="card-body">
-                                @foreach (var level in groupLevels)
-                                {
-                                    @RenderLevelBreakdown(level)
-                                }
-                            </div>
-                        </div>
+                        }
                     }
                 }
             }
@@ -292,12 +299,18 @@ else
     private decimal GetSharedFeeShareForLevel(int teamLevelId)
     {
         decimal total = 0;
+        var level = teamLevels.FirstOrDefault(t => t.Id == teamLevelId);
+        if (level == null) return 0;
         foreach (var fee in sharedFees.Where(f => f.IsIncludedInBudget))
         {
             var assignedLevelIds = sharedFeeAssignments.Where(a => a.SharedFeeId == fee.Id).Select(a => a.TeamLevelId).ToList();
             if (assignedLevelIds.Count == 0)
                 assignedLevelIds = teamLevels.Select(t => t.Id).ToList();
-            if (assignedLevelIds.Contains(teamLevelId) && assignedLevelIds.Count > 0)
+            if (!assignedLevelIds.Contains(teamLevelId)) continue;
+            var totalAssignedAthletes = teamLevels.Where(t => assignedLevelIds.Contains(t.Id)).Sum(t => t.AthleteCount);
+            if (totalAssignedAthletes > 0)
+                total += Math.Round(fee.Amount * level.AthleteCount / totalAssignedAthletes, 2);
+            else
                 total += Math.Round(fee.Amount / assignedLevelIds.Count, 2);
         }
         return total;

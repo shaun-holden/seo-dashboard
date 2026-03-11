@@ -32,7 +32,7 @@ else
     @if (selectedSeasonId > 0)
     {
         <div class="row mb-3">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card text-white bg-primary">
                     <div class="card-body">
                         <h6>Total Budget</h6>
@@ -40,7 +40,7 @@ else
                     </div>
                 </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card text-white bg-success">
                     <div class="card-body">
                         <h6>Total Shared Fees</h6>
@@ -48,11 +48,28 @@ else
                     </div>
                 </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card text-white bg-info">
                     <div class="card-body">
-                        <h6>Total @labels.AthleteItems</h6>
-                        <h4>$@athleteItemsTotal.ToString("N2")</h4>
+                        <h6>Total Athlete Fees</h6>
+                        <h4>$@budgetTotal.ToString("N2")</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-warning">
+                    <div class="card-body">
+                        <h6>Avg Cost Per Athlete</h6>
+                        @if (totalAthletes > 0)
+                        {
+                            <h4>$@avgCostPerAthlete.ToString("N2")</h4>
+                            <small>@totalAthletes athlete(s)</small>
+                        }
+                        else
+                        {
+                            <h4 class="text-white-50">--</h4>
+                            <small>Set athlete counts</small>
+                        }
                     </div>
                 </div>
             </div>
@@ -67,16 +84,20 @@ else
                 </div>
                 <div class="card-body p-0">
                     <table class="table table-sm mb-0">
-                        <thead><tr><th>Category</th><th>Name</th><th>Amount</th><th>Assigned To</th></tr></thead>
+                        <thead><tr><th>Category</th><th>Name</th><th>Total</th><th>Per Athlete</th><th>Shared Across</th></tr></thead>
                         <tbody>
                             @foreach (var fee in sharedFees)
                             {
                                 var assignedLevelIds = sharedFeeAssignments.Where(a => a.SharedFeeId == fee.Id).Select(a => a.TeamLevelId).ToList();
-                                var assignedNames = teamLevels.Where(t => assignedLevelIds.Contains(t.Id)).Select(t => t.Name);
+                                var assignedLevels = assignedLevelIds.Any() ? teamLevels.Where(t => assignedLevelIds.Contains(t.Id)).ToList() : teamLevels;
+                                var totalAssignedAthletes = assignedLevels.Sum(t => t.AthleteCount);
+                                var perAthlete = totalAssignedAthletes > 0 ? fee.Amount / totalAssignedAthletes : fee.Amount;
+                                var assignedNames = assignedLevels.Select(t => t.Name);
                                 <tr>
                                     <td>@fee.DisplayName</td>
                                     <td>@fee.Name</td>
                                     <td>$@fee.Amount.ToString("N2")</td>
+                                    <td class="fw-bold text-primary">$@perAthlete.ToString("N2") <small class="text-muted fw-normal">(@totalAssignedAthletes athletes)</small></td>
                                     <td><small class="text-muted">@(assignedLevelIds.Any() ? string.Join(", ", assignedNames) : "All")</small></td>
                                 </tr>
                             }
@@ -95,19 +116,26 @@ else
                 var groupLevels = teamLevels.Where(t => groupLevelIds.Contains(t.Id)).ToList();
                 if (groupLevels.Any())
                 {
-                    var groupTotal = groupLevels.Sum(l => GetLevelTotal(l.Id));
-                    <div class="card mb-4 border-primary">
-                        <div class="card-header bg-light d-flex justify-content-between">
-                            <h5 class="mb-0">@group.Name</h5>
-                            <span class="fw-bold">$@groupTotal.ToString("N2")</span>
+                    @if (groupLevels.Count == 1 && string.Equals(groupLevels[0].Name?.Trim(), group.Name?.Trim(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        @RenderLevelBudget(groupLevels[0])
+                    }
+                    else
+                    {
+                        var groupTotal = groupLevels.Sum(l => GetLevelTotal(l.Id));
+                        <div class="card mb-4 border-primary">
+                            <div class="card-header bg-light d-flex justify-content-between">
+                                <h5 class="mb-0">@group.Name</h5>
+                                <span class="fw-bold">$@groupTotal.ToString("N2")</span>
+                            </div>
+                            <div class="card-body">
+                                @foreach (var level in groupLevels)
+                                {
+                                    @RenderLevelBudget(level)
+                                }
+                            </div>
                         </div>
-                        <div class="card-body">
-                            @foreach (var level in groupLevels)
-                            {
-                                @RenderLevelBudget(level)
-                            }
-                        </div>
-                    </div>
+                    }
                 }
             }
         }
@@ -141,19 +169,31 @@ else
     private ProjectLabels labels = ProjectLabels.Default;
     private System.Threading.Timer? _refreshTimer;
 
-    private decimal sharedFeesTotal => sharedFees.Sum(f => f.Amount);
+    private Dictionary<int, int> scenarioAthletes = new();
+
+    private decimal sharedFeesTotal => sharedFees.Where(f => f.IsIncludedInBudget).Sum(f => f.Amount);
     private decimal athleteItemsTotal => athleteItems.Sum(a => a.Cost);
     private decimal budgetTotal => sharedFeesTotal + athleteItemsTotal;
+    private int totalAthletes => teamLevels.Sum(t => t.AthleteCount);
+    private decimal avgCostPerAthlete => totalAthletes > 0 ? teamLevels.Where(t => t.AthleteCount > 0).Sum(t => GetLevelTotal(t.Id)) / totalAthletes : 0;
 
-    private decimal GetSharedFeeShareForLevel(int teamLevelId)
+    private decimal GetSharedFeeShareForLevel(int teamLevelId, Dictionary<int, int>? athleteOverrides = null)
     {
         decimal total = 0;
+        var level = teamLevels.FirstOrDefault(t => t.Id == teamLevelId);
+        if (level == null) return 0;
+        int levelAthletes = athleteOverrides != null && athleteOverrides.ContainsKey(teamLevelId) ? athleteOverrides[teamLevelId] : level.AthleteCount;
         foreach (var fee in sharedFees.Where(f => f.IsIncludedInBudget))
         {
             var assignedLevelIds = sharedFeeAssignments.Where(a => a.SharedFeeId == fee.Id).Select(a => a.TeamLevelId).ToList();
             if (assignedLevelIds.Count == 0)
                 assignedLevelIds = teamLevels.Select(t => t.Id).ToList();
-            if (assignedLevelIds.Contains(teamLevelId) && assignedLevelIds.Count > 0)
+            if (!assignedLevelIds.Contains(teamLevelId)) continue;
+            var totalAssignedAthletes = teamLevels.Where(t => assignedLevelIds.Contains(t.Id))
+                .Sum(t => athleteOverrides != null && athleteOverrides.ContainsKey(t.Id) ? athleteOverrides[t.Id] : t.AthleteCount);
+            if (totalAssignedAthletes > 0)
+                total += Math.Round(fee.Amount * levelAthletes / totalAssignedAthletes, 2);
+            else
                 total += Math.Round(fee.Amount / assignedLevelIds.Count, 2);
         }
         return total;
@@ -174,6 +214,13 @@ else
         var levelTotal = feeShare + itemsTotal;
         var costPerAthlete = level.AthleteCount > 0 ? levelTotal / level.AthleteCount : 0;
         var monthly = level.PaymentPlanMonths > 0 ? costPerAthlete / level.PaymentPlanMonths : 0;
+        var hasScenario = scenarioAthletes.ContainsKey(level.Id);
+        var scenarioCount = hasScenario ? scenarioAthletes[level.Id] : -1;
+        var scenarioOverrides = new Dictionary<int, int>(scenarioAthletes);
+        var scenarioFeeShare = hasScenario ? GetSharedFeeShareForLevel(level.Id, scenarioOverrides) : 0;
+        var scenarioLevelTotal = scenarioFeeShare + (scenarioCount > 0 ? itemsTotal : 0);
+        var scenarioCost = scenarioCount > 0 ? scenarioLevelTotal / scenarioCount : 0;
+        var scenarioMonthly = scenarioCount > 0 && level.PaymentPlanMonths > 0 ? scenarioCost / level.PaymentPlanMonths : 0;
 
         <div class="card mb-3">
             <div class="card-header d-flex justify-content-between">
@@ -202,14 +249,43 @@ else
                         <tr class="fw-bold"><td>Level Total</td><td class="text-end">$@levelTotal.ToString("N2")</td></tr>
                         @if (level.AthleteCount > 0)
                         {
-                            <tr class="text-primary fw-bold"><td>Cost Per Athlete</td><td class="text-end">$@costPerAthlete.ToString("N2")</td></tr>
+                            <tr class="text-primary fw-bold"><td>Cost Per Athlete (@level.AthleteCount)</td><td class="text-end">$@costPerAthlete.ToString("N2")</td></tr>
                             @if (level.PaymentPlanMonths > 0)
                             {
                                 <tr class="text-success fw-bold"><td>Payment Plan (@level.PaymentPlanMonths mo)</td><td class="text-end">$@monthly.ToString("N2")/month</td></tr>
                             }
                         }
+                        else
+                        {
+                            <tr class="text-muted"><td>Cost Per Athlete</td><td class="text-end"><em>Set athlete count in @labels.TeamLevels</em></td></tr>
+                        }
                     </tfoot>
                 </table>
+                <div class="p-2 bg-light border-top">
+                    <div class="d-flex align-items-center gap-2">
+                        <small class="fw-bold text-muted">What if only</small>
+                        <input type="number" min="0" class="form-control form-control-sm" style="width: 70px;"
+                               value="@(hasScenario ? scenarioCount : "")"
+                               @onchange="(e) => UpdateScenario(level.Id, e)" />
+                        <small class="fw-bold text-muted">gymnast(s) qualify?</small>
+                        @if (hasScenario && scenarioCount == 0)
+                        {
+                            <span class="ms-auto">
+                                <span class="badge bg-danger">$0.00 — fees shift to other levels</span>
+                            </span>
+                        }
+                        else if (scenarioCount > 0)
+                        {
+                            <span class="ms-auto">
+                                <span class="badge bg-primary">$@scenarioCost.ToString("N2")/athlete</span>
+                                @if (level.PaymentPlanMonths > 0)
+                                {
+                                    <span class="badge bg-success ms-1">$@scenarioMonthly.ToString("N2")/mo</span>
+                                }
+                            </span>
+                        }
+                    </div>
+                </div>
             </div>
         </div>
     };
@@ -250,6 +326,14 @@ else
         var sharedFeeIds = sharedFees.Select(f => f.Id).ToList();
         sharedFeeAssignments = await db.SharedFeeTeamLevelAssignments.AsNoTracking().Where(a => sharedFeeIds.Contains(a.SharedFeeId)).ToListAsync();
         StateHasChanged();
+    }
+
+    private void UpdateScenario(int levelId, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var count) && count >= 0)
+            scenarioAthletes[levelId] = count;
+        else
+            scenarioAthletes.Remove(levelId);
     }
 
     public void Dispose()

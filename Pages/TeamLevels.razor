@@ -631,10 +631,11 @@ else
                         <thead>
                             <tr>
                                 <th>Fee</th>
-                                <th>Amount</th>
+                                <th>Total</th>
+                                <th>Per Athlete</th>
                                 @foreach (var level in teamLevels)
                                 {
-                                    <th class="text-center" style="min-width: 80px;">@level.Name</th>
+                                    <th class="text-center" style="min-width: 80px;">@level.Name (@level.AthleteCount)</th>
                                 }
                             </tr>
                         </thead>
@@ -642,9 +643,14 @@ else
                             @foreach (var fee in sharedFees)
                             {
                                 var feeId = fee.Id;
+                                var assignedLevelIds = sharedFeeAssignments.Where(a => a.SharedFeeId == feeId).Select(a => a.TeamLevelId).ToList();
+                                var assignedLevels = assignedLevelIds.Any() ? teamLevels.Where(t => assignedLevelIds.Contains(t.Id)).ToList() : teamLevels;
+                                var totalAssignedAthletes = assignedLevels.Sum(t => t.AthleteCount);
+                                var perAthlete = totalAssignedAthletes > 0 ? fee.Amount / totalAssignedAthletes : fee.Amount;
                                 <tr>
                                     <td>@fee.DisplayName</td>
                                     <td>$@fee.Amount.ToString("N2")</td>
+                                    <td class="fw-bold text-primary">$@perAthlete.ToString("N2") <small class="text-muted fw-normal">(@totalAssignedAthletes athletes)</small></td>
                                     @foreach (var level in teamLevels)
                                     {
                                         var levelId = level.Id;
@@ -671,7 +677,11 @@ else
                         <label>Level Name</label>
                         <input class="form-control" @bind="formName" placeholder="e.g. Gym Stars, Elite/HOPE" />
                     </div>
-                    <div class="col-md-4 mb-2">
+                    <div class="col-md-3 mb-2">
+                        <label>Athletes</label>
+                        <input type="number" class="form-control" @bind="formAthleteCount" />
+                    </div>
+                    <div class="col-md-3 mb-2">
                         <label>Payment Plan (months)</label>
                         <input type="number" class="form-control" @bind="formPaymentMonths" />
                     </div>
@@ -722,24 +732,32 @@ else
             {
                 var groupLevelIds = levelGroupAssignments.Where(a => a.SeasonGroupId == group.Id).Select(a => a.TeamLevelId).ToHashSet();
                 var groupLevels = teamLevels.Where(t => groupLevelIds.Contains(t.Id)).ToList();
-                <div class="card mb-4 border-primary">
-                    <div class="card-header bg-light">
-                        <h5 class="mb-0">@group.Name</h5>
-                    </div>
-                    <div class="card-body p-2">
-                        @if (groupLevels.Any())
-                        {
-                            @foreach (var level in groupLevels)
+                @if (groupLevels.Count == 1 && string.Equals(groupLevels[0].Name?.Trim(), group.Name?.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    @* Single level with same name as group — skip the group wrapper to avoid duplication *@
+                    @RenderLevelCard(groupLevels[0])
+                }
+                else
+                {
+                    <div class="card mb-4 border-primary">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">@group.Name</h5>
+                        </div>
+                        <div class="card-body p-2">
+                            @if (groupLevels.Any())
                             {
-                                @RenderLevelCard(level)
+                                @foreach (var level in groupLevels)
+                                {
+                                    @RenderLevelCard(level)
+                                }
                             }
-                        }
-                        else
-                        {
-                            <p class="text-muted mb-0 fst-italic">No @labels.TeamLevels assigned to this group yet.</p>
-                        }
+                            else
+                            {
+                                <p class="text-muted mb-0 fst-italic">No @labels.TeamLevels assigned to this group yet.</p>
+                            }
+                        </div>
                     </div>
-                </div>
+                }
             }
         }
         else
@@ -766,6 +784,7 @@ else
     private bool showForm;
     private TeamLevel? editingLevel;
     private string formName = "";
+    private int formAthleteCount = 0;
     private int formPaymentMonths = 5;
     private HashSet<int> formGroupIds = new();
     private HashSet<int> formMeetIds = new();
@@ -963,7 +982,7 @@ else
         else formMeetIds.Remove(meetId);
     }
 
-    private void ShowForm() { editingLevel = null; formName = ""; formPaymentMonths = 5; formGroupIds.Clear(); formMeetIds.Clear(); showForm = true; showAddItemForm = false; }
+    private void ShowForm() { editingLevel = null; formName = ""; formAthleteCount = 0; formPaymentMonths = 5; formGroupIds.Clear(); formMeetIds.Clear(); showForm = true; showAddItemForm = false; }
     private void CancelForm() { showForm = false; }
 
     private void ShowItemForm() { bulkItemName = ""; bulkItemCost = 0; bulkItemRequired = true; addToAllLevels = true; selectedGroupIdsForItem.Clear(); showAddItemForm = true; showForm = false; }
@@ -1004,7 +1023,7 @@ else
 
     private void EditLevel(TeamLevel level)
     {
-        editingLevel = level; formName = level.Name; formPaymentMonths = level.PaymentPlanMonths;
+        editingLevel = level; formName = level.Name; formAthleteCount = level.AthleteCount; formPaymentMonths = level.PaymentPlanMonths;
         formGroupIds = levelGroupAssignments.Where(a => a.TeamLevelId == level.Id).Select(a => a.SeasonGroupId).ToHashSet();
         formMeetIds = meetLevelAssignments.Where(a => a.TeamLevelId == level.Id).Select(a => a.MeetId).ToHashSet();
         showForm = true;
@@ -1016,7 +1035,7 @@ else
         TeamLevel level;
         if (editingLevel == null)
         {
-            level = new TeamLevel { Name = formName, PaymentPlanMonths = formPaymentMonths, SeasonId = selectedSeasonId };
+            level = new TeamLevel { Name = formName, AthleteCount = formAthleteCount, PaymentPlanMonths = formPaymentMonths, SeasonId = selectedSeasonId };
             db.TeamLevels.Add(level);
             await db.SaveChangesAsync();
         }
@@ -1024,6 +1043,7 @@ else
         {
             level = await db.TeamLevels.FindAsync(editingLevel.Id) ?? new TeamLevel { Id = editingLevel.Id };
             level.Name = formName;
+            level.AthleteCount = formAthleteCount;
             level.PaymentPlanMonths = formPaymentMonths;
             var existing = db.TeamLevelGroupAssignments.Where(a => a.TeamLevelId == level.Id).ToList();
             db.TeamLevelGroupAssignments.RemoveRange(existing);
