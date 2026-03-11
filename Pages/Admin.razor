@@ -1,0 +1,117 @@
+@page "/admin"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Identity
+@using System.Security.Claims
+@inject UserManager<IdentityUser> UserManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h3>Admin</h3>
+
+@if (!isAdmin)
+{
+    <div class="alert alert-danger">Access denied.</div>
+}
+else
+{
+    <div class="card mb-4" style="max-width: 500px;">
+        <div class="card-header"><strong>Reset User Password</strong></div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label>User Email</label>
+                <input type="email" class="form-control" @bind="resetEmail" placeholder="user@example.com" />
+            </div>
+            <div class="mb-3">
+                <label>New Password</label>
+                <input type="text" class="form-control" @bind="resetPassword" />
+            </div>
+            <button class="btn btn-warning" @onclick="ResetPassword" disabled="@isResetting">
+                @if (isResetting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Reset Password
+            </button>
+
+            @if (resetSuccess != null)
+            {
+                <div class="alert alert-success mt-3 py-2">@resetSuccess</div>
+            }
+            @if (resetError != null)
+            {
+                <div class="alert alert-danger mt-3 py-2">@resetError</div>
+            }
+        </div>
+    </div>
+
+    <div class="card" style="max-width: 500px;">
+        <div class="card-header"><strong>All Users</strong></div>
+        <div class="card-body p-0">
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Email</th></tr></thead>
+                <tbody>
+                    @foreach (var user in allUsers)
+                    {
+                        <tr><td>@user.Email</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private const string AdminEmail = "deshaun@tntgym.org";
+    private bool isAdmin;
+    private string resetEmail = "";
+    private string resetPassword = "";
+    private bool isResetting;
+    private string? resetSuccess;
+    private string? resetError;
+    private List<IdentityUser> allUsers = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var email = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? authState.User.FindFirst("email")?.Value;
+        isAdmin = string.Equals(email, AdminEmail, StringComparison.OrdinalIgnoreCase);
+
+        if (isAdmin)
+        {
+            allUsers = UserManager.Users.OrderBy(u => u.Email).ToList();
+        }
+    }
+
+    private async Task ResetPassword()
+    {
+        resetSuccess = null;
+        resetError = null;
+        isResetting = true;
+
+        if (string.IsNullOrWhiteSpace(resetEmail) || string.IsNullOrWhiteSpace(resetPassword))
+        {
+            resetError = "Please enter both email and new password.";
+            isResetting = false;
+            return;
+        }
+
+        var user = await UserManager.FindByEmailAsync(resetEmail.Trim());
+        if (user == null)
+        {
+            resetError = $"No user found with email '{resetEmail}'.";
+            isResetting = false;
+            return;
+        }
+
+        var token = await UserManager.GeneratePasswordResetTokenAsync(user);
+        var result = await UserManager.ResetPasswordAsync(user, token, resetPassword);
+
+        if (result.Succeeded)
+        {
+            resetSuccess = $"Password for {user.Email} has been reset.";
+        }
+        else
+        {
+            resetError = string.Join(" ", result.Errors.Select(e => e.Description));
+        }
+
+        isResetting = false;
+    }
+}
