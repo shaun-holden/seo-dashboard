@@ -474,23 +474,6 @@ else
                                 </div>
                             </div>
                         }
-                        @if (meets.Any(m => m.TravelType == TravelType.Fly))
-                        {
-                            <div class="mb-2">
-                                <label class="fw-bold mb-1">Select Fly @labels.Meets</label>
-                                <div class="d-flex flex-wrap gap-3">
-                                    @foreach (var meet in meets.Where(m => m.TravelType == TravelType.Fly))
-                                    {
-                                        var mId = meet.Id;
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" checked="@calcMeetIds.Contains(mId)"
-                                                   @onchange="(e) => ToggleCalcMeet(mId, (bool)e.Value!)" />
-                                            <label class="form-check-label">@meet.Name</label>
-                                        </div>
-                                    }
-                                </div>
-                            </div>
-                        }
                         <div class="row">
                             <div class="col-md-3 mb-2">
                                 <label>Rate ($)</label>
@@ -502,7 +485,7 @@ else
                             </div>
                         </div>
                         <div class="text-muted mb-2">
-                            $@calcRate.ToString("N2") × @calcQuantity × @Math.Max(calcCoachIds.Count, 1) coach(es) × @Math.Max(calcMeetIds.Count, 1) @(labels.Meet)(s) = <strong>$@((calcRate * calcQuantity * Math.Max(calcCoachIds.Count, 1) * Math.Max(calcMeetIds.Count, 1)).ToString("N2"))</strong>
+                            $@calcRate.ToString("N2") × @calcQuantity × @Math.Max(calcCoachIds.Count, 1) coach(es) = <strong>$@((calcRate * calcQuantity * Math.Max(calcCoachIds.Count, 1)).ToString("N2"))</strong>
                         </div>
                         <button class="btn btn-sm btn-info" @onclick="CalculateFlights">Calculate</button>
                     }
@@ -1105,7 +1088,7 @@ else
 
     private void CalculateFlights()
     {
-        sharedFeeAmount = calcRate * calcQuantity * Math.Max(calcCoachIds.Count, 1) * Math.Max(calcMeetIds.Count, 1);
+        sharedFeeAmount = calcRate * calcQuantity * Math.Max(calcCoachIds.Count, 1);
     }
 
     private void CalculateSessionFees()
