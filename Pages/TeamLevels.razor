@@ -672,29 +672,40 @@ else
             </div>
         }
 
-        @* Grouped team levels *@
-        @foreach (var group in seasonGroups)
+        @if (seasonGroups.Any())
         {
-            var groupLevelIds = levelGroupAssignments.Where(a => a.SeasonGroupId == group.Id).Select(a => a.TeamLevelId).ToHashSet();
-            var groupLevels = teamLevels.Where(t => groupLevelIds.Contains(t.Id)).ToList();
-            <div class="card mb-4 border-primary">
-                <div class="card-header bg-light">
-                    <h5 class="mb-0">@group.Name</h5>
-                </div>
-                <div class="card-body p-2">
-                    @if (groupLevels.Any())
-                    {
-                        @foreach (var level in groupLevels)
+            @* Grouped team levels *@
+            @foreach (var group in seasonGroups)
+            {
+                var groupLevelIds = levelGroupAssignments.Where(a => a.SeasonGroupId == group.Id).Select(a => a.TeamLevelId).ToHashSet();
+                var groupLevels = teamLevels.Where(t => groupLevelIds.Contains(t.Id)).ToList();
+                <div class="card mb-4 border-primary">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0">@group.Name</h5>
+                    </div>
+                    <div class="card-body p-2">
+                        @if (groupLevels.Any())
                         {
-                            @RenderLevelCard(level)
+                            @foreach (var level in groupLevels)
+                            {
+                                @RenderLevelCard(level)
+                            }
                         }
-                    }
-                    else
-                    {
-                        <p class="text-muted mb-0 fst-italic">No @labels.TeamLevels assigned to this group yet.</p>
-                    }
+                        else
+                        {
+                            <p class="text-muted mb-0 fst-italic">No @labels.TeamLevels assigned to this group yet.</p>
+                        }
+                    </div>
                 </div>
-            </div>
+            }
+        }
+        else
+        {
+            @* No groups — show all levels *@
+            @foreach (var level in teamLevels)
+            {
+                @RenderLevelCard(level)
+            }
         }
 
     }
