@@ -120,7 +120,7 @@ else
                 <div class="col-md-3 mb-2">
                     <div class="card text-white bg-info">
                         <div class="card-body">
-                            <h6>Cost Per Athlete</h6>
+                            <h6>Cost Per Athlete (@totalAthletes)</h6>
                             <h4>$@costPerAthlete.ToString("N2")</h4>
                         </div>
                     </div>
@@ -236,7 +236,8 @@ else
 
     private decimal filteredBudgetTotal => filteredItems.Where(i => !i.IsActual).Sum(i => i.Total);
     private decimal filteredActualTotal => filteredItems.Where(i => i.IsActual).Sum(i => i.Total);
-    private decimal costPerAthlete => selectedSeason?.AthleteCount > 0 ? filteredBudgetTotal / selectedSeason!.AthleteCount : 0;
+    private int totalAthletes => teamLevels.Sum(t => t.AthleteCount);
+    private decimal costPerAthlete => totalAthletes > 0 ? filteredBudgetTotal / totalAthletes : 0;
 
     private string FilterSummary
     {
