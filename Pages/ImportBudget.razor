@@ -446,7 +446,8 @@
 
         try
         {
-            // Load source data
+            // Load source season and data
+            var srcSeason = Db.Seasons.First(s => s.Id == srcSeasonId);
             var srcCoaches = Db.Coaches.Where(c => c.SeasonId == srcSeasonId).ToList();
             var srcMeets = Db.Meets.Where(m => m.SeasonId == srcSeasonId).ToList();
             var srcLevels = Db.TeamLevels.Where(t => t.SeasonId == srcSeasonId).ToList();
@@ -462,6 +463,8 @@
             var srcCoachIds = srcCoaches.Select(c => c.Id).ToList();
             var srcCoachGroupAssigns = Db.CoachGroupAssignments.Where(a => srcCoachIds.Contains(a.CoachId)).ToList();
             var srcCoachMeetAssigns = Db.CoachMeetAssignments.Where(a => srcCoachIds.Contains(a.CoachId)).ToList();
+            var srcPerDiems = Db.PerDiemEntries.Where(p => srcMeetIds.Contains(p.MeetId)).ToList();
+            var srcNotes = Db.SeasonNotes.Where(n => n.SeasonId == srcSeasonId).ToList();
 
             // Clear ALL existing data in target season
             var existingMeets = Db.Meets.Where(m => m.SeasonId == targetSeasonId).ToList();
@@ -471,6 +474,7 @@
             var existingLevels = Db.TeamLevels.Where(t => t.SeasonId == targetSeasonId).ToList();
             var existingLevelIds = existingLevels.Select(t => t.Id).ToList();
 
+            Db.PerDiemEntries.RemoveRange(Db.PerDiemEntries.Where(p => existingMeetIds.Contains(p.MeetId)));
             Db.BudgetLineItems.RemoveRange(Db.BudgetLineItems.Where(b => b.SeasonId == targetSeasonId));
             Db.MeetGroupAssignments.RemoveRange(Db.MeetGroupAssignments.Where(a => existingMeetIds.Contains(a.MeetId)));
             Db.MeetTeamLevelAssignments.RemoveRange(Db.MeetTeamLevelAssignments.Where(a => existingMeetIds.Contains(a.MeetId)));
@@ -479,12 +483,25 @@
             Db.AthleteItems.RemoveRange(Db.AthleteItems.Where(a => existingLevelIds.Contains(a.TeamLevelId)));
             Db.TeamLevelGroupAssignments.RemoveRange(Db.TeamLevelGroupAssignments.Where(a => existingLevelIds.Contains(a.TeamLevelId)));
             Db.SharedFees.RemoveRange(Db.SharedFees.Where(f => f.SeasonId == targetSeasonId));
+            Db.SeasonNotes.RemoveRange(Db.SeasonNotes.Where(n => n.SeasonId == targetSeasonId));
             Db.Meets.RemoveRange(existingMeets);
             Db.Coaches.RemoveRange(existingCoaches);
             Db.TeamLevels.RemoveRange(existingLevels);
-            // Clear existing season groups in target
             var existingGroups = Db.SeasonGroups.Where(g => g.SeasonId == targetSeasonId).ToList();
             Db.SeasonGroups.RemoveRange(existingGroups);
+            await Db.SaveChangesAsync();
+
+            // Copy season-level settings (project type, labels, toggles, athlete count)
+            var targetSeason = Db.Seasons.First(s => s.Id == targetSeasonId);
+            targetSeason.AthleteCount = srcSeason.AthleteCount;
+            targetSeason.ProjectType = srcSeason.ProjectType;
+            targetSeason.MeetLabel = srcSeason.MeetLabel;
+            targetSeason.CoachLabel = srcSeason.CoachLabel;
+            targetSeason.TeamLevelLabel = srcSeason.TeamLevelLabel;
+            targetSeason.AthleteItemLabel = srcSeason.AthleteItemLabel;
+            targetSeason.EnableTeamLevels = srcSeason.EnableTeamLevels;
+            targetSeason.EnablePerDiem = srcSeason.EnablePerDiem;
+            targetSeason.EnableMileage = srcSeason.EnableMileage;
             await Db.SaveChangesAsync();
 
             // 1. Copy season groups
@@ -595,6 +612,23 @@
             foreach (var fee in srcSharedFees)
             {
                 Db.SharedFees.Add(new SharedFee { Category = fee.Category, Name = fee.Name, Amount = fee.Amount, IsIncludedInBudget = fee.IsIncludedInBudget, SeasonId = targetSeasonId });
+            }
+            await Db.SaveChangesAsync();
+
+            // 7. Copy per diem entries (remap CoachId and MeetId)
+            foreach (var pd in srcPerDiems)
+            {
+                if (coachMap.TryGetValue(pd.CoachId, out var newCoachId) && meetMap.TryGetValue(pd.MeetId, out var newMeetId))
+                {
+                    Db.PerDiemEntries.Add(new PerDiemEntry { MealType = pd.MealType, Rate = pd.Rate, NumberOfDays = pd.NumberOfDays, IsActual = pd.IsActual, CoachId = newCoachId, MeetId = newMeetId });
+                }
+            }
+            await Db.SaveChangesAsync();
+
+            // 8. Copy season notes
+            foreach (var note in srcNotes)
+            {
+                Db.SeasonNotes.Add(new SeasonNote { Content = note.Content, CreatedAt = note.CreatedAt, SeasonId = targetSeasonId });
             }
             await Db.SaveChangesAsync();
 

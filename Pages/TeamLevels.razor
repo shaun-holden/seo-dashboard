@@ -797,11 +797,16 @@ else
                         </tbody>
                     </table>
                 }
+                <div class="d-flex gap-4 mb-2 text-muted">
+                    <span><strong>Athletes:</strong> @level.AthleteCount</span>
+                    <span><strong>Payment Plan:</strong> @level.PaymentPlanMonths months</span>
+                </div>
                 <h6>@labels.AthleteItems</h6>
                 <table class="table table-sm">
                     <thead><tr><th>Item</th><th>Cost</th><th>Required</th><th></th></tr></thead>
                     <tbody>
-                        @foreach (var item in athleteItems.Where(i => i.TeamLevelId == level.Id))
+                        @{ var levelItems = athleteItems.Where(i => i.TeamLevelId == level.Id).ToList(); }
+                        @foreach (var item in levelItems)
                         {
                             <tr>
                                 <td>@item.Name</td>
@@ -810,6 +815,11 @@ else
                                 <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAthleteItem(item)">Remove</button></td>
                             </tr>
                         }
+                        <tr class="fw-bold">
+                            <td>Total @labels.AthleteItems</td>
+                            <td>$@levelItems.Sum(i => i.Cost).ToString("N2")</td>
+                            <td colspan="2"></td>
+                        </tr>
                     </tbody>
                 </table>
                 <div class="row mt-2">
