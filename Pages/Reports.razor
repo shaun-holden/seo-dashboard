@@ -120,7 +120,7 @@ else
                 <div class="col-md-3 mb-2">
                     <div class="card text-white bg-info">
                         <div class="card-body">
-                            <h6>Cost Per Athlete (@totalAthletes)</h6>
+                            <h6>Avg Cost Per Athlete (@totalAthletes)</h6>
                             <h4>$@costPerAthlete.ToString("N2")</h4>
                         </div>
                     </div>
@@ -223,30 +223,36 @@ else
         @if (selectedMeetFilter == 0 && showFilter != "actual" && string.IsNullOrEmpty(selectedCategoryFilter) && teamLevels.Any())
         {
             <h5>@labels.TeamLevel Cost Breakdown</h5>
-            @foreach (var level in teamLevels)
+            @if (seasonGroups.Any())
             {
-                var items = athleteItems.Where(i => i.TeamLevelId == level.Id).ToList();
-                var itemsTotal = items.Sum(i => i.Cost);
-                var grandTotal = costPerAthlete + itemsTotal;
-                var monthly = level.PaymentPlanMonths > 0 ? grandTotal / level.PaymentPlanMonths : 0;
-                <div class="card mb-3">
-                    <div class="card-header"><h6>@level.Name — @level.AthleteCount athletes</h6></div>
-                    <div class="card-body">
-                        <table class="table table-sm">
-                            <tbody>
-                                <tr><td>Individual Share of Team Expenses</td><td>$@costPerAthlete.ToString("N2")</td></tr>
-                                @foreach (var item in items)
+                @foreach (var group in seasonGroups)
+                {
+                    var groupLevelIds = levelGroupAssignments.Where(a => a.SeasonGroupId == group.Id).Select(a => a.TeamLevelId).ToHashSet();
+                    var groupLevels = teamLevels.Where(t => groupLevelIds.Contains(t.Id)).ToList();
+                    if (groupLevels.Any())
+                    {
+                        var groupTotal = groupLevels.Sum(l => GetLevelTotal(l.Id));
+                        <div class="card mb-4 border-primary">
+                            <div class="card-header bg-light d-flex justify-content-between">
+                                <h6 class="mb-0">@group.Name</h6>
+                                <span class="fw-bold">$@groupTotal.ToString("N2")</span>
+                            </div>
+                            <div class="card-body">
+                                @foreach (var level in groupLevels)
                                 {
-                                    <tr><td>@item.Name @(item.IsRequired ? "" : "(optional)")</td><td>$@item.Cost.ToString("N2")</td></tr>
+                                    @RenderLevelBreakdown(level)
                                 }
-                            </tbody>
-                            <tfoot>
-                                <tr class="fw-bold"><td>Grand Total</td><td>$@grandTotal.ToString("N2")</td></tr>
-                                <tr class="text-primary fw-bold"><td>Payment Plan (@level.PaymentPlanMonths months)</td><td>$@monthly.ToString("N2")/month</td></tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                </div>
+                            </div>
+                        </div>
+                    }
+                }
+            }
+            else
+            {
+                @foreach (var level in teamLevels)
+                {
+                    @RenderLevelBreakdown(level)
+                }
             }
         }
     }
@@ -260,6 +266,9 @@ else
     private List<TeamLevel> teamLevels = new();
     private List<AthleteItem> athleteItems = new();
     private List<SharedFee> sharedFees = new();
+    private List<SeasonGroup> seasonGroups = new();
+    private List<TeamLevelGroupAssignment> levelGroupAssignments = new();
+    private List<SharedFeeTeamLevelAssignment> sharedFeeAssignments = new();
     private int selectedSeasonId;
     private Season? selectedSeason;
     private int selectedMeetFilter = 0;
@@ -279,6 +288,27 @@ else
     private decimal filteredActualTotal => filteredItems.Where(i => i.IsActual).Sum(i => i.Total);
     private int totalAthletes => teamLevels.Sum(t => t.AthleteCount);
     private decimal costPerAthlete => totalAthletes > 0 ? filteredBudgetTotal / totalAthletes : 0;
+
+    private decimal GetSharedFeeShareForLevel(int teamLevelId)
+    {
+        decimal total = 0;
+        foreach (var fee in sharedFees.Where(f => f.IsIncludedInBudget))
+        {
+            var assignedLevelIds = sharedFeeAssignments.Where(a => a.SharedFeeId == fee.Id).Select(a => a.TeamLevelId).ToList();
+            if (assignedLevelIds.Count == 0)
+                assignedLevelIds = teamLevels.Select(t => t.Id).ToList();
+            if (assignedLevelIds.Contains(teamLevelId) && assignedLevelIds.Count > 0)
+                total += Math.Round(fee.Amount / assignedLevelIds.Count, 2);
+        }
+        return total;
+    }
+
+    private decimal GetLevelTotal(int teamLevelId)
+    {
+        var feeShare = GetSharedFeeShareForLevel(teamLevelId);
+        var itemsTotal = athleteItems.Where(a => a.TeamLevelId == teamLevelId).Sum(a => a.Cost);
+        return feeShare + itemsTotal;
+    }
 
     private string FilterSummary
     {
@@ -322,6 +352,10 @@ else
         var levelIds = teamLevels.Select(t => t.Id).ToList();
         athleteItems = Db.AthleteItems.Where(a => levelIds.Contains(a.TeamLevelId)).ToList();
         sharedFees = Db.SharedFees.Where(f => f.SeasonId == selectedSeasonId).ToList();
+        seasonGroups = Db.SeasonGroups.Where(g => g.SeasonId == selectedSeasonId).OrderBy(g => g.SortOrder).ToList();
+        levelGroupAssignments = Db.TeamLevelGroupAssignments.Where(a => levelIds.Contains(a.TeamLevelId)).ToList();
+        var sharedFeeIds = sharedFees.Select(f => f.Id).ToList();
+        sharedFeeAssignments = Db.SharedFeeTeamLevelAssignments.Where(a => sharedFeeIds.Contains(a.SharedFeeId)).ToList();
         ApplyFilters();
     }
 
@@ -344,6 +378,54 @@ else
 
         filteredItems = items.ToList();
     }
+
+    private RenderFragment RenderLevelBreakdown(TeamLevel level) => __builder =>
+    {
+        var feeShare = GetSharedFeeShareForLevel(level.Id);
+        var items = athleteItems.Where(a => a.TeamLevelId == level.Id).ToList();
+        var itemsTotal = items.Sum(a => a.Cost);
+        var levelTotal = feeShare + itemsTotal;
+        var perAthlete = level.AthleteCount > 0 ? levelTotal / level.AthleteCount : 0;
+        var monthly = level.PaymentPlanMonths > 0 ? perAthlete / level.PaymentPlanMonths : 0;
+
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between">
+                <div>
+                    <strong>@level.Name</strong>
+                    <small class="text-muted ms-2">@level.AthleteCount athletes | @level.PaymentPlanMonths mo plan</small>
+                </div>
+                <span class="fw-bold">$@levelTotal.ToString("N2")</span>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr class="table-warning">
+                            <td><strong>Shared Fee Share</strong></td>
+                            <td class="text-end"><strong>$@feeShare.ToString("N2")</strong></td>
+                        </tr>
+                        @foreach (var item in items)
+                        {
+                            <tr>
+                                <td>@item.Name @(item.IsRequired ? "" : "(optional)")</td>
+                                <td class="text-end">$@item.Cost.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr class="fw-bold"><td>Level Total</td><td class="text-end">$@levelTotal.ToString("N2")</td></tr>
+                        @if (level.AthleteCount > 0)
+                        {
+                            <tr class="text-primary fw-bold"><td>Cost Per Athlete</td><td class="text-end">$@perAthlete.ToString("N2")</td></tr>
+                            @if (level.PaymentPlanMonths > 0)
+                            {
+                                <tr class="text-success fw-bold"><td>Payment Plan (@level.PaymentPlanMonths mo)</td><td class="text-end">$@monthly.ToString("N2")/month</td></tr>
+                            }
+                        }
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    };
 
     private async Task PrintReport()
     {

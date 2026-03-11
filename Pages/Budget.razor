@@ -67,14 +67,17 @@ else
                 </div>
                 <div class="card-body p-0">
                     <table class="table table-sm mb-0">
-                        <thead><tr><th>Category</th><th>Name</th><th>Amount</th></tr></thead>
+                        <thead><tr><th>Category</th><th>Name</th><th>Amount</th><th>Assigned To</th></tr></thead>
                         <tbody>
                             @foreach (var fee in sharedFees)
                             {
+                                var assignedLevelIds = sharedFeeAssignments.Where(a => a.SharedFeeId == fee.Id).Select(a => a.TeamLevelId).ToList();
+                                var assignedNames = teamLevels.Where(t => assignedLevelIds.Contains(t.Id)).Select(t => t.Name);
                                 <tr>
                                     <td>@fee.DisplayName</td>
                                     <td>@fee.Name</td>
                                     <td>$@fee.Amount.ToString("N2")</td>
+                                    <td><small class="text-muted">@(assignedLevelIds.Any() ? string.Join(", ", assignedNames) : "All")</small></td>
                                 </tr>
                             }
                         </tbody>
@@ -83,83 +86,37 @@ else
             </div>
         }
 
-        @foreach (var group in seasonGroups)
+        @* Per-level budget breakdown *@
+        @if (seasonGroups.Any())
         {
-            var groupLevelIds = levelGroupAssignments.Where(a => a.SeasonGroupId == group.Id).Select(a => a.TeamLevelId).ToHashSet();
-            var groupLevels = teamLevels.Where(t => groupLevelIds.Contains(t.Id)).ToList();
-            var groupAthleteItems = athleteItems.Where(a => groupLevelIds.Contains(a.TeamLevelId)).ToList();
-            @if (groupLevels.Any())
+            @foreach (var group in seasonGroups)
             {
-                <div class="card mb-3 border-primary">
-                    <div class="card-header bg-light d-flex justify-content-between">
-                        <h5 class="mb-0">@group.Name</h5>
-                        <span class="fw-bold">$@groupAthleteItems.Sum(a => a.Cost).ToString("N2")</span>
+                var groupLevelIds = levelGroupAssignments.Where(a => a.SeasonGroupId == group.Id).Select(a => a.TeamLevelId).ToHashSet();
+                var groupLevels = teamLevels.Where(t => groupLevelIds.Contains(t.Id)).ToList();
+                if (groupLevels.Any())
+                {
+                    var groupTotal = groupLevels.Sum(l => GetLevelTotal(l.Id));
+                    <div class="card mb-4 border-primary">
+                        <div class="card-header bg-light d-flex justify-content-between">
+                            <h5 class="mb-0">@group.Name</h5>
+                            <span class="fw-bold">$@groupTotal.ToString("N2")</span>
+                        </div>
+                        <div class="card-body">
+                            @foreach (var level in groupLevels)
+                            {
+                                @RenderLevelBudget(level)
+                            }
+                        </div>
                     </div>
-                    <div class="card-body p-0">
-                        <table class="table table-sm mb-0">
-                            <thead><tr><th>@labels.TeamLevel</th><th>@labels.AthleteItem</th><th>Cost</th><th>Required</th></tr></thead>
-                            <tbody>
-                                @foreach (var level in groupLevels)
-                                {
-                                    var items = athleteItems.Where(a => a.TeamLevelId == level.Id).ToList();
-                                    @if (items.Any())
-                                    {
-                                        @foreach (var item in items)
-                                        {
-                                            <tr>
-                                                <td>@level.Name</td>
-                                                <td>@item.Name</td>
-                                                <td>$@item.Cost.ToString("N2")</td>
-                                                <td>@(item.IsRequired ? "Yes" : "No")</td>
-                                            </tr>
-                                        }
-                                    }
-                                    else
-                                    {
-                                        <tr><td>@level.Name</td><td colspan="3" class="text-muted fst-italic">No items</td></tr>
-                                    }
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                }
             }
         }
-
-        var ungroupedLevelIds = teamLevels.Select(t => t.Id).Except(levelGroupAssignments.Select(a => a.TeamLevelId)).ToList();
-        var ungroupedLevels = teamLevels.Where(t => ungroupedLevelIds.Contains(t.Id)).ToList();
-        @if (ungroupedLevels.Any())
+        else
         {
-            @if (seasonGroups.Any()) { <h5 class="mt-3 text-muted">Ungrouped</h5> }
-            <div class="card mb-3">
-                <div class="card-body p-0">
-                    <table class="table table-sm mb-0">
-                        <thead><tr><th>@labels.TeamLevel</th><th>@labels.AthleteItem</th><th>Cost</th><th>Required</th></tr></thead>
-                        <tbody>
-                            @foreach (var level in ungroupedLevels)
-                            {
-                                var items = athleteItems.Where(a => a.TeamLevelId == level.Id).ToList();
-                                @if (items.Any())
-                                {
-                                    @foreach (var item in items)
-                                    {
-                                        <tr>
-                                            <td>@level.Name</td>
-                                            <td>@item.Name</td>
-                                            <td>$@item.Cost.ToString("N2")</td>
-                                            <td>@(item.IsRequired ? "Yes" : "No")</td>
-                                        </tr>
-                                    }
-                                }
-                                else
-                                {
-                                    <tr><td>@level.Name</td><td colspan="3" class="text-muted fst-italic">No items</td></tr>
-                                }
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            @foreach (var level in teamLevels)
+            {
+                @RenderLevelBudget(level)
+            }
         }
 
         <div class="fw-bold mt-2 p-2 bg-light rounded">
@@ -177,6 +134,7 @@ else
     private List<TeamLevel> teamLevels = new();
     private List<AthleteItem> athleteItems = new();
     private List<TeamLevelGroupAssignment> levelGroupAssignments = new();
+    private List<SharedFeeTeamLevelAssignment> sharedFeeAssignments = new();
     private int selectedSeasonId;
     private Season? selectedSeason;
     private string? userId;
@@ -186,6 +144,75 @@ else
     private decimal sharedFeesTotal => sharedFees.Sum(f => f.Amount);
     private decimal athleteItemsTotal => athleteItems.Sum(a => a.Cost);
     private decimal budgetTotal => sharedFeesTotal + athleteItemsTotal;
+
+    private decimal GetSharedFeeShareForLevel(int teamLevelId)
+    {
+        decimal total = 0;
+        foreach (var fee in sharedFees.Where(f => f.IsIncludedInBudget))
+        {
+            var assignedLevelIds = sharedFeeAssignments.Where(a => a.SharedFeeId == fee.Id).Select(a => a.TeamLevelId).ToList();
+            if (assignedLevelIds.Count == 0)
+                assignedLevelIds = teamLevels.Select(t => t.Id).ToList();
+            if (assignedLevelIds.Contains(teamLevelId) && assignedLevelIds.Count > 0)
+                total += Math.Round(fee.Amount / assignedLevelIds.Count, 2);
+        }
+        return total;
+    }
+
+    private decimal GetLevelTotal(int teamLevelId)
+    {
+        var feeShare = GetSharedFeeShareForLevel(teamLevelId);
+        var itemsTotal = athleteItems.Where(a => a.TeamLevelId == teamLevelId).Sum(a => a.Cost);
+        return feeShare + itemsTotal;
+    }
+
+    private RenderFragment RenderLevelBudget(TeamLevel level) => __builder =>
+    {
+        var feeShare = GetSharedFeeShareForLevel(level.Id);
+        var items = athleteItems.Where(a => a.TeamLevelId == level.Id).ToList();
+        var itemsTotal = items.Sum(a => a.Cost);
+        var levelTotal = feeShare + itemsTotal;
+        var costPerAthlete = level.AthleteCount > 0 ? levelTotal / level.AthleteCount : 0;
+        var monthly = level.PaymentPlanMonths > 0 ? costPerAthlete / level.PaymentPlanMonths : 0;
+
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between">
+                <div>
+                    <strong>@level.Name</strong>
+                    <small class="text-muted ms-2">@level.AthleteCount athletes | @level.PaymentPlanMonths mo plan</small>
+                </div>
+                <span class="fw-bold">$@levelTotal.ToString("N2")</span>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr class="table-warning">
+                            <td><strong>Shared Fee Share</strong></td>
+                            <td class="text-end"><strong>$@feeShare.ToString("N2")</strong></td>
+                        </tr>
+                        @foreach (var item in items)
+                        {
+                            <tr>
+                                <td>@item.Name @(item.IsRequired ? "" : "(optional)")</td>
+                                <td class="text-end">$@item.Cost.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr class="fw-bold"><td>Level Total</td><td class="text-end">$@levelTotal.ToString("N2")</td></tr>
+                        @if (level.AthleteCount > 0)
+                        {
+                            <tr class="text-primary fw-bold"><td>Cost Per Athlete</td><td class="text-end">$@costPerAthlete.ToString("N2")</td></tr>
+                            @if (level.PaymentPlanMonths > 0)
+                            {
+                                <tr class="text-success fw-bold"><td>Payment Plan (@level.PaymentPlanMonths mo)</td><td class="text-end">$@monthly.ToString("N2")/month</td></tr>
+                            }
+                        }
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -220,6 +247,8 @@ else
         var levelIds = teamLevels.Select(t => t.Id).ToList();
         athleteItems = await db.AthleteItems.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
         levelGroupAssignments = await db.TeamLevelGroupAssignments.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
+        var sharedFeeIds = sharedFees.Select(f => f.Id).ToList();
+        sharedFeeAssignments = await db.SharedFeeTeamLevelAssignments.AsNoTracking().Where(a => sharedFeeIds.Contains(a.SharedFeeId)).ToListAsync();
         StateHasChanged();
     }
 

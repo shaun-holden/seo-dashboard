@@ -26,6 +26,7 @@ namespace GymBudgetApp.Models
         public bool IsIncludedInBudget { get; set; } = true;
         public int SeasonId { get; set; }
         public Season Season { get; set; } = null!;
+        public ICollection<SharedFeeTeamLevelAssignment> TeamLevelAssignments { get; set; } = new List<SharedFeeTeamLevelAssignment>();
 
         public string DisplayName => !string.IsNullOrWhiteSpace(Name) ? Name : FormatCategory(Category);
 

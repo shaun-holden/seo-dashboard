@@ -619,6 +619,49 @@ else
             </div>
         }
 
+        @if (sharedFees.Any() && teamLevels.Any())
+        {
+            <div class="card mb-4 border-info">
+                <div class="card-header bg-info bg-opacity-10 d-flex justify-content-between">
+                    <h5 class="mb-0">Assign Shared Fees to @labels.TeamLevels</h5>
+                    <button class="btn btn-sm btn-outline-primary" @onclick="AssignAllFeesToAllLevels">Select All</button>
+                </div>
+                <div class="card-body p-0" style="overflow-x: auto;">
+                    <table class="table table-sm table-bordered mb-0">
+                        <thead>
+                            <tr>
+                                <th>Fee</th>
+                                <th>Amount</th>
+                                @foreach (var level in teamLevels)
+                                {
+                                    <th class="text-center" style="min-width: 80px;">@level.Name</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var fee in sharedFees)
+                            {
+                                var feeId = fee.Id;
+                                <tr>
+                                    <td>@fee.DisplayName</td>
+                                    <td>$@fee.Amount.ToString("N2")</td>
+                                    @foreach (var level in teamLevels)
+                                    {
+                                        var levelId = level.Id;
+                                        var isAssigned = sharedFeeAssignments.Any(a => a.SharedFeeId == feeId && a.TeamLevelId == levelId);
+                                        <td class="text-center">
+                                            <input type="checkbox" checked="@isAssigned"
+                                                   @onchange="(e) => ToggleSharedFeeAssignment(feeId, levelId, (bool)e.Value!)" />
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+
         @if (showForm)
         {
             <div class="card mb-4 p-3">
@@ -736,6 +779,7 @@ else
     private bool addToAllLevels = true;
     private HashSet<int> selectedGroupIdsForItem = new();
     private List<SharedFee> sharedFees = new();
+    private List<SharedFeeTeamLevelAssignment> sharedFeeAssignments = new();
     private List<Coach> coaches = new();
     private bool showSharedFeeForm;
     private SharedFeeCategory sharedFeeCategory = SharedFeeCategory.Mileage;
@@ -901,6 +945,8 @@ else
         meets = await db.Meets.AsNoTracking().Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToListAsync();
         meetLevelAssignments = await db.MeetTeamLevelAssignments.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
         sharedFees = await db.SharedFees.AsNoTracking().Where(f => f.SeasonId == selectedSeasonId).ToListAsync();
+        var sharedFeeIds = sharedFees.Select(f => f.Id).ToList();
+        sharedFeeAssignments = await db.SharedFeeTeamLevelAssignments.AsNoTracking().Where(a => sharedFeeIds.Contains(a.SharedFeeId)).ToListAsync();
         coaches = await db.Coaches.AsNoTracking().Where(c => c.SeasonId == selectedSeasonId && c.IsActive).ToListAsync();
         StateHasChanged();
     }
@@ -1116,7 +1162,14 @@ else
     private async Task SaveSharedFee()
     {
         using var db = await DbFactory.CreateDbContextAsync();
-        db.SharedFees.Add(new SharedFee { Category = sharedFeeCategory, Name = sharedFeeName, Amount = sharedFeeAmount, IsIncludedInBudget = true, SeasonId = selectedSeasonId });
+        var newFee = new SharedFee { Category = sharedFeeCategory, Name = sharedFeeName, Amount = sharedFeeAmount, IsIncludedInBudget = true, SeasonId = selectedSeasonId };
+        db.SharedFees.Add(newFee);
+        await db.SaveChangesAsync();
+        // Auto-assign to all team levels
+        foreach (var level in teamLevels)
+        {
+            db.SharedFeeTeamLevelAssignments.Add(new SharedFeeTeamLevelAssignment { SharedFeeId = newFee.Id, TeamLevelId = level.Id });
+        }
         await db.SaveChangesAsync();
         await LoadData();
         showSharedFeeForm = false;
@@ -1127,6 +1180,38 @@ else
         using var db = await DbFactory.CreateDbContextAsync();
         var entity = await db.SharedFees.FindAsync(fee.Id);
         if (entity != null) { db.SharedFees.Remove(entity); await db.SaveChangesAsync(); }
+        await LoadData();
+    }
+
+    private async Task ToggleSharedFeeAssignment(int sharedFeeId, int teamLevelId, bool isChecked)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        if (isChecked)
+        {
+            if (!await db.SharedFeeTeamLevelAssignments.AnyAsync(a => a.SharedFeeId == sharedFeeId && a.TeamLevelId == teamLevelId))
+                db.SharedFeeTeamLevelAssignments.Add(new SharedFeeTeamLevelAssignment { SharedFeeId = sharedFeeId, TeamLevelId = teamLevelId });
+        }
+        else
+        {
+            var existing = await db.SharedFeeTeamLevelAssignments.FirstOrDefaultAsync(a => a.SharedFeeId == sharedFeeId && a.TeamLevelId == teamLevelId);
+            if (existing != null) db.SharedFeeTeamLevelAssignments.Remove(existing);
+        }
+        await db.SaveChangesAsync();
+        await LoadData();
+    }
+
+    private async Task AssignAllFeesToAllLevels()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        foreach (var fee in sharedFees)
+        {
+            foreach (var level in teamLevels)
+            {
+                if (!await db.SharedFeeTeamLevelAssignments.AnyAsync(a => a.SharedFeeId == fee.Id && a.TeamLevelId == level.Id))
+                    db.SharedFeeTeamLevelAssignments.Add(new SharedFeeTeamLevelAssignment { SharedFeeId = fee.Id, TeamLevelId = level.Id });
+            }
+        }
+        await db.SaveChangesAsync();
         await LoadData();
     }
 

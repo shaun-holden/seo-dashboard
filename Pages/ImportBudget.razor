@@ -463,6 +463,8 @@
             var srcCoachIds = srcCoaches.Select(c => c.Id).ToList();
             var srcCoachGroupAssigns = Db.CoachGroupAssignments.Where(a => srcCoachIds.Contains(a.CoachId)).ToList();
             var srcCoachMeetAssigns = Db.CoachMeetAssignments.Where(a => srcCoachIds.Contains(a.CoachId)).ToList();
+            var srcSharedFeeIds = srcSharedFees.Select(f => f.Id).ToList();
+            var srcSharedFeeAssigns = Db.SharedFeeTeamLevelAssignments.Where(a => srcSharedFeeIds.Contains(a.SharedFeeId)).ToList();
             var srcPerDiems = Db.PerDiemEntries.Where(p => srcMeetIds.Contains(p.MeetId)).ToList();
             var srcNotes = Db.SeasonNotes.Where(n => n.SeasonId == srcSeasonId).ToList();
 
@@ -482,6 +484,8 @@
             Db.CoachGroupAssignments.RemoveRange(Db.CoachGroupAssignments.Where(a => existingCoachIds.Contains(a.CoachId)));
             Db.AthleteItems.RemoveRange(Db.AthleteItems.Where(a => existingLevelIds.Contains(a.TeamLevelId)));
             Db.TeamLevelGroupAssignments.RemoveRange(Db.TeamLevelGroupAssignments.Where(a => existingLevelIds.Contains(a.TeamLevelId)));
+            var existingSharedFeeIds = Db.SharedFees.Where(f => f.SeasonId == targetSeasonId).Select(f => f.Id).ToList();
+            Db.SharedFeeTeamLevelAssignments.RemoveRange(Db.SharedFeeTeamLevelAssignments.Where(a => existingSharedFeeIds.Contains(a.SharedFeeId)));
             Db.SharedFees.RemoveRange(Db.SharedFees.Where(f => f.SeasonId == targetSeasonId));
             Db.SeasonNotes.RemoveRange(Db.SeasonNotes.Where(n => n.SeasonId == targetSeasonId));
             Db.Meets.RemoveRange(existingMeets);
@@ -608,10 +612,21 @@
             }
             await Db.SaveChangesAsync();
 
-            // 6. Copy shared fees
+            // 6. Copy shared fees + fee-level assignments
+            var feeMap = new Dictionary<int, int>();
             foreach (var fee in srcSharedFees)
             {
-                Db.SharedFees.Add(new SharedFee { Category = fee.Category, Name = fee.Name, Amount = fee.Amount, IsIncludedInBudget = fee.IsIncludedInBudget, SeasonId = targetSeasonId });
+                var newFee = new SharedFee { Category = fee.Category, Name = fee.Name, Amount = fee.Amount, IsIncludedInBudget = fee.IsIncludedInBudget, SeasonId = targetSeasonId };
+                Db.SharedFees.Add(newFee);
+                await Db.SaveChangesAsync();
+                feeMap[fee.Id] = newFee.Id;
+            }
+
+            // Copy shared fee team level assignments
+            foreach (var a in srcSharedFeeAssigns)
+            {
+                if (feeMap.TryGetValue(a.SharedFeeId, out var newFeeId) && levelMap.TryGetValue(a.TeamLevelId, out var newLevelId))
+                    Db.SharedFeeTeamLevelAssignments.Add(new SharedFeeTeamLevelAssignment { SharedFeeId = newFeeId, TeamLevelId = newLevelId });
             }
             await Db.SaveChangesAsync();
 
