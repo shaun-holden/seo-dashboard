@@ -31,15 +31,34 @@ else
 
     @if (selectedSeasonId > 0)
     {
-        <div class="d-flex align-items-center gap-3 mb-3">
+        <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
             <button class="btn btn-primary" @onclick="ShowForm">+ Add @labels.Coach</button>
-            <input type="text" class="form-control" style="max-width: 250px;" placeholder="Search by name or role..."
-                   @bind="searchQuery" @bind:event="oninput" />
-            <select class="form-select" style="max-width: 150px;" @bind="filterStatus">
-                <option value="all">All</option>
+            <select class="form-select" style="max-width: 170px;" @bind="filterStatus">
+                <option value="all">All Status</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
             </select>
+            @if (seasonGroups.Any())
+            {
+                <select class="form-select" style="max-width: 170px;" @bind="filterGroupId">
+                    <option value="0">All Groups</option>
+                    <option value="-1">Ungrouped</option>
+                    @foreach (var g in seasonGroups)
+                    {
+                        <option value="@g.Id">@g.Name</option>
+                    }
+                </select>
+            }
+            @if (distinctRoles.Any())
+            {
+                <select class="form-select" style="max-width: 170px;" @bind="filterRole">
+                    <option value="">All Roles</option>
+                    @foreach (var role in distinctRoles)
+                    {
+                        <option value="@role">@role</option>
+                    }
+                </select>
+            }
         </div>
 
         @if (showForm)
@@ -137,20 +156,30 @@ else
     private List<CoachGroupAssignment> coachGroupAssignments = new();
     private string? userId;
     private ProjectLabels labels = ProjectLabels.Default;
-    private string searchQuery = "";
     private string filterStatus = "all";
+    private int filterGroupId = 0;
+    private string filterRole = "";
+
+    private List<string> distinctRoles => coaches
+        .Select(c => c.Role)
+        .Where(r => !string.IsNullOrWhiteSpace(r))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(r => r)
+        .ToList();
 
     private List<Coach> filteredCoaches => coaches.Where(c =>
     {
-        if (!string.IsNullOrWhiteSpace(searchQuery))
-        {
-            var q = searchQuery.Trim();
-            if (!c.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
-                && !c.Role.Contains(q, StringComparison.OrdinalIgnoreCase))
-                return false;
-        }
         if (filterStatus == "active" && !c.IsActive) return false;
         if (filterStatus == "inactive" && c.IsActive) return false;
+        if (!string.IsNullOrEmpty(filterRole) && !string.Equals(c.Role, filterRole, StringComparison.OrdinalIgnoreCase)) return false;
+        if (filterGroupId == -1)
+        {
+            if (coachGroupAssignments.Any(a => a.CoachId == c.Id)) return false;
+        }
+        else if (filterGroupId > 0)
+        {
+            if (!coachGroupAssignments.Any(a => a.CoachId == c.Id && a.SeasonGroupId == filterGroupId)) return false;
+        }
         return true;
     }).ToList();
 
@@ -269,8 +298,10 @@ else
                                     @onclick="() => BulkAssignMeets(coach.Id)">
                                 Assign Selected (@(bulkAssignCoachId == coach.Id ? selectedMeetIds.Count : 0))
                             </button>
-                            <button class="btn btn-sm btn-outline-secondary"
+                            <button class="btn btn-sm btn-outline-secondary me-1"
                                     @onclick="() => SelectAllMeets(coach.Id, unassignedMeets)">Select All</button>
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    @onclick="DeselectAllMeets">Deselect All</button>
                         </div>
                     }
                 </div>
@@ -299,6 +330,12 @@ else
     {
         bulkAssignCoachId = coachId;
         selectedMeetIds = unassigned.Select(m => m.Id).ToHashSet();
+    }
+
+    private void DeselectAllMeets()
+    {
+        selectedMeetIds.Clear();
+        bulkAssignCoachId = null;
     }
 
     private async Task BulkAssignMeets(int coachId)

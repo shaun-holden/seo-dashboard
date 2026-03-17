@@ -31,15 +31,24 @@ else
 
     @if (selectedSeasonId > 0)
     {
-        <div class="d-flex align-items-center gap-3 mb-3">
+        <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
             <button class="btn btn-primary" @onclick="ShowForm">+ Add @labels.Meet</button>
-            <input type="text" class="form-control" style="max-width: 250px;" placeholder="Search by name..."
-                   @bind="searchQuery" @bind:event="oninput" />
-            <select class="form-select" style="max-width: 150px;" @bind="filterTravelType">
+            <select class="form-select" style="max-width: 170px;" @bind="filterTravelType">
                 <option value="all">All Travel</option>
                 <option value="Drive">Drive</option>
                 <option value="Fly">Fly</option>
             </select>
+            @if (seasonGroups.Any())
+            {
+                <select class="form-select" style="max-width: 170px;" @bind="filterGroupId">
+                    <option value="0">All Groups</option>
+                    <option value="-1">Ungrouped</option>
+                    @foreach (var g in seasonGroups)
+                    {
+                        <option value="@g.Id">@g.Name</option>
+                    }
+                </select>
+            }
         </div>
 
         @if (showForm)
@@ -118,16 +127,21 @@ else
     private HashSet<int> formGroupIds = new();
     private string? userId;
     private ProjectLabels labels = ProjectLabels.Default;
-    private string searchQuery = "";
     private string filterTravelType = "all";
+    private int filterGroupId = 0;
 
     private List<Meet> filteredMeets => meets.Where(m =>
     {
-        if (!string.IsNullOrWhiteSpace(searchQuery) &&
-            !m.Name.Contains(searchQuery.Trim(), StringComparison.OrdinalIgnoreCase))
-            return false;
         if (filterTravelType == "Drive" && m.TravelType != TravelType.Drive) return false;
         if (filterTravelType == "Fly" && m.TravelType != TravelType.Fly) return false;
+        if (filterGroupId == -1)
+        {
+            if (groupAssignments.Any(a => a.MeetId == m.Id)) return false;
+        }
+        else if (filterGroupId > 0)
+        {
+            if (!groupAssignments.Any(a => a.MeetId == m.Id && a.SeasonGroupId == filterGroupId)) return false;
+        }
         return true;
     }).ToList();
 
@@ -231,8 +245,10 @@ else
                                         @onclick="() => BulkAssignGroups(meet.Id)">
                                     Assign Selected (@(bulkAssignMeetId == meet.Id ? selectedGroupIds.Count : 0))
                                 </button>
-                                <button class="btn btn-sm btn-outline-secondary"
+                                <button class="btn btn-sm btn-outline-secondary me-1"
                                         @onclick="() => SelectAllGroups(meet.Id, unassignedGroups)">Select All</button>
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        @onclick="DeselectAllGroups">Deselect All</button>
                             </div>
                         }
                     }
@@ -262,6 +278,12 @@ else
     {
         bulkAssignMeetId = meetId;
         selectedGroupIds = unassigned.Select(g => g.Id).ToHashSet();
+    }
+
+    private void DeselectAllGroups()
+    {
+        selectedGroupIds.Clear();
+        bulkAssignMeetId = null;
     }
 
     private async Task BulkAssignGroups(int meetId)

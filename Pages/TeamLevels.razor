@@ -96,7 +96,7 @@ else
         @if (showSharedFeeForm)
         {
             <div class="card mb-4 p-3 border-warning">
-                <h5>Add Shared Fee</h5>
+                <h5>@(editingFee == null ? "Add Shared Fee" : "Edit Shared Fee")</h5>
                 <div class="row">
                     <div class="col-md-4 mb-2">
                         <label>Category</label>
@@ -110,6 +110,10 @@ else
                     <div class="col-md-4 mb-2">
                         <label>Name (optional)</label>
                         <input class="form-control" placeholder="Custom description" @bind="sharedFeeName" />
+                    </div>
+                    <div class="col-md-2 mb-2">
+                        <label>&nbsp;</label>
+                        <div><input type="checkbox" @bind="sharedFeeIncluded" /> Include in Budget</div>
                     </div>
                 </div>
 
@@ -610,7 +614,10 @@ else
                                     <td>@fee.DisplayName</td>
                                     <td>$@fee.Amount.ToString("N2")</td>
                                     <td>@(fee.IsIncludedInBudget ? "Yes" : "No")</td>
-                                    <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteSharedFee(fee)">Remove</button></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditSharedFee(fee)">Edit</button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteSharedFee(fee)">Remove</button>
+                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -624,7 +631,8 @@ else
             <div class="card mb-4 border-info">
                 <div class="card-header bg-info bg-opacity-10 d-flex justify-content-between">
                     <h5 class="mb-0">Assign Shared Fees to @labels.TeamLevels</h5>
-                    <button class="btn btn-sm btn-outline-primary" @onclick="AssignAllFeesToAllLevels">Select All</button>
+                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="AssignAllFeesToAllLevels">Select All</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="UnassignAllFeesFromAllLevels">Deselect All</button>
                 </div>
                 <div class="card-body p-0" style="overflow-x: auto;">
                     <table class="table table-sm table-bordered mb-0">
@@ -801,9 +809,11 @@ else
     private List<SharedFeeTeamLevelAssignment> sharedFeeAssignments = new();
     private List<Coach> coaches = new();
     private bool showSharedFeeForm;
+    private SharedFee? editingFee;
     private SharedFeeCategory sharedFeeCategory = SharedFeeCategory.Mileage;
     private string sharedFeeName = "";
     private decimal sharedFeeAmount = 0;
+    private bool sharedFeeIncluded = true;
     private HashSet<int> calcCoachIds = new();
     private decimal calcMiles = 0;
     private decimal calcRatePerMile = 0;
@@ -1091,8 +1101,21 @@ else
         await LoadData();
     }
 
-    private void ShowSharedFeeForm() { sharedFeeCategory = SharedFeeCategory.Mileage; sharedFeeName = ""; sharedFeeAmount = 0; ResetCalcFields(); showSharedFeeForm = true; showForm = false; showAddItemForm = false; }
-    private void CancelSharedFeeForm() { showSharedFeeForm = false; }
+    private void ShowSharedFeeForm() { editingFee = null; sharedFeeCategory = SharedFeeCategory.Mileage; sharedFeeName = ""; sharedFeeAmount = 0; sharedFeeIncluded = true; ResetCalcFields(); showSharedFeeForm = true; showForm = false; showAddItemForm = false; }
+    private void CancelSharedFeeForm() { showSharedFeeForm = false; editingFee = null; }
+
+    private void EditSharedFee(SharedFee fee)
+    {
+        editingFee = fee;
+        sharedFeeCategory = fee.Category;
+        sharedFeeName = fee.Name ?? "";
+        sharedFeeAmount = fee.Amount;
+        sharedFeeIncluded = fee.IsIncludedInBudget;
+        ResetCalcFields();
+        showSharedFeeForm = true;
+        showForm = false;
+        showAddItemForm = false;
+    }
 
     private void ResetCalcFields()
     {
@@ -1182,17 +1205,33 @@ else
     private async Task SaveSharedFee()
     {
         using var db = await DbFactory.CreateDbContextAsync();
-        var newFee = new SharedFee { Category = sharedFeeCategory, Name = sharedFeeName, Amount = sharedFeeAmount, IsIncludedInBudget = true, SeasonId = selectedSeasonId };
-        db.SharedFees.Add(newFee);
-        await db.SaveChangesAsync();
-        // Auto-assign to all team levels
-        foreach (var level in teamLevels)
+        if (editingFee != null)
         {
-            db.SharedFeeTeamLevelAssignments.Add(new SharedFeeTeamLevelAssignment { SharedFeeId = newFee.Id, TeamLevelId = level.Id });
+            var entity = await db.SharedFees.FindAsync(editingFee.Id);
+            if (entity != null)
+            {
+                entity.Category = sharedFeeCategory;
+                entity.Name = sharedFeeName;
+                entity.Amount = sharedFeeAmount;
+                entity.IsIncludedInBudget = sharedFeeIncluded;
+                await db.SaveChangesAsync();
+            }
         }
-        await db.SaveChangesAsync();
+        else
+        {
+            var newFee = new SharedFee { Category = sharedFeeCategory, Name = sharedFeeName, Amount = sharedFeeAmount, IsIncludedInBudget = sharedFeeIncluded, SeasonId = selectedSeasonId };
+            db.SharedFees.Add(newFee);
+            await db.SaveChangesAsync();
+            // Auto-assign to all team levels
+            foreach (var level in teamLevels)
+            {
+                db.SharedFeeTeamLevelAssignments.Add(new SharedFeeTeamLevelAssignment { SharedFeeId = newFee.Id, TeamLevelId = level.Id });
+            }
+            await db.SaveChangesAsync();
+        }
         await LoadData();
         showSharedFeeForm = false;
+        editingFee = null;
     }
 
     private async Task DeleteSharedFee(SharedFee fee)
@@ -1231,6 +1270,18 @@ else
                     db.SharedFeeTeamLevelAssignments.Add(new SharedFeeTeamLevelAssignment { SharedFeeId = fee.Id, TeamLevelId = level.Id });
             }
         }
+        await db.SaveChangesAsync();
+        await LoadData();
+    }
+
+    private async Task UnassignAllFeesFromAllLevels()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var feeIds = sharedFees.Select(f => f.Id).ToList();
+        var allAssignments = await db.SharedFeeTeamLevelAssignments
+            .Where(a => feeIds.Contains(a.SharedFeeId))
+            .ToListAsync();
+        db.SharedFeeTeamLevelAssignments.RemoveRange(allAssignments);
         await db.SaveChangesAsync();
         await LoadData();
     }

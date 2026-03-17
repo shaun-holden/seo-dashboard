@@ -31,9 +31,27 @@ else
 
     @if (selectedSeasonId > 0)
     {
-        <div class="d-flex align-items-center gap-3 mb-3">
-            <input type="text" class="form-control" style="max-width: 250px;" placeholder="Search team levels..."
-                   @bind="searchQuery" @bind:event="oninput" />
+        <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+            @if (teamLevels.Count > 1)
+            {
+                <select class="form-select" style="max-width: 200px;" @bind="filterLevelId">
+                    <option value="0">All @labels.TeamLevels</option>
+                    @foreach (var level in teamLevels)
+                    {
+                        <option value="@level.Id">@level.Name</option>
+                    }
+                </select>
+            }
+            @if (seasonGroups.Any())
+            {
+                <select class="form-select" style="max-width: 200px;" @bind="filterGroupId">
+                    <option value="0">All Groups</option>
+                    @foreach (var g in seasonGroups)
+                    {
+                        <option value="@g.Id">@g.Name</option>
+                    }
+                </select>
+            }
         </div>
 
         <div class="row mb-3">
@@ -175,11 +193,27 @@ else
     private System.Threading.Timer? _refreshTimer;
 
     private Dictionary<int, int> scenarioAthletes = new();
-    private string searchQuery = "";
+    private int filterLevelId = 0;
+    private int filterGroupId = 0;
 
-    private List<TeamLevel> filteredTeamLevels => string.IsNullOrWhiteSpace(searchQuery)
-        ? teamLevels
-        : teamLevels.Where(t => t.Name.Contains(searchQuery.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+    private List<TeamLevel> filteredTeamLevels
+    {
+        get
+        {
+            var result = teamLevels.AsEnumerable();
+            if (filterLevelId > 0)
+                result = result.Where(t => t.Id == filterLevelId);
+            if (filterGroupId > 0)
+            {
+                var groupLevelIds = levelGroupAssignments
+                    .Where(a => a.SeasonGroupId == filterGroupId)
+                    .Select(a => a.TeamLevelId)
+                    .ToHashSet();
+                result = result.Where(t => groupLevelIds.Contains(t.Id));
+            }
+            return result.ToList();
+        }
+    }
 
     private decimal sharedFeesTotal => sharedFees.Where(f => f.IsIncludedInBudget).Sum(f => f.Amount);
     private decimal athleteItemsTotal => athleteItems.Sum(a => a.Cost);
