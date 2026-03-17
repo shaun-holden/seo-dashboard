@@ -643,7 +643,7 @@ else
                                 <th>Per Athlete</th>
                                 @foreach (var level in teamLevels)
                                 {
-                                    <th class="text-center" style="min-width: 80px;">@level.Name (@level.AthleteCount)</th>
+                                    <th class="text-center" style="min-width: 80px;">@level.Name</th>
                                 }
                             </tr>
                         </thead>
@@ -684,10 +684,6 @@ else
                     <div class="col-md-4 mb-2">
                         <label>Level Name</label>
                         <input class="form-control" @bind="formName" placeholder="e.g. Gym Stars, Elite/HOPE" />
-                    </div>
-                    <div class="col-md-3 mb-2">
-                        <label>Athletes</label>
-                        <input type="number" class="form-control" @bind="formAthleteCount" />
                     </div>
                     <div class="col-md-3 mb-2">
                         <label>Payment Plan (months)</label>
@@ -882,7 +878,6 @@ else
                     </table>
                 }
                 <div class="d-flex gap-4 mb-2 text-muted">
-                    <span><strong>Athletes:</strong> @level.AthleteCount</span>
                     <span><strong>Payment Plan:</strong> @level.PaymentPlanMonths months</span>
                 </div>
                 <h6>@labels.AthleteItems</h6>
