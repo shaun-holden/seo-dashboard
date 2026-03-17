@@ -795,6 +795,12 @@ else
     private string newItemName = "";
     private decimal newItemCost = 0;
     private bool newItemRequired = true;
+    private int? editingItemId;
+    private string editItemName = "";
+    private decimal editItemCost = 0;
+    private bool editItemRequired = true;
+    private bool editItemAllLevels = false;
+    private string editItemOriginalName = "";
     private bool showAddItemForm;
     private string bulkItemName = "";
     private decimal bulkItemCost = 0;
@@ -887,12 +893,38 @@ else
                         @{ var levelItems = athleteItems.Where(i => i.TeamLevelId == level.Id).ToList(); }
                         @foreach (var item in levelItems)
                         {
-                            <tr>
-                                <td>@item.Name</td>
-                                <td>$@item.Cost.ToString("N2")</td>
-                                <td>@(item.IsRequired ? "Yes" : "No")</td>
-                                <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAthleteItem(item)">Remove</button></td>
-                            </tr>
+                            var itemId = item.Id;
+                            @if (editingItemId == itemId)
+                            {
+                                <tr class="@(editItemAllLevels ? "table-info" : "")">
+                                    <td><input class="form-control form-control-sm" @bind="editItemName" /></td>
+                                    <td><input type="number" step="0.01" class="form-control form-control-sm" @bind="editItemCost" /></td>
+                                    <td><input type="checkbox" @bind="editItemRequired" /> Yes</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-success me-1" @onclick="SaveEditItem">
+                                            @(editItemAllLevels ? "Save All" : "Save")
+                                        </button>
+                                        <button class="btn btn-sm btn-secondary" @onclick="CancelEditItem">Cancel</button>
+                                    </td>
+                                </tr>
+                                @if (editItemAllLevels)
+                                {
+                                    <tr class="table-info"><td colspan="4"><small class="text-info">Editing "@editItemOriginalName" across all @labels.TeamLevels.ToLower()</small></td></tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td>@item.Name</td>
+                                    <td>$@item.Cost.ToString("N2")</td>
+                                    <td>@(item.IsRequired ? "Yes" : "No")</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => StartEditItem(item)">Edit</button>
+                                        <button class="btn btn-sm btn-outline-info me-1" @onclick="() => StartEditItemAllLevels(item)">Edit All</button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAthleteItem(item)">Remove</button>
+                                    </td>
+                                </tr>
+                            }
                         }
                         <tr class="fw-bold">
                             <td>Total @labels.AthleteItems</td>
@@ -1085,6 +1117,64 @@ else
         db.AthleteItems.Add(new AthleteItem { Name = newItemName, Cost = newItemCost, IsRequired = newItemRequired, TeamLevelId = levelId });
         await db.SaveChangesAsync();
         newItemName = ""; newItemCost = 0; newItemRequired = true;
+        await LoadData();
+    }
+
+    private void StartEditItem(AthleteItem item)
+    {
+        editingItemId = item.Id;
+        editItemName = item.Name;
+        editItemCost = item.Cost;
+        editItemRequired = item.IsRequired;
+        editItemAllLevels = false;
+        editItemOriginalName = item.Name;
+    }
+
+    private void StartEditItemAllLevels(AthleteItem item)
+    {
+        editingItemId = item.Id;
+        editItemName = item.Name;
+        editItemCost = item.Cost;
+        editItemRequired = item.IsRequired;
+        editItemAllLevels = true;
+        editItemOriginalName = item.Name;
+    }
+
+    private void CancelEditItem() { editingItemId = null; editItemAllLevels = false; }
+
+    private async Task SaveEditItem()
+    {
+        if (editingItemId == null || string.IsNullOrWhiteSpace(editItemName)) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        if (editItemAllLevels)
+        {
+            // Update all items with the same original name across all levels in this season
+            var levelIds = teamLevels.Select(t => t.Id).ToList();
+            var matchingItems = await db.AthleteItems
+                .Where(a => levelIds.Contains(a.TeamLevelId) && a.Name == editItemOriginalName)
+                .ToListAsync();
+            foreach (var item in matchingItems)
+            {
+                item.Name = editItemName;
+                item.Cost = editItemCost;
+                item.IsRequired = editItemRequired;
+            }
+        }
+        else
+        {
+            var entity = await db.AthleteItems.FindAsync(editingItemId.Value);
+            if (entity != null)
+            {
+                entity.Name = editItemName;
+                entity.Cost = editItemCost;
+                entity.IsRequired = editItemRequired;
+            }
+        }
+
+        await db.SaveChangesAsync();
+        editingItemId = null;
+        editItemAllLevels = false;
         await LoadData();
     }
 
