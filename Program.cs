@@ -1,5 +1,4 @@
 using GymBudgetApp;
-using GymBudgetApp.Data;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +8,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
-builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddScoped<GymBudgetApp.Services.NotesPanelState>();
 
 var dbFolder = Environment.GetEnvironmentVariable("DB_PATH")

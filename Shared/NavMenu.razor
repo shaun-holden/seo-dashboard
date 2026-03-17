@@ -2,8 +2,10 @@
 @using GymBudgetApp.Models
 @using GymBudgetApp.Services
 @using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IConfiguration Configuration
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -95,10 +97,11 @@
         var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var email = authState.User.FindFirst(ClaimTypes.Email)?.Value
                     ?? authState.User.FindFirst("email")?.Value;
-        isAdmin = string.Equals(email, "deshaun@tntgym.org", StringComparison.OrdinalIgnoreCase);
+        var adminEmail = Configuration["AdminEmail"] ?? "deshaun@tntgym.org";
+        isAdmin = string.Equals(email, adminEmail, StringComparison.OrdinalIgnoreCase);
         if (userId != null)
         {
-            var activeSeason = Db.Seasons.Where(s => s.UserId == userId && s.IsActive).FirstOrDefault();
+            var activeSeason = await Db.Seasons.Where(s => s.UserId == userId && s.IsActive).FirstOrDefaultAsync();
             labels = new ProjectLabels(activeSeason);
         }
     }

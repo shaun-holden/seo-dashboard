@@ -4,6 +4,7 @@
 @using System.Security.Claims
 @inject UserManager<IdentityUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IConfiguration Configuration
 
 <h3>Admin</h3>
 
@@ -57,7 +58,6 @@ else
 }
 
 @code {
-    private const string AdminEmail = "deshaun@tntgym.org";
     private bool isAdmin;
     private string resetEmail = "";
     private string resetPassword = "";
@@ -71,7 +71,8 @@ else
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var email = authState.User.FindFirst(ClaimTypes.Email)?.Value
                     ?? authState.User.FindFirst("email")?.Value;
-        isAdmin = string.Equals(email, AdminEmail, StringComparison.OrdinalIgnoreCase);
+        var adminEmail = Configuration["AdminEmail"] ?? "deshaun@tntgym.org";
+        isAdmin = string.Equals(email, adminEmail, StringComparison.OrdinalIgnoreCase);
 
         if (isAdmin)
         {

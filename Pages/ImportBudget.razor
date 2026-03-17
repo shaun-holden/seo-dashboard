@@ -5,6 +5,7 @@
 @using GymBudgetApp.Services
 @using Microsoft.AspNetCore.Identity
 @using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject UserManager<IdentityUser> UserManager
@@ -217,6 +218,7 @@
     private string? pinVerifyError;
     private int pinAttempts;
     private string? employeePinHash;
+    private UserImportPin? employeePin;
 
     // Create new season
     private bool isCreatingNewSeason;
@@ -247,8 +249,8 @@
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         currentUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        mySeasons = Db.Seasons.Where(s => s.UserId == currentUserId).OrderByDescending(s => s.Name).ToList();
-        myPin = Db.UserImportPins.FirstOrDefault(p => p.UserId == currentUserId);
+        mySeasons = await Db.Seasons.Where(s => s.UserId == currentUserId).OrderByDescending(s => s.Name).ToListAsync();
+        myPin = await Db.UserImportPins.FirstOrDefaultAsync(p => p.UserId == currentUserId);
         var activeSeason = mySeasons.FirstOrDefault(s => s.IsActive);
         labels = new ProjectLabels(activeSeason);
     }
@@ -264,12 +266,13 @@
 
         if (myPin == null)
         {
-            myPin = new UserImportPin { UserId = currentUserId!, Pin = newPin };
+            myPin = new UserImportPin { UserId = currentUserId!, Pin = newPin, PinHash = UserImportPin.HashPin(newPin) };
             Db.UserImportPins.Add(myPin);
         }
         else
         {
             myPin.Pin = newPin;
+            myPin.PinHash = UserImportPin.HashPin(newPin);
         }
         await Db.SaveChangesAsync();
         isEditingPin = false;
@@ -320,6 +323,7 @@
 
         employeeUserId = user.Id;
         employeePinHash = userPin.Pin;
+        employeePin = userPin;
         requiresPin = true;
     }
 
@@ -333,7 +337,7 @@
             return;
         }
 
-        if (enteredPin == employeePinHash)
+        if (employeePin != null && employeePin.VerifyPin(enteredPin))
         {
             pinVerified = true;
             employeeSeasons = Db.Seasons.Where(s => s.UserId == employeeUserId).OrderByDescending(s => s.Name).ToList();

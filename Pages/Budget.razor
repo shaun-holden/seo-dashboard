@@ -31,6 +31,11 @@ else
 
     @if (selectedSeasonId > 0)
     {
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <input type="text" class="form-control" style="max-width: 250px;" placeholder="Search team levels..."
+                   @bind="searchQuery" @bind:event="oninput" />
+        </div>
+
         <div class="row mb-3">
             <div class="col-md-3">
                 <div class="card text-white bg-primary">
@@ -113,7 +118,7 @@ else
             @foreach (var group in seasonGroups)
             {
                 var groupLevelIds = levelGroupAssignments.Where(a => a.SeasonGroupId == group.Id).Select(a => a.TeamLevelId).ToHashSet();
-                var groupLevels = teamLevels.Where(t => groupLevelIds.Contains(t.Id)).ToList();
+                var groupLevels = filteredTeamLevels.Where(t => groupLevelIds.Contains(t.Id)).ToList();
                 if (groupLevels.Any())
                 {
                     @if (groupLevels.Count == 1 && string.Equals(groupLevels[0].Name?.Trim(), group.Name?.Trim(), StringComparison.OrdinalIgnoreCase))
@@ -141,7 +146,7 @@ else
         }
         else
         {
-            @foreach (var level in teamLevels)
+            @foreach (var level in filteredTeamLevels)
             {
                 @RenderLevelBudget(level)
             }
@@ -170,6 +175,11 @@ else
     private System.Threading.Timer? _refreshTimer;
 
     private Dictionary<int, int> scenarioAthletes = new();
+    private string searchQuery = "";
+
+    private List<TeamLevel> filteredTeamLevels => string.IsNullOrWhiteSpace(searchQuery)
+        ? teamLevels
+        : teamLevels.Where(t => t.Name.Contains(searchQuery.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
 
     private decimal sharedFeesTotal => sharedFees.Where(f => f.IsIncludedInBudget).Sum(f => f.Amount);
     private decimal athleteItemsTotal => athleteItems.Sum(a => a.Cost);
@@ -294,7 +304,7 @@ else
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
+        seasons = await Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToListAsync();
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)

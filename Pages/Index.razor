@@ -4,6 +4,7 @@
 @using GymBudgetApp
 @using GymBudgetApp.Models
 @using GymBudgetApp.Services
+@using Microsoft.EntityFrameworkCore
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject AppDbContext Db
 
@@ -16,6 +17,58 @@
         <p>Welcome, <strong>@context.User.Identity?.Name</strong>!</p>
     </Authorized>
 </AuthorizeView>
+
+@if (activeSeason != null)
+{
+    <div class="alert alert-info mb-3">
+        <strong>Active Season:</strong> @activeSeason.Name
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-3 mb-3">
+            <div class="card text-white bg-primary h-100">
+                <div class="card-body">
+                    <h6 class="card-title">@labels.Meets</h6>
+                    <h3>@meetCount</h3>
+                    @if (nextMeet != null)
+                    {
+                        <small>Next: @nextMeet.Name (@nextMeet.Date.ToString("MM/dd"))</small>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card text-white bg-success h-100">
+                <div class="card-body">
+                    <h6 class="card-title">@labels.Coaches</h6>
+                    <h3>@coachCount</h3>
+                    <small>@activeCoachCount active</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card text-white bg-info h-100">
+                <div class="card-body">
+                    <h6 class="card-title">Total Budget</h6>
+                    <h3>$@totalBudget.ToString("N2")</h3>
+                    <small>@budgetItemCount line items</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card text-white bg-warning h-100">
+                <div class="card-body">
+                    <h6 class="card-title">Athletes</h6>
+                    <h3>@totalAthletes</h3>
+                    @if (teamLevelCount > 0)
+                    {
+                        <small>across @teamLevelCount @labels.TeamLevels.ToLower()</small>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 <div class="row mt-3">
     <div class="col-md-4 mb-3">
@@ -85,6 +138,15 @@
 
 @code {
     private ProjectLabels labels = ProjectLabels.Default;
+    private Season? activeSeason;
+    private int meetCount;
+    private int coachCount;
+    private int activeCoachCount;
+    private decimal totalBudget;
+    private int budgetItemCount;
+    private int totalAthletes;
+    private int teamLevelCount;
+    private Meet? nextMeet;
 
     protected override async Task OnInitializedAsync()
     {
@@ -92,8 +154,35 @@
         var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId != null)
         {
-            var activeSeason = Db.Seasons.Where(s => s.UserId == userId && s.IsActive).FirstOrDefault();
+            activeSeason = await Db.Seasons.Where(s => s.UserId == userId && s.IsActive).FirstOrDefaultAsync();
             labels = new ProjectLabels(activeSeason);
+
+            if (activeSeason != null)
+            {
+                var seasonId = activeSeason.Id;
+                meetCount = await Db.Meets.CountAsync(m => m.SeasonId == seasonId);
+                coachCount = await Db.Coaches.CountAsync(c => c.SeasonId == seasonId);
+                activeCoachCount = await Db.Coaches.CountAsync(c => c.SeasonId == seasonId && c.IsActive);
+                budgetItemCount = await Db.BudgetLineItems.CountAsync(b => b.SeasonId == seasonId);
+
+                var sharedFeesTotal = await Db.SharedFees
+                    .Where(f => f.SeasonId == seasonId && f.IsIncludedInBudget)
+                    .SumAsync(f => (decimal?)f.Amount) ?? 0;
+
+                var levelIds = await Db.TeamLevels.Where(t => t.SeasonId == seasonId).Select(t => t.Id).ToListAsync();
+                var athleteItemsTotal = await Db.AthleteItems
+                    .Where(a => levelIds.Contains(a.TeamLevelId))
+                    .SumAsync(a => (decimal?)a.Cost) ?? 0;
+
+                totalBudget = sharedFeesTotal + athleteItemsTotal;
+                teamLevelCount = levelIds.Count;
+                totalAthletes = await Db.TeamLevels.Where(t => t.SeasonId == seasonId).SumAsync(t => (int?)t.AthleteCount) ?? 0;
+
+                nextMeet = await Db.Meets
+                    .Where(m => m.SeasonId == seasonId && m.Date >= DateTime.Today)
+                    .OrderBy(m => m.Date)
+                    .FirstOrDefaultAsync();
+            }
         }
     }
 }

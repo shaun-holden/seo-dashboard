@@ -9,6 +9,31 @@ namespace GymBudgetApp
         public AppDbContext(DbContextOptions<AppDbContext> options)
             : base(options) { }
 
+        public override int SaveChanges()
+        {
+            UpdateAuditTimestamps();
+            return base.SaveChanges();
+        }
+
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            UpdateAuditTimestamps();
+            return base.SaveChangesAsync(cancellationToken);
+        }
+
+        private void UpdateAuditTimestamps()
+        {
+            var entries = ChangeTracker.Entries()
+                .Where(e => e.State == EntityState.Modified);
+
+            foreach (var entry in entries)
+            {
+                var modifiedAtProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "ModifiedAt");
+                if (modifiedAtProp != null)
+                    modifiedAtProp.CurrentValue = DateTime.UtcNow;
+            }
+        }
+
         public DbSet<Season> Seasons { get; set; }
         public DbSet<Meet> Meets { get; set; }
         public DbSet<Coach> Coaches { get; set; }

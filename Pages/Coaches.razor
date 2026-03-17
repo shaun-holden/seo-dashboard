@@ -31,7 +31,16 @@ else
 
     @if (selectedSeasonId > 0)
     {
-        <button class="btn btn-primary mb-3" @onclick="ShowForm">+ Add @labels.Coach</button>
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <button class="btn btn-primary" @onclick="ShowForm">+ Add @labels.Coach</button>
+            <input type="text" class="form-control" style="max-width: 250px;" placeholder="Search by name or role..."
+                   @bind="searchQuery" @bind:event="oninput" />
+            <select class="form-select" style="max-width: 150px;" @bind="filterStatus">
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+            </select>
+        </div>
 
         @if (showForm)
         {
@@ -73,11 +82,16 @@ else
             </div>
         }
 
+        @if (!filteredCoaches.Any() && coaches.Any())
+        {
+            <div class="alert alert-info">No @labels.Coaches.ToLower() match your search.</div>
+        }
+
         @* Grouped coaches *@
         @foreach (var group in seasonGroups)
         {
             var groupCoachIds = coachGroupAssignments.Where(a => a.SeasonGroupId == group.Id).Select(a => a.CoachId).ToHashSet();
-            var groupCoaches = coaches.Where(c => groupCoachIds.Contains(c.Id)).ToList();
+            var groupCoaches = filteredCoaches.Where(c => groupCoachIds.Contains(c.Id)).ToList();
             @if (groupCoaches.Any())
             {
                 <div class="card mb-4 border-primary">
@@ -95,11 +109,11 @@ else
         }
 
         @* Ungrouped coaches *@
-        @if (coaches.Any(c => !coachGroupAssignments.Any(a => a.CoachId == c.Id)) && seasonGroups.Any())
+        @if (filteredCoaches.Any(c => !coachGroupAssignments.Any(a => a.CoachId == c.Id)) && seasonGroups.Any())
         {
             <h5 class="mt-3 text-muted">Ungrouped</h5>
         }
-        @foreach (var coach in coaches.Where(c => !coachGroupAssignments.Any(a => a.CoachId == c.Id)))
+        @foreach (var coach in filteredCoaches.Where(c => !coachGroupAssignments.Any(a => a.CoachId == c.Id)))
         {
             @RenderCoachCard(coach)
         }
@@ -123,6 +137,22 @@ else
     private List<CoachGroupAssignment> coachGroupAssignments = new();
     private string? userId;
     private ProjectLabels labels = ProjectLabels.Default;
+    private string searchQuery = "";
+    private string filterStatus = "all";
+
+    private List<Coach> filteredCoaches => coaches.Where(c =>
+    {
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            var q = searchQuery.Trim();
+            if (!c.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
+                && !c.Role.Contains(q, StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+        if (filterStatus == "active" && !c.IsActive) return false;
+        if (filterStatus == "inactive" && c.IsActive) return false;
+        return true;
+    }).ToList();
 
     // Bulk assign state
     private int? bulkAssignCoachId;
@@ -132,7 +162,7 @@ else
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        seasons = Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList();
+        seasons = await Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToListAsync();
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)
@@ -146,14 +176,12 @@ else
     private async Task LoadData()
     {
         Db.ChangeTracker.Clear();
-        coaches = Db.Coaches.Where(c => c.SeasonId == selectedSeasonId).ToList();
-        meets = Db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToList();
+        coaches = await Db.Coaches.Where(c => c.SeasonId == selectedSeasonId).ToListAsync();
+        meets = await Db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToListAsync();
         var coachIds = coaches.Select(c => c.Id).ToList();
-        assignments = Db.CoachMeetAssignments.Where(a => coachIds.Contains(a.CoachId)).ToList();
-        seasonGroups = Db.SeasonGroups.Where(g => g.SeasonId == selectedSeasonId).OrderBy(g => g.SortOrder).ToList();
-        var coachIds2 = coaches.Select(c => c.Id).ToList();
-        coachGroupAssignments = Db.CoachGroupAssignments.Where(a => coachIds2.Contains(a.CoachId)).ToList();
-        await Task.CompletedTask;
+        assignments = await Db.CoachMeetAssignments.Where(a => coachIds.Contains(a.CoachId)).ToListAsync();
+        seasonGroups = await Db.SeasonGroups.Where(g => g.SeasonId == selectedSeasonId).OrderBy(g => g.SortOrder).ToListAsync();
+        coachGroupAssignments = await Db.CoachGroupAssignments.Where(a => coachIds.Contains(a.CoachId)).ToListAsync();
     }
 
     private RenderFragment RenderCoachCard(Coach coach) => __builder =>
