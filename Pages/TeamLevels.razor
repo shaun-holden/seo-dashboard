@@ -100,10 +100,10 @@ else
                 <div class="row">
                     <div class="col-md-4 mb-2">
                         <label>Category</label>
-                        <select class="form-select" @onchange="OnSharedFeeCategoryChanged">
+                        <select class="form-select" value="@sharedFeeCategory" @onchange="OnSharedFeeCategoryChanged">
                             @foreach (var cat in Enum.GetValues<SharedFeeCategory>())
                             {
-                                <option value="@cat" selected="@(cat == sharedFeeCategory)">@FormatSharedFeeCategory(cat)</option>
+                                <option value="@cat">@FormatSharedFeeCategory(cat)</option>
                             }
                         </select>
                     </div>
@@ -1128,7 +1128,8 @@ else
     private void OnSharedFeeCategoryChanged(ChangeEventArgs e)
     {
         if (Enum.TryParse<SharedFeeCategory>(e.Value?.ToString(), out var cat)) sharedFeeCategory = cat;
-        ResetCalcFields(); sharedFeeAmount = 0;
+        ResetCalcFields();
+        if (editingFee == null) sharedFeeAmount = 0;
     }
 
     private void ToggleCalcCoach(int coachId, bool isChecked)

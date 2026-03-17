@@ -33,14 +33,16 @@ else
     {
         <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
             <button class="btn btn-primary" @onclick="ShowForm">+ Add @labels.Meet</button>
-            <select class="form-select" style="max-width: 170px;" @bind="filterTravelType">
+            <select class="form-select" style="max-width: 170px;" value="@filterTravelType"
+                    @onchange="OnFilterTravelChanged">
                 <option value="all">All Travel</option>
                 <option value="Drive">Drive</option>
                 <option value="Fly">Fly</option>
             </select>
             @if (seasonGroups.Any())
             {
-                <select class="form-select" style="max-width: 170px;" @bind="filterGroupId">
+                <select class="form-select" style="max-width: 170px;" value="@filterGroupId"
+                        @onchange="OnFilterGroupChanged">
                     <option value="0">All Groups</option>
                     <option value="-1">Ungrouped</option>
                     @foreach (var g in seasonGroups)
@@ -256,6 +258,9 @@ else
             }
         </div>
     };
+
+    private void OnFilterTravelChanged(ChangeEventArgs e) { filterTravelType = e.Value?.ToString() ?? "all"; }
+    private void OnFilterGroupChanged(ChangeEventArgs e) { filterGroupId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0; }
 
     private void ToggleExpand(int meetId)
     {

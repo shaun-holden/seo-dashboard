@@ -34,7 +34,8 @@ else
         <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
             @if (teamLevels.Count > 1)
             {
-                <select class="form-select" style="max-width: 200px;" @bind="filterLevelId">
+                <select class="form-select" style="max-width: 200px;" value="@filterLevelId"
+                        @onchange="OnFilterLevelChanged">
                     <option value="0">All @labels.TeamLevels</option>
                     @foreach (var level in teamLevels)
                     {
@@ -44,7 +45,8 @@ else
             }
             @if (seasonGroups.Any())
             {
-                <select class="form-select" style="max-width: 200px;" @bind="filterGroupId">
+                <select class="form-select" style="max-width: 200px;" value="@filterGroupId"
+                        @onchange="OnFilterGroupChanged">
                     <option value="0">All Groups</option>
                     @foreach (var g in seasonGroups)
                     {
@@ -371,6 +373,9 @@ else
         sharedFeeAssignments = await db.SharedFeeTeamLevelAssignments.AsNoTracking().Where(a => sharedFeeIds.Contains(a.SharedFeeId)).ToListAsync();
         StateHasChanged();
     }
+
+    private void OnFilterLevelChanged(ChangeEventArgs e) { filterLevelId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0; }
+    private void OnFilterGroupChanged(ChangeEventArgs e) { filterGroupId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0; }
 
     private void UpdateScenario(int levelId, ChangeEventArgs e)
     {

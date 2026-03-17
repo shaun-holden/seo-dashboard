@@ -33,14 +33,16 @@ else
     {
         <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
             <button class="btn btn-primary" @onclick="ShowForm">+ Add @labels.Coach</button>
-            <select class="form-select" style="max-width: 170px;" @bind="filterStatus">
+            <select class="form-select" style="max-width: 170px;" value="@filterStatus"
+                    @onchange="OnFilterStatusChanged">
                 <option value="all">All Status</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
             </select>
             @if (seasonGroups.Any())
             {
-                <select class="form-select" style="max-width: 170px;" @bind="filterGroupId">
+                <select class="form-select" style="max-width: 170px;" value="@filterGroupId"
+                        @onchange="OnFilterGroupChanged">
                     <option value="0">All Groups</option>
                     <option value="-1">Ungrouped</option>
                     @foreach (var g in seasonGroups)
@@ -51,7 +53,8 @@ else
             }
             @if (distinctRoles.Any())
             {
-                <select class="form-select" style="max-width: 170px;" @bind="filterRole">
+                <select class="form-select" style="max-width: 170px;" value="@filterRole"
+                        @onchange="OnFilterRoleChanged">
                     <option value="">All Roles</option>
                     @foreach (var role in distinctRoles)
                     {
@@ -308,6 +311,10 @@ else
             }
         </div>
     };
+
+    private void OnFilterStatusChanged(ChangeEventArgs e) { filterStatus = e.Value?.ToString() ?? "all"; }
+    private void OnFilterGroupChanged(ChangeEventArgs e) { filterGroupId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0; }
+    private void OnFilterRoleChanged(ChangeEventArgs e) { filterRole = e.Value?.ToString() ?? ""; }
 
     private void ToggleExpand(int coachId)
     {
