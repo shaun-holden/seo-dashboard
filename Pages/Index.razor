@@ -60,7 +60,11 @@
                 <div class="card-body">
                     <h6 class="card-title">Athletes</h6>
                     <h3>@totalAthletes</h3>
-                    @if (teamLevelCount > 0)
+                    @if (totalAthletes > 0 && totalBudget > 0)
+                    {
+                        <small>Avg $@((totalBudget / totalAthletes).ToString("N2"))/athlete</small>
+                    }
+                    else if (teamLevelCount > 0)
                     {
                         <small>across @teamLevelCount @labels.TeamLevels.ToLower()</small>
                     }
@@ -176,7 +180,7 @@
 
                 totalBudget = sharedFeesTotal + athleteItemsTotal;
                 teamLevelCount = levelIds.Count;
-                totalAthletes = await Db.TeamLevels.Where(t => t.SeasonId == seasonId).SumAsync(t => (int?)t.AthleteCount) ?? 0;
+                totalAthletes = activeSeason.AthleteCount;
 
                 nextMeet = await Db.Meets
                     .Where(m => m.SeasonId == seasonId && m.Date >= DateTime.Today)

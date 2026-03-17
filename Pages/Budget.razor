@@ -184,8 +184,8 @@ else
     private decimal sharedFeesTotal => sharedFees.Where(f => f.IsIncludedInBudget).Sum(f => f.Amount);
     private decimal athleteItemsTotal => athleteItems.Sum(a => a.Cost);
     private decimal budgetTotal => sharedFeesTotal + athleteItemsTotal;
-    private int totalAthletes => teamLevels.Sum(t => t.AthleteCount);
-    private decimal avgCostPerAthlete => totalAthletes > 0 ? teamLevels.Where(t => t.AthleteCount > 0).Sum(t => GetLevelTotal(t.Id)) / totalAthletes : 0;
+    private int totalAthletes => selectedSeason?.AthleteCount ?? 0;
+    private decimal avgCostPerAthlete => totalAthletes > 0 ? budgetTotal / totalAthletes : 0;
 
     private decimal GetSharedFeeShareForLevel(int teamLevelId, Dictionary<int, int>? athleteOverrides = null)
     {
