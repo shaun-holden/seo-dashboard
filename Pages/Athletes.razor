@@ -163,6 +163,9 @@ else
                                             @if (link != null)
                                             {
                                                 <span class="badge @(link.IsClaimed ? "bg-success" : "bg-secondary") font-monospace me-1" title="@(link.IsClaimed ? "Claimed" : "Pending")">@link.InviteCode</span>
+                                                <button class="btn btn-sm btn-outline-warning me-1" title="Regenerate invite code" @onclick="() => RegenerateInvite(link.Id)">
+                                                    <span class="oi oi-reload"></span>
+                                                </button>
                                             }
                                             else
                                             {
@@ -338,6 +341,21 @@ else
                 AthleteId = athleteId,
                 InviteCode = ParentLink.GenerateCode()
             });
+            await db.SaveChangesAsync();
+        }
+        await LoadData();
+    }
+
+    private async Task RegenerateInvite(int linkId)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var link = await db.ParentLinks.FindAsync(linkId);
+        if (link != null)
+        {
+            link.InviteCode = ParentLink.GenerateCode();
+            link.IsClaimed = false;
+            link.ParentUserId = null;
+            link.ClaimedAt = null;
             await db.SaveChangesAsync();
         }
         await LoadData();
