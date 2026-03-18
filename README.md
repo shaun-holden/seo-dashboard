@@ -44,6 +44,11 @@ The app will be available at `http://localhost:5224`.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DB_PATH` | Path to SQLite database file | `gymbudget.db` |
+| `STRIPE_SECRET_KEY` | Stripe secret key for payments | *(none)* |
+| `Stripe__PublishableKey` | Stripe publishable key | *(none)* |
+| `Stripe__WebhookSecret` | Stripe webhook signing secret | *(none)* |
+| `SMTP_EMAIL` | Gmail address for sending emails | *(none)* |
+| `SMTP_PASSWORD` | Gmail App Password for SMTP | *(none)* |
 
 ## How to Use
 
@@ -135,7 +140,69 @@ When starting a new season, you don't have to re-enter everything from scratch:
 
 This copies coaches, meets, team levels, and athlete items — but **not** budget amounts, per diem, or mileage, so you start fresh with a clean slate.
 
-### 11. Import Budget from Another User
+### 11. Add Athletes and Invite Parents
+
+- Click **Athletes** in the sidebar
+- Select your season from the dropdown
+- Click **+ Add Athlete**, enter their name and assign a team level
+- Click **Invite** next to an athlete to send a parent invite
+- Enter the parent's email and click **Send** — they'll receive an email with an invite code and a registration link
+- To regenerate a code, click the reload button next to an existing code
+
+### 12. Parent Portal
+
+Parents register at the app and select **"Parent"** as their account type. After registering:
+
+- Go to **Link Athlete** and enter the invite code provided by the admin
+- The **My Athletes** page shows:
+  - Fee breakdown (shared fees + required items + optional items)
+  - Payment summary (total fees, paid, credits, balance)
+  - 8-month payment plan with due dates on the 15th of each month
+  - Three payment options: monthly installment, pay in full, or custom amount
+  - Payment history with credits and payments
+  - Upcoming events
+- Parents can toggle optional items on/off to update their balance
+- Required items and shared fees are locked and cannot be changed
+
+### 13. Payments and Credits (Admin)
+
+- Click **Payments** in the sidebar
+- Select a season to view all athlete payment statuses
+- Click **+ Apply Credit** to apply a credit to an athlete's account (e.g., overpayment, sibling discount)
+- Enter the athlete, amount, and reason — the credit reduces their balance immediately
+- Parents see credits in their payment history
+
+### 14. Stripe Payments Setup
+
+To enable online payments:
+
+1. Get your API keys from [Stripe Dashboard](https://dashboard.stripe.com/apikeys)
+2. Set environment variables:
+   - `STRIPE_SECRET_KEY` — your secret key (`sk_live_...`)
+   - `Stripe__PublishableKey` — your publishable key (`pk_live_...`)
+3. Set up a webhook at [Stripe Webhooks](https://dashboard.stripe.com/webhooks):
+   - Endpoint URL: `https://your-app-url/api/stripe-webhook`
+   - Event: `checkout.session.completed`
+   - Set `Stripe__WebhookSecret` to the signing secret (`whsec_...`)
+
+### 15. Email Setup (Gmail SMTP)
+
+To enable invite emails and password reset:
+
+1. Go to [Google App Passwords](https://myaccount.google.com/apppasswords)
+2. Generate an app password for your Gmail account
+3. Set environment variables:
+   - `SMTP_EMAIL` — your Gmail address (e.g., `deshaun@tntgym.org`)
+   - `SMTP_PASSWORD` — the app password generated above
+
+### 16. Password Reset
+
+- On the **Login** page, click **"Forgot Password?"**
+- Enter your email address and click **Send Reset Link**
+- Check your email for a reset link
+- Click the link and set a new password
+
+### 17. Import Budget from Another User
 
 - Click **Import Budget** in the sidebar
 - Enter the other user's email address and click **Search**

@@ -26,6 +26,9 @@
     <div class="d-grid">
         <button id="login-submit" type="submit" class="btn btn-lg btn-primary">Sign In</button>
     </div>
+    <div class="text-center mt-2">
+        <a asp-page="./ForgotPassword">Forgot Password?</a>
+    </div>
     <div class="text-center mt-3">
         <span class="text-muted">Don't have an account?</span>
         <a class="auth-link" asp-page="./Register" asp-route-returnUrl="@Model.ReturnUrl">Register</a>

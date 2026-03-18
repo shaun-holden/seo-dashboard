@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -38,6 +39,8 @@ var stripeSecretKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY")
     ?? builder.Configuration["Stripe:SecretKey"] ?? "";
 if (!string.IsNullOrEmpty(stripeSecretKey))
     Stripe.StripeConfiguration.ApiKey = stripeSecretKey;
+
+builder.Services.AddTransient<IEmailSender, GymBudgetApp.Services.EmailSender>();
 
 var app = builder.Build();
 

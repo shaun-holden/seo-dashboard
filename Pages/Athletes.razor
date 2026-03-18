@@ -9,6 +9,8 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject GymBudgetApp.Services.NotesPanelState NotesPanelState
+@inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
+@inject NavigationManager NavigationManager
 
 <h3>Athletes</h3>
 
@@ -163,13 +165,22 @@ else
                                             @if (link != null)
                                             {
                                                 <span class="badge @(link.IsClaimed ? "bg-success" : "bg-secondary") font-monospace me-1" title="@(link.IsClaimed ? "Claimed" : "Pending")">@link.InviteCode</span>
-                                                <button class="btn btn-sm btn-outline-warning me-1" title="Regenerate invite code" @onclick="() => RegenerateInvite(link.Id)">
+                                                <button class="btn btn-sm btn-outline-warning me-1" title="Regenerate invite code" @onclick="() => ShowInviteForm(athlete.Id)">
                                                     <span class="oi oi-reload"></span>
                                                 </button>
                                             }
                                             else
                                             {
-                                                <button class="btn btn-sm btn-outline-info me-1" @onclick="() => GenerateInvite(athlete.Id)">Invite</button>
+                                                <button class="btn btn-sm btn-outline-info me-1" @onclick="() => ShowInviteForm(athlete.Id)">Invite</button>
+                                            }
+                                            @if (showInviteForm && inviteAthleteId == athlete.Id)
+                                            {
+                                                <div class="d-inline-flex align-items-center gap-1 ms-1">
+                                                    <input type="email" class="form-control form-control-sm" style="width: 200px;"
+                                                           placeholder="Parent email" @bind="inviteEmail" />
+                                                    <button class="btn btn-sm btn-success" @onclick="() => SendInviteEmail(athlete)">Send</button>
+                                                    <button class="btn btn-sm btn-secondary" @onclick="CancelInviteForm">X</button>
+                                                </div>
                                             }
                                             <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditAthlete(athlete)">Edit</button>
                                             <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAthlete(athlete)">Delete</button>
@@ -228,6 +239,10 @@ else
 
     private int filterLevelId = 0;
     private HashSet<int> expandedLevels = new();
+
+    private bool showInviteForm;
+    private int inviteAthleteId;
+    private string inviteEmail = "";
 
     private void OnFilterLevelChanged(ChangeEventArgs e) { filterLevelId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0; }
 
@@ -328,6 +343,71 @@ else
             db.Athletes.Remove(entity);
             await db.SaveChangesAsync();
         }
+        await LoadData();
+    }
+
+    private void ShowInviteForm(int athleteId)
+    {
+        inviteAthleteId = athleteId;
+        inviteEmail = "";
+        showInviteForm = true;
+    }
+
+    private void CancelInviteForm()
+    {
+        showInviteForm = false;
+        inviteAthleteId = 0;
+        inviteEmail = "";
+    }
+
+    private async Task SendInviteEmail(Athlete athlete)
+    {
+        if (string.IsNullOrWhiteSpace(inviteEmail)) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        string inviteCode;
+
+        var existingLink = await db.ParentLinks.FirstOrDefaultAsync(pl => pl.AthleteId == athlete.Id);
+        if (existingLink != null)
+        {
+            // Regenerate
+            existingLink.InviteCode = ParentLink.GenerateCode();
+            existingLink.IsClaimed = false;
+            existingLink.ParentUserId = null;
+            existingLink.ClaimedAt = null;
+            inviteCode = existingLink.InviteCode;
+            await db.SaveChangesAsync();
+        }
+        else
+        {
+            // New invite
+            inviteCode = ParentLink.GenerateCode();
+            db.ParentLinks.Add(new ParentLink
+            {
+                AthleteId = athlete.Id,
+                InviteCode = inviteCode
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var registerUrl = $"{NavigationManager.BaseUri}Identity/Account/Register";
+        var emailBody = $@"
+            <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
+                <h2>You're Invited to Top Notch Training!</h2>
+                <p>You have been invited to manage <strong>{athlete.Name}</strong>'s account on Top Notch Training.</p>
+                <p>Your invite code is: <strong style='font-size: 1.2em; color: #0d6efd;'>{inviteCode}</strong></p>
+                <p>To get started, create your account by clicking the link below:</p>
+                <p><a href='{registerUrl}' style='display: inline-block; padding: 10px 20px; background-color: #0d6efd; color: #ffffff; text-decoration: none; border-radius: 5px;'>Register Now</a></p>
+                <p>After registering, use your invite code to link to your athlete's account.</p>
+                <hr style='border: none; border-top: 1px solid #dee2e6;' />
+                <p style='color: #6c757d; font-size: 0.9em;'>Top Notch Training</p>
+            </div>";
+
+        await EmailSender.SendEmailAsync(inviteEmail, "You're invited to Top Notch Training", emailBody);
+
+        showInviteForm = false;
+        inviteAthleteId = 0;
+        inviteEmail = "";
         await LoadData();
     }
 
