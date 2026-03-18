@@ -52,6 +52,21 @@ else
             }
         </div>
 
+        @if (inviteMessage != null)
+        {
+            <div class="alert alert-success alert-dismissible mb-3">
+                @inviteMessage
+                <button type="button" class="btn-close" @onclick="() => inviteMessage = null"></button>
+            </div>
+        }
+        @if (inviteError != null)
+        {
+            <div class="alert alert-danger alert-dismissible mb-3">
+                @inviteError
+                <button type="button" class="btn-close" @onclick="() => inviteError = null"></button>
+            </div>
+        }
+
         @if (showForm)
         {
             <div class="card mb-4 p-3">
@@ -243,6 +258,8 @@ else
     private bool showInviteForm;
     private int inviteAthleteId;
     private string inviteEmail = "";
+    private string? inviteMessage;
+    private string? inviteError;
 
     private void OnFilterLevelChanged(ChangeEventArgs e) { filterLevelId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0; }
 
@@ -363,6 +380,8 @@ else
     private async Task SendInviteEmail(Athlete athlete)
     {
         if (string.IsNullOrWhiteSpace(inviteEmail)) return;
+        inviteMessage = null;
+        inviteError = null;
 
         using var db = await DbFactory.CreateDbContextAsync();
         string inviteCode;
@@ -370,7 +389,6 @@ else
         var existingLink = await db.ParentLinks.FirstOrDefaultAsync(pl => pl.AthleteId == athlete.Id);
         if (existingLink != null)
         {
-            // Regenerate
             existingLink.InviteCode = ParentLink.GenerateCode();
             existingLink.IsClaimed = false;
             existingLink.ParentUserId = null;
@@ -380,7 +398,6 @@ else
         }
         else
         {
-            // New invite
             inviteCode = ParentLink.GenerateCode();
             db.ParentLinks.Add(new ParentLink
             {
@@ -403,7 +420,15 @@ else
                 <p style='color: #6c757d; font-size: 0.9em;'>Top Notch Training</p>
             </div>";
 
-        await EmailSender.SendEmailAsync(inviteEmail, "You're invited to Top Notch Training", emailBody);
+        try
+        {
+            await EmailSender.SendEmailAsync(inviteEmail, "You're invited to Top Notch Training", emailBody);
+            inviteMessage = $"Invite sent to {inviteEmail} for {athlete.Name} (Code: {inviteCode})";
+        }
+        catch (Exception ex)
+        {
+            inviteError = $"Email failed: {ex.Message}. Invite code {inviteCode} was still generated.";
+        }
 
         showInviteForm = false;
         inviteAthleteId = 0;
