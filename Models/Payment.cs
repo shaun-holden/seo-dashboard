@@ -3,6 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace GymBudgetApp.Models
 {
     public enum PaymentStatus { Pending, Paid, Failed, Refunded }
+    public enum PaymentType { Payment, Credit, Refund }
 
     public class Payment
     {
@@ -16,6 +17,7 @@ namespace GymBudgetApp.Models
 
         public decimal Amount { get; set; }
         public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
+        public PaymentType Type { get; set; } = PaymentType.Payment;
 
         public string? StripeSessionId { get; set; }
         public string? StripePaymentIntentId { get; set; }

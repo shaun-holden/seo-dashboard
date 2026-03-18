@@ -42,9 +42,11 @@ else
         var optionalCost = optionalItems.Where(i => athleteSelections.Contains(i.Id)).Sum(i => i.Cost);
         var sharedFeeCost = GetSharedFeeCostPerAthlete(athlete.TeamLevelId);
         var totalCost = requiredCost + optionalCost + sharedFeeCost;
-        var athletePayments = payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid).ToList();
+        var athletePayments = payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment).ToList();
+        var athleteCredits = payments.Where(p => p.AthleteId == athlete.Id && p.Type == PaymentType.Credit).ToList();
         var totalPaid = athletePayments.Sum(p => p.Amount);
-        var balance = totalCost - totalPaid;
+        var totalCredits = athleteCredits.Sum(p => p.Amount);
+        var balance = totalCost - totalPaid - totalCredits;
         var isExpanded = expandedAthletes.Contains(athlete.Id);
 
         <div class="card mb-4">
@@ -123,7 +125,7 @@ else
 
                 <!-- Payment Summary -->
                 <div class="row mb-3">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="card bg-light">
                             <div class="card-body text-center py-2">
                                 <small class="text-muted">Total Fees</small>
@@ -131,7 +133,7 @@ else
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="card bg-light">
                             <div class="card-body text-center py-2">
                                 <small class="text-muted">Total Paid</small>
@@ -139,7 +141,18 @@ else
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    @if (totalCredits > 0)
+                    {
+                        <div class="col-md-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center py-2">
+                                    <small class="text-muted">Credits</small>
+                                    <h5 class="mb-0 text-info">-$@totalCredits.ToString("N2")</h5>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    <div class="col-md-3">
                         <div class="card @(balance <= 0 ? "bg-success text-white" : "bg-warning")">
                             <div class="card-body text-center py-2">
                                 <small>Balance Due</small>
@@ -247,18 +260,32 @@ else
                 }
 
                 <!-- Payment History -->
-                @if (athletePayments.Any())
+                @{
+                    var allAthleteTransactions = athletePayments.Cast<Payment>().Concat(athleteCredits).OrderByDescending(p => p.PaidAt ?? p.CreatedAt).ToList();
+                }
+                @if (allAthleteTransactions.Any())
                 {
                     <h6 class="mt-3">Payment History</h6>
                     <table class="table table-sm">
-                        <thead class="table-light"><tr><th>Date</th><th>Amount</th><th>Status</th></tr></thead>
+                        <thead class="table-light"><tr><th>Date</th><th>Description</th><th>Amount</th><th>Type</th></tr></thead>
                         <tbody>
-                            @foreach (var p in athletePayments.OrderByDescending(p => p.PaidAt))
+                            @foreach (var p in allAthleteTransactions)
                             {
-                                <tr>
+                                var isCredit = p.Type == PaymentType.Credit;
+                                <tr class="@(isCredit ? "table-info" : "")">
                                     <td>@(p.PaidAt?.ToString("MMM dd, yyyy") ?? p.CreatedAt.ToString("MMM dd, yyyy"))</td>
-                                    <td>$@p.Amount.ToString("N2")</td>
-                                    <td><span class="badge bg-success">@p.Status</span></td>
+                                    <td>@(p.Description ?? (isCredit ? "Credit" : "Payment"))</td>
+                                    <td class="@(isCredit ? "text-info" : "")">@(isCredit ? "-" : "")$@p.Amount.ToString("N2")</td>
+                                    <td>
+                                        @if (isCredit)
+                                        {
+                                            <span class="badge bg-info">Credit</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-success">Payment</span>
+                                        }
+                                    </td>
                                 </tr>
                             }
                         </tbody>

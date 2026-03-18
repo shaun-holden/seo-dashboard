@@ -66,6 +66,82 @@ else
             </div>
         </div>
 
+        <!-- Apply Credit -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Apply Credit</h5>
+                <button class="btn btn-sm @(showCreditForm ? "btn-outline-secondary" : "btn-success")" @onclick="() => showCreditForm = !showCreditForm">
+                    @(showCreditForm ? "Cancel" : "+ Apply Credit")
+                </button>
+            </div>
+            @if (showCreditForm)
+            {
+                <div class="card-body">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label">Athlete</label>
+                            <select class="form-select" @bind="creditAthleteId">
+                                <option value="0">-- Select Athlete --</option>
+                                @foreach (var a in athletes)
+                                {
+                                    var lvl = teamLevels.FirstOrDefault(t => t.Id == a.TeamLevelId)?.Name ?? "";
+                                    <option value="@a.Id">@a.Name (@lvl)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Amount</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" min="0.01" step="0.01" @bind="creditAmount" />
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Reason</label>
+                            <input type="text" class="form-control" placeholder="e.g. Overpayment, sibling discount" @bind="creditDescription" />
+                        </div>
+                        <div class="col-md-2">
+                            <button class="btn btn-success w-100" @onclick="ApplyCredit"
+                                    disabled="@(creditAthleteId == 0 || creditAmount <= 0)">
+                                Apply Credit
+                            </button>
+                        </div>
+                    </div>
+                    @if (creditMessage != null)
+                    {
+                        <div class="alert alert-success mt-3 mb-0">@creditMessage</div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Recent Credits -->
+        @if (payments.Any(p => p.Type == PaymentType.Credit))
+        {
+            <div class="card mb-4">
+                <div class="card-header"><h5 class="mb-0">Recent Credits</h5></div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr><th>Athlete</th><th>Amount</th><th>Reason</th><th>Date</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var c in payments.Where(p => p.Type == PaymentType.Credit).OrderByDescending(p => p.PaidAt).Take(5))
+                            {
+                                var aName = athletes.FirstOrDefault(a => a.Id == c.AthleteId)?.Name ?? "Unknown";
+                                <tr>
+                                    <td>@aName</td>
+                                    <td class="text-success">-$@c.Amount.ToString("N2")</td>
+                                    <td>@c.Description</td>
+                                    <td>@(c.PaidAt?.ToString("MMM dd, yyyy") ?? c.CreatedAt.ToString("MMM dd, yyyy"))</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+
         <div class="card">
             <div class="card-header"><h5 class="mb-0">Athlete Payment Status</h5></div>
             <div class="card-body p-0">
@@ -89,8 +165,9 @@ else
                             var athleteSel = selections.Where(s => s.AthleteId == athlete.Id).Select(s => s.AthleteItemId).ToHashSet();
                             var optionalCost = levelItems.Where(i => !i.IsRequired && athleteSel.Contains(i.Id)).Sum(i => i.Cost);
                             var fees = requiredCost + optionalCost;
-                            var paid = payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid).Sum(p => p.Amount);
-                            var balance = fees - paid;
+                            var paid = payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment).Sum(p => p.Amount);
+                            var credits = payments.Where(p => p.AthleteId == athlete.Id && p.Type == PaymentType.Credit).Sum(p => p.Amount);
+                            var balance = fees - paid - credits;
                             var link = parentLinks.FirstOrDefault(pl => pl.AthleteId == athlete.Id);
                             var levelName = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "";
 
@@ -157,9 +234,15 @@ else
     private int selectedSeasonId;
     private string? userId;
     private ProjectLabels labels = ProjectLabels.Default;
+    private bool showCreditForm;
+    private int creditAthleteId;
+    private decimal creditAmount;
+    private string creditDescription = "";
+    private string? creditMessage;
 
-    private List<Payment> paidPayments => payments.Where(p => p.Status == PaymentStatus.Paid).ToList();
-    private decimal totalPaid => paidPayments.Sum(p => p.Amount);
+    private List<Payment> paidPayments => payments.Where(p => p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment).ToList();
+    private decimal totalCredits => payments.Where(p => p.Type == PaymentType.Credit).Sum(p => p.Amount);
+    private decimal totalPaid => paidPayments.Sum(p => p.Amount) + totalCredits;
     private decimal totalOwed => athletes.Sum(a =>
     {
         var items = athleteItems.Where(i => i.TeamLevelId == a.TeamLevelId).ToList();
@@ -181,6 +264,29 @@ else
     {
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         labels = new ProjectLabels(seasons?.FirstOrDefault(s => s.Id == selectedSeasonId));
+        await LoadData();
+    }
+
+    private async Task ApplyCredit()
+    {
+        if (creditAthleteId == 0 || creditAmount <= 0) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var athlete = await db.Athletes.FindAsync(creditAthleteId);
+        db.Payments.Add(new Payment
+        {
+            AthleteId = creditAthleteId,
+            PayerUserId = userId!,
+            Amount = creditAmount,
+            Status = PaymentStatus.Paid,
+            Type = PaymentType.Credit,
+            Description = string.IsNullOrWhiteSpace(creditDescription) ? "Admin credit" : creditDescription,
+            PaidAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+        creditMessage = $"Credit of ${creditAmount:N2} applied to {athlete?.Name ?? "athlete"}.";
+        creditAthleteId = 0;
+        creditAmount = 0;
+        creditDescription = "";
         await LoadData();
     }
 
