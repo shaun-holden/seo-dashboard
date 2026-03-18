@@ -161,9 +161,11 @@
         var email = authState.User.FindFirst(ClaimTypes.Email)?.Value
                     ?? authState.User.FindFirst("email")?.Value;
         var adminEmail = Configuration["AdminEmail"] ?? "deshaun@tntgym.org";
-        var isAdmin = string.Equals(email, adminEmail, StringComparison.OrdinalIgnoreCase);
+        var isAdmin = string.Equals(email, adminEmail, StringComparison.OrdinalIgnoreCase)
+                      || authState.User.IsInRole("Employee");
+        var isParent = authState.User.IsInRole("Parent");
 
-        if (!isAdmin)
+        if (isParent && !isAdmin)
         {
             Navigation.NavigateTo("/parent", replace: true);
             return;
