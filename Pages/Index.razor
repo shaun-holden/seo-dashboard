@@ -7,6 +7,8 @@
 @using Microsoft.EntityFrameworkCore
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject AppDbContext Db
+@inject IConfiguration Configuration
+@inject NavigationManager Navigation
 
 <PageTitle>Dashboard</PageTitle>
 
@@ -156,6 +158,17 @@
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var email = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? authState.User.FindFirst("email")?.Value;
+        var adminEmail = Configuration["AdminEmail"] ?? "deshaun@tntgym.org";
+        var isAdmin = string.Equals(email, adminEmail, StringComparison.OrdinalIgnoreCase);
+
+        if (!isAdmin)
+        {
+            Navigation.NavigateTo("/parent", replace: true);
+            return;
+        }
+
         if (userId != null)
         {
             activeSeason = await Db.Seasons.Where(s => s.UserId == userId && s.IsActive).FirstOrDefaultAsync();
