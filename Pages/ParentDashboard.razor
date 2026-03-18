@@ -77,7 +77,10 @@ else
                         @foreach (var item in requiredItems)
                         {
                             <tr>
-                                <td>@item.Name</td>
+                                <td>
+                                    <input type="checkbox" class="form-check-input me-2" checked disabled />
+                                    @item.Name
+                                </td>
                                 <td><span class="badge bg-success">Required</span></td>
                                 <td class="text-end">$@item.Cost.ToString("N2")</td>
                             </tr>
