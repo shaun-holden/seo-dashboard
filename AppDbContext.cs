@@ -52,6 +52,8 @@ namespace GymBudgetApp
         public DbSet<SharedFee> SharedFees { get; set; }
         public DbSet<SeasonNote> SeasonNotes { get; set; }
         public DbSet<SharedFeeTeamLevelAssignment> SharedFeeTeamLevelAssignments { get; set; }
+        public DbSet<Athlete> Athletes { get; set; }
+        public DbSet<AthleteItemSelection> AthleteItemSelections { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -129,6 +131,10 @@ namespace GymBudgetApp
 
             builder.Entity<SharedFeeTeamLevelAssignment>()
                 .HasIndex(sfta => new { sfta.SharedFeeId, sfta.TeamLevelId })
+                .IsUnique();
+
+            builder.Entity<AthleteItemSelection>()
+                .HasIndex(ais => new { ais.AthleteId, ais.AthleteItemId })
                 .IsUnique();
         }
     }

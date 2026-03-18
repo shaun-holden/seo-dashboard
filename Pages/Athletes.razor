@@ -1,0 +1,334 @@
+@page "/athletes"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using GymBudgetApp.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject GymBudgetApp.Services.NotesPanelState NotesPanelState
+
+<h3>Athletes</h3>
+
+@if (seasons == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="mb-3">
+        <label>Select Season</label>
+        <select class="form-select w-auto d-inline-block ms-2" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @foreach (var s in seasons)
+            {
+                <option value="@s.Id" selected="@(s.Id == selectedSeasonId)">@s.Name</option>
+            }
+        </select>
+    </div>
+
+    @if (selectedSeasonId > 0)
+    {
+        <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+            <button class="btn btn-primary" @onclick="ShowAddForm">+ Add Athlete</button>
+            @if (teamLevels.Count > 1)
+            {
+                <select class="form-select" style="max-width: 200px;" value="@filterLevelId"
+                        @onchange="OnFilterLevelChanged">
+                    <option value="0">All @labels.TeamLevels</option>
+                    @foreach (var level in teamLevels)
+                    {
+                        <option value="@level.Id">@level.Name</option>
+                    }
+                </select>
+            }
+            @if (athletes.Any())
+            {
+                <span class="text-muted">@filteredAthletes.Count athlete(s)</span>
+            }
+        </div>
+
+        @if (showForm)
+        {
+            <div class="card mb-4 p-3">
+                <h5>@(editingAthlete == null ? "Add Athlete" : "Edit Athlete")</h5>
+                <div class="row">
+                    <div class="col-md-4 mb-2">
+                        <label>Name</label>
+                        <input class="form-control" @bind="formName" placeholder="Athlete name" />
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <label>@labels.TeamLevel</label>
+                        <select class="form-select" @bind="formTeamLevelId">
+                            <option value="0">-- Select --</option>
+                            @foreach (var level in teamLevels)
+                            {
+                                <option value="@level.Id">@level.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <button class="btn btn-success me-2" @onclick="SaveAthlete">Save</button>
+                    <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                </div>
+            </div>
+        }
+
+        @foreach (var level in filteredTeamLevels)
+        {
+            var levelAthletes = filteredAthletes.Where(a => a.TeamLevelId == level.Id).ToList();
+            var levelOptionalItems = athleteItems.Where(i => i.TeamLevelId == level.Id && !i.IsRequired).ToList();
+            var levelRequiredItems = athleteItems.Where(i => i.TeamLevelId == level.Id && i.IsRequired).ToList();
+            var requiredCost = levelRequiredItems.Sum(i => i.Cost);
+            var isExpanded = expandedLevels.Contains(level.Id);
+
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center"
+                     @onclick="() => ToggleLevel(level.Id)" style="cursor: pointer;">
+                    <div>
+                        <h5 class="mb-0 d-inline">@level.Name</h5>
+                        <span class="badge bg-primary ms-2">@levelAthletes.Count athlete(s)</span>
+                        @if (levelOptionalItems.Any())
+                        {
+                            <span class="badge bg-info ms-1">@levelOptionalItems.Count optional item(s)</span>
+                        }
+                    </div>
+                    <span class="oi @(isExpanded ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+                </div>
+                @if (isExpanded)
+                {
+                <div class="card-body p-0">
+                    @if (!levelAthletes.Any())
+                    {
+                        <div class="p-3 text-muted">No athletes in this level yet.</div>
+                    }
+                    else
+                    {
+                        <div style="overflow-x: auto;">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Athlete</th>
+                                    @foreach (var item in levelRequiredItems)
+                                    {
+                                        <th class="text-center" style="min-width: 90px;">
+                                            <span class="badge bg-success">@item.Name</span>
+                                            <br/><small class="text-muted">$@item.Cost.ToString("N2")</small>
+                                        </th>
+                                    }
+                                    @foreach (var item in levelOptionalItems)
+                                    {
+                                        <th class="text-center" style="min-width: 90px;">
+                                            @item.Name
+                                            <br/><small class="text-muted">$@item.Cost.ToString("N2")</small>
+                                        </th>
+                                    }
+                                    <th class="text-end">Total</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var athlete in levelAthletes)
+                                {
+                                    var athleteSelections = selections.Where(s => s.AthleteId == athlete.Id).Select(s => s.AthleteItemId).ToHashSet();
+                                    var optionalCost = levelOptionalItems.Where(i => athleteSelections.Contains(i.Id)).Sum(i => i.Cost);
+                                    var totalCost = requiredCost + optionalCost;
+
+                                    <tr>
+                                        <td><strong>@athlete.Name</strong></td>
+                                        @foreach (var item in levelRequiredItems)
+                                        {
+                                            <td class="text-center">
+                                                <input type="checkbox" class="form-check-input" checked disabled />
+                                            </td>
+                                        }
+                                        @foreach (var item in levelOptionalItems)
+                                        {
+                                            var itemId = item.Id;
+                                            var athleteId = athlete.Id;
+                                            var isSelected = athleteSelections.Contains(itemId);
+                                            <td class="text-center">
+                                                <input type="checkbox" class="form-check-input" checked="@isSelected"
+                                                       @onchange="(e) => ToggleSelection(athleteId, itemId, (bool)e.Value!)" />
+                                            </td>
+                                        }
+                                        <td class="text-end fw-bold">$@totalCost.ToString("N2")</td>
+                                        <td class="text-end">
+                                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditAthlete(athlete)">Edit</button>
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAthlete(athlete)">Delete</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr class="fw-bold">
+                                    <td>Level Summary</td>
+                                    @foreach (var item in levelRequiredItems)
+                                    {
+                                        <td class="text-center">@levelAthletes.Count</td>
+                                    }
+                                    @foreach (var item in levelOptionalItems)
+                                    {
+                                        var selectedCount = levelAthletes.Count(a => selections.Any(s => s.AthleteId == a.Id && s.AthleteItemId == item.Id));
+                                        <td class="text-center">@selectedCount / @levelAthletes.Count</td>
+                                    }
+                                    @{
+                                        var levelTotalCost = levelAthletes.Sum(a =>
+                                        {
+                                            var sel = selections.Where(s => s.AthleteId == a.Id).Select(s => s.AthleteItemId).ToHashSet();
+                                            return requiredCost + levelOptionalItems.Where(i => sel.Contains(i.Id)).Sum(i => i.Cost);
+                                        });
+                                    }
+                                    <td class="text-end fw-bold">$@levelTotalCost.ToString("N2")</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        </div>
+                    }
+                </div>
+                }
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<Season>? seasons;
+    private List<TeamLevel> teamLevels = new();
+    private List<AthleteItem> athleteItems = new();
+    private List<Athlete> athletes = new();
+    private List<AthleteItemSelection> selections = new();
+    private int selectedSeasonId;
+    private string? userId;
+    private ProjectLabels labels = ProjectLabels.Default;
+
+    private bool showForm;
+    private Athlete? editingAthlete;
+    private string formName = "";
+    private int formTeamLevelId;
+
+    private int filterLevelId = 0;
+    private HashSet<int> expandedLevels = new();
+
+    private void OnFilterLevelChanged(ChangeEventArgs e) { filterLevelId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0; }
+
+    private void ToggleLevel(int levelId)
+    {
+        if (!expandedLevels.Remove(levelId))
+            expandedLevels.Add(levelId);
+    }
+
+    private List<TeamLevel> filteredTeamLevels => filterLevelId > 0
+        ? teamLevels.Where(t => t.Id == filterLevelId).ToList()
+        : teamLevels;
+
+    private List<Athlete> filteredAthletes => filterLevelId > 0
+        ? athletes.Where(a => a.TeamLevelId == filterLevelId).ToList()
+        : athletes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        seasons = await Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToListAsync();
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        labels = new ProjectLabels(seasons?.FirstOrDefault(s => s.Id == selectedSeasonId));
+        NotesPanelState.SeasonId = selectedSeasonId;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        teamLevels = await db.TeamLevels.AsNoTracking().Where(t => t.SeasonId == selectedSeasonId).ToListAsync();
+        var levelIds = teamLevels.Select(t => t.Id).ToList();
+        athleteItems = await db.AthleteItems.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
+        athletes = await db.Athletes.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).OrderBy(a => a.Name).ToListAsync();
+        var athleteIds = athletes.Select(a => a.Id).ToList();
+        selections = await db.AthleteItemSelections.AsNoTracking().Where(s => athleteIds.Contains(s.AthleteId)).ToListAsync();
+
+        // Auto-expand levels that have athletes
+        expandedLevels = athletes.Select(a => a.TeamLevelId).Distinct().ToHashSet();
+    }
+
+    private void ShowAddForm()
+    {
+        editingAthlete = null;
+        formName = "";
+        formTeamLevelId = teamLevels.FirstOrDefault()?.Id ?? 0;
+        showForm = true;
+    }
+
+    private void EditAthlete(Athlete athlete)
+    {
+        editingAthlete = athlete;
+        formName = athlete.Name;
+        formTeamLevelId = athlete.TeamLevelId;
+        showForm = true;
+    }
+
+    private void CancelForm() { showForm = false; editingAthlete = null; }
+
+    private async Task SaveAthlete()
+    {
+        if (string.IsNullOrWhiteSpace(formName) || formTeamLevelId == 0) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        if (editingAthlete != null)
+        {
+            var entity = await db.Athletes.FindAsync(editingAthlete.Id);
+            if (entity != null)
+            {
+                entity.Name = formName.Trim();
+                entity.TeamLevelId = formTeamLevelId;
+                await db.SaveChangesAsync();
+            }
+        }
+        else
+        {
+            db.Athletes.Add(new Athlete { Name = formName.Trim(), TeamLevelId = formTeamLevelId });
+            await db.SaveChangesAsync();
+        }
+
+        showForm = false;
+        editingAthlete = null;
+        await LoadData();
+    }
+
+    private async Task DeleteAthlete(Athlete athlete)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Athletes.FindAsync(athlete.Id);
+        if (entity != null)
+        {
+            db.Athletes.Remove(entity);
+            await db.SaveChangesAsync();
+        }
+        await LoadData();
+    }
+
+    private async Task ToggleSelection(int athleteId, int itemId, bool isChecked)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        if (isChecked)
+        {
+            if (!await db.AthleteItemSelections.AnyAsync(s => s.AthleteId == athleteId && s.AthleteItemId == itemId))
+                db.AthleteItemSelections.Add(new AthleteItemSelection { AthleteId = athleteId, AthleteItemId = itemId });
+        }
+        else
+        {
+            var existing = await db.AthleteItemSelections.FirstOrDefaultAsync(s => s.AthleteId == athleteId && s.AthleteItemId == itemId);
+            if (existing != null) db.AthleteItemSelections.Remove(existing);
+        }
+        await db.SaveChangesAsync();
+        await LoadData();
+    }
+}

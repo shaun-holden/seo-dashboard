@@ -26,6 +26,7 @@ namespace GymBudgetApp.Models
         public ICollection<TeamLevelGroupAssignment> GroupAssignments { get; set; } = new List<TeamLevelGroupAssignment>();
         public ICollection<MeetTeamLevelAssignment> MeetAssignments { get; set; } = new List<MeetTeamLevelAssignment>();
         public ICollection<SharedFeeTeamLevelAssignment> SharedFeeAssignments { get; set; } = new List<SharedFeeTeamLevelAssignment>();
+        public ICollection<Athlete> Athletes { get; set; } = new List<Athlete>();
         public decimal AthleteItemsTotal => AthleteItems.Sum(i => i.Cost);
         public decimal MonthlyPayment(decimal sharedCost) => (sharedCost + AthleteItemsTotal) / PaymentPlanMonths;
     }
