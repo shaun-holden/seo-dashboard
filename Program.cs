@@ -48,6 +48,27 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+
+    // Ensure roles exist and assign roles to existing users without one
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+    foreach (var roleName in new[] { "Parent", "Employee" })
+    {
+        if (!await roleManager.RoleExistsAsync(roleName))
+            await roleManager.CreateAsync(new IdentityRole(roleName));
+    }
+
+    var adminEmail = app.Configuration["AdminEmail"] ?? "deshaun@tntgym.org";
+    var allUsers = userManager.Users.ToList();
+    foreach (var user in allUsers)
+    {
+        var roles = await userManager.GetRolesAsync(user);
+        if (!roles.Any())
+        {
+            var isAdmin = string.Equals(user.Email, adminEmail, StringComparison.OrdinalIgnoreCase);
+            await userManager.AddToRoleAsync(user, isAdmin ? "Employee" : "Parent");
+        }
+    }
 }
 
 if (!app.Environment.IsDevelopment())

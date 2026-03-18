@@ -18,14 +18,22 @@ namespace GymBudgetApp.Services
         public async Task SendEmailAsync(string email, string subject, string htmlMessage)
         {
             var smtpEmail = Environment.GetEnvironmentVariable("SMTP_EMAIL")
-                ?? _configuration["Smtp:Email"]
-                ?? throw new InvalidOperationException("SMTP email is not configured. Set SMTP_EMAIL env var or Smtp:Email in configuration.");
-
+                ?? _configuration["Smtp:Email"] ?? "";
             var smtpPassword = Environment.GetEnvironmentVariable("SMTP_PASSWORD")
-                ?? _configuration["Smtp:Password"]
-                ?? throw new InvalidOperationException("SMTP password is not configured. Set SMTP_PASSWORD env var or Smtp:Password in configuration.");
+                ?? _configuration["Smtp:Password"] ?? "";
 
-            using var client = new SmtpClient("smtp.gmail.com", 587)
+            if (string.IsNullOrEmpty(smtpEmail) || string.IsNullOrEmpty(smtpPassword))
+            {
+                _logger.LogWarning("SMTP not configured. Email to {Email} with subject '{Subject}' was not sent.", email, subject);
+                return;
+            }
+
+            var smtpHost = Environment.GetEnvironmentVariable("SMTP_HOST") ?? "smtp.gmail.com";
+            var smtpPort = int.TryParse(Environment.GetEnvironmentVariable("SMTP_PORT"), out var p) ? p : 587;
+
+            _logger.LogInformation("Attempting to send email to {Email} via {Host}:{Port} from {From}", email, smtpHost, smtpPort, smtpEmail);
+
+            using var client = new SmtpClient(smtpHost, smtpPort)
             {
                 Credentials = new NetworkCredential(smtpEmail, smtpPassword),
                 EnableSsl = true
@@ -33,7 +41,7 @@ namespace GymBudgetApp.Services
 
             var mailMessage = new MailMessage
             {
-                From = new MailAddress(smtpEmail),
+                From = new MailAddress(smtpEmail, "Top Notch Training"),
                 Subject = subject,
                 Body = htmlMessage,
                 IsBodyHtml = true
@@ -43,11 +51,11 @@ namespace GymBudgetApp.Services
             try
             {
                 await client.SendMailAsync(mailMessage);
-                _logger.LogInformation("Email sent to {Email} with subject '{Subject}'", email, subject);
+                _logger.LogInformation("Email sent successfully to {Email}", email);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to send email to {Email}", email);
+                _logger.LogError(ex, "Failed to send email to {Email} via {Host}:{Port}", email, smtpHost, smtpPort);
                 throw;
             }
         }
