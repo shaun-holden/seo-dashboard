@@ -429,7 +429,7 @@ else
     {
         decimal total = 0;
         var level = allSeasonLevels.FirstOrDefault(t => t.Id == teamLevelId);
-        if (level == null || level.AthleteCount == 0) return 0;
+        if (level == null) return 0;
 
         foreach (var fee in sharedFees)
         {
