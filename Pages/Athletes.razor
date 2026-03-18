@@ -157,6 +157,17 @@ else
                                         }
                                         <td class="text-end fw-bold">$@totalCost.ToString("N2")</td>
                                         <td class="text-end">
+                                            @{
+                                                var link = parentLinks.FirstOrDefault(pl => pl.AthleteId == athlete.Id);
+                                            }
+                                            @if (link != null)
+                                            {
+                                                <span class="badge @(link.IsClaimed ? "bg-success" : "bg-secondary") font-monospace me-1" title="@(link.IsClaimed ? "Claimed" : "Pending")">@link.InviteCode</span>
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-sm btn-outline-info me-1" @onclick="() => GenerateInvite(athlete.Id)">Invite</button>
+                                            }
                                             <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditAthlete(athlete)">Edit</button>
                                             <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAthlete(athlete)">Delete</button>
                                         </td>
@@ -202,6 +213,7 @@ else
     private List<AthleteItem> athleteItems = new();
     private List<Athlete> athletes = new();
     private List<AthleteItemSelection> selections = new();
+    private List<ParentLink> parentLinks = new();
     private int selectedSeasonId;
     private string? userId;
     private ProjectLabels labels = ProjectLabels.Default;
@@ -254,6 +266,7 @@ else
         athletes = await db.Athletes.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).OrderBy(a => a.Name).ToListAsync();
         var athleteIds = athletes.Select(a => a.Id).ToList();
         selections = await db.AthleteItemSelections.AsNoTracking().Where(s => athleteIds.Contains(s.AthleteId)).ToListAsync();
+        parentLinks = await db.ParentLinks.AsNoTracking().Where(pl => athleteIds.Contains(pl.AthleteId)).ToListAsync();
 
         // Auto-expand levels that have athletes
         expandedLevels = athletes.Select(a => a.TeamLevelId).Distinct().ToHashSet();
@@ -310,6 +323,21 @@ else
         if (entity != null)
         {
             db.Athletes.Remove(entity);
+            await db.SaveChangesAsync();
+        }
+        await LoadData();
+    }
+
+    private async Task GenerateInvite(int athleteId)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        if (!await db.ParentLinks.AnyAsync(pl => pl.AthleteId == athleteId))
+        {
+            db.ParentLinks.Add(new ParentLink
+            {
+                AthleteId = athleteId,
+                InviteCode = ParentLink.GenerateCode()
+            });
             await db.SaveChangesAsync();
         }
         await LoadData();

@@ -1,0 +1,355 @@
+@page "/parent"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using GymBudgetApp.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IConfiguration Configuration
+@inject NavigationManager Navigation
+
+<h3>My Athletes</h3>
+
+@if (loading)
+{
+    <p>Loading...</p>
+}
+else if (!athletes.Any())
+{
+    <div class="text-center py-5">
+        <h4 class="text-muted">No athletes linked yet</h4>
+        <p>Enter your invite code to get started.</p>
+        <a href="/claim" class="btn btn-primary">Link an Athlete</a>
+    </div>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <span class="text-muted">@athletes.Count athlete(s)</span>
+        <a href="/claim" class="btn btn-sm btn-outline-primary">+ Link Another Athlete</a>
+    </div>
+
+    @foreach (var athlete in athletes)
+    {
+        var levelItems = athleteItems.Where(i => i.TeamLevelId == athlete.TeamLevelId).ToList();
+        var requiredItems = levelItems.Where(i => i.IsRequired).ToList();
+        var optionalItems = levelItems.Where(i => !i.IsRequired).ToList();
+        var athleteSelections = selections.Where(s => s.AthleteId == athlete.Id).Select(s => s.AthleteItemId).ToHashSet();
+        var requiredCost = requiredItems.Sum(i => i.Cost);
+        var optionalCost = optionalItems.Where(i => athleteSelections.Contains(i.Id)).Sum(i => i.Cost);
+        var totalCost = requiredCost + optionalCost;
+        var athletePayments = payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid).ToList();
+        var totalPaid = athletePayments.Sum(p => p.Amount);
+        var balance = totalCost - totalPaid;
+        var isExpanded = expandedAthletes.Contains(athlete.Id);
+
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 @onclick="() => ToggleAthlete(athlete.Id)" style="cursor: pointer;">
+                <div>
+                    <h5 class="mb-0 d-inline">@athlete.Name</h5>
+                    <span class="badge bg-primary ms-2">@(teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "")</span>
+                    @if (balance <= 0)
+                    {
+                        <span class="badge bg-success ms-1">Paid in Full</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-warning text-dark ms-1">$@balance.ToString("N2") due</span>
+                    }
+                </div>
+                <span class="oi @(isExpanded ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+            </div>
+
+            @if (isExpanded)
+            {
+            <div class="card-body">
+                <!-- Fee Breakdown -->
+                <h6>Fee Breakdown</h6>
+                <table class="table table-sm">
+                    <thead class="table-light">
+                        <tr><th>Item</th><th>Type</th><th class="text-end">Cost</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in requiredItems)
+                        {
+                            <tr>
+                                <td>@item.Name</td>
+                                <td><span class="badge bg-success">Required</span></td>
+                                <td class="text-end">$@item.Cost.ToString("N2")</td>
+                            </tr>
+                        }
+                        @foreach (var item in optionalItems)
+                        {
+                            var itemId = item.Id;
+                            var athleteId = athlete.Id;
+                            var isSelected = athleteSelections.Contains(itemId);
+                            <tr class="@(isSelected ? "" : "table-secondary")">
+                                <td>
+                                    <input type="checkbox" class="form-check-input me-2" checked="@isSelected"
+                                           @onchange="(e) => ToggleSelection(athleteId, itemId, (bool)e.Value!)" />
+                                    @item.Name
+                                </td>
+                                <td><span class="badge bg-info">Optional</span></td>
+                                <td class="text-end">@(isSelected ? $"${item.Cost:N2}" : "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr class="fw-bold">
+                            <td colspan="2">Total Fees</td>
+                            <td class="text-end">$@totalCost.ToString("N2")</td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                <!-- Payment Summary -->
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body text-center py-2">
+                                <small class="text-muted">Total Fees</small>
+                                <h5 class="mb-0">$@totalCost.ToString("N2")</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body text-center py-2">
+                                <small class="text-muted">Total Paid</small>
+                                <h5 class="mb-0 text-success">$@totalPaid.ToString("N2")</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card @(balance <= 0 ? "bg-success text-white" : "bg-warning")">
+                            <div class="card-body text-center py-2">
+                                <small>Balance Due</small>
+                                <h5 class="mb-0">$@balance.ToString("N2")</h5>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @if (balance > 0 && stripeEnabled)
+                {
+                    <button class="btn btn-success btn-lg w-100" @onclick="() => StartPayment(athlete, balance)" disabled="@isProcessing">
+                        @if (isProcessing) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Pay $@balance.ToString("N2") Now
+                    </button>
+                }
+                else if (balance > 0 && !stripeEnabled)
+                {
+                    <div class="alert alert-info mb-0">
+                        Online payments are not yet enabled. Please contact your program administrator.
+                    </div>
+                }
+
+                @if (paymentError != null)
+                {
+                    <div class="alert alert-danger mt-2">@paymentError</div>
+                }
+
+                <!-- Payment History -->
+                @if (athletePayments.Any())
+                {
+                    <h6 class="mt-3">Payment History</h6>
+                    <table class="table table-sm">
+                        <thead class="table-light"><tr><th>Date</th><th>Amount</th><th>Status</th></tr></thead>
+                        <tbody>
+                            @foreach (var p in athletePayments.OrderByDescending(p => p.PaidAt))
+                            {
+                                <tr>
+                                    <td>@(p.PaidAt?.ToString("MMM dd, yyyy") ?? p.CreatedAt.ToString("MMM dd, yyyy"))</td>
+                                    <td>$@p.Amount.ToString("N2")</td>
+                                    <td><span class="badge bg-success">@p.Status</span></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+
+                <!-- Upcoming Meets -->
+                @{
+                    var athleteMeetIds = meetLevelAssignments
+                        .Where(a => a.TeamLevelId == athlete.TeamLevelId)
+                        .Select(a => a.MeetId).ToHashSet();
+                    var upcomingMeets = meets
+                        .Where(m => athleteMeetIds.Contains(m.Id) && m.Date >= DateTime.Today)
+                        .OrderBy(m => m.Date).ToList();
+                }
+                @if (upcomingMeets.Any())
+                {
+                    <h6 class="mt-3">Upcoming Events</h6>
+                    <div class="list-group">
+                        @foreach (var meet in upcomingMeets)
+                        {
+                            var daysUntil = (meet.Date - DateTime.Today).Days;
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>@meet.Name</strong>
+                                    <br/><small class="text-muted">@meet.Date.ToString("dddd, MMMM d, yyyy")</small>
+                                </div>
+                                <div class="text-end">
+                                    <span class="badge bg-@(meet.TravelType == TravelType.Fly ? "info" : "secondary")">@meet.TravelType</span>
+                                    <br/><small class="text-muted">@daysUntil day(s) away</small>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    private bool loading = true;
+    private string? userId;
+    private List<Athlete> athletes = new();
+    private List<TeamLevel> teamLevels = new();
+    private List<AthleteItem> athleteItems = new();
+    private List<AthleteItemSelection> selections = new();
+    private List<Payment> payments = new();
+    private List<Meet> meets = new();
+    private List<MeetTeamLevelAssignment> meetLevelAssignments = new();
+    private HashSet<int> expandedAthletes = new();
+    private bool isProcessing;
+    private string? paymentError;
+    private bool stripeEnabled;
+
+    private void ToggleAthlete(int athleteId)
+    {
+        if (!expandedAthletes.Remove(athleteId))
+            expandedAthletes.Add(athleteId);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        var stripeKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY")
+            ?? Configuration["Stripe:SecretKey"] ?? "";
+        stripeEnabled = !string.IsNullOrEmpty(stripeKey);
+
+        await LoadData();
+        loading = false;
+    }
+
+    private async Task LoadData()
+    {
+        if (userId == null) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var parentLinks = await db.ParentLinks
+            .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
+            .ToListAsync();
+        var athleteIds = parentLinks.Select(l => l.AthleteId).ToList();
+
+        athletes = await db.Athletes.AsNoTracking()
+            .Where(a => athleteIds.Contains(a.Id))
+            .OrderBy(a => a.Name)
+            .ToListAsync();
+
+        var levelIds = athletes.Select(a => a.TeamLevelId).Distinct().ToList();
+        teamLevels = await db.TeamLevels.AsNoTracking().Where(t => levelIds.Contains(t.Id)).ToListAsync();
+        athleteItems = await db.AthleteItems.AsNoTracking().Where(i => levelIds.Contains(i.TeamLevelId)).ToListAsync();
+        selections = await db.AthleteItemSelections.AsNoTracking().Where(s => athleteIds.Contains(s.AthleteId)).ToListAsync();
+        payments = await db.Payments.AsNoTracking().Where(p => athleteIds.Contains(p.AthleteId)).ToListAsync();
+
+        // Load meets for upcoming events
+        var seasonIds = teamLevels.Select(t => t.SeasonId).Distinct().ToList();
+        meets = await db.Meets.AsNoTracking().Where(m => seasonIds.Contains(m.SeasonId)).ToListAsync();
+        meetLevelAssignments = await db.MeetTeamLevelAssignments.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
+
+        expandedAthletes = athletes.Select(a => a.Id).ToHashSet();
+    }
+
+    private async Task ToggleSelection(int athleteId, int itemId, bool isChecked)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        if (isChecked)
+        {
+            if (!await db.AthleteItemSelections.AnyAsync(s => s.AthleteId == athleteId && s.AthleteItemId == itemId))
+                db.AthleteItemSelections.Add(new AthleteItemSelection { AthleteId = athleteId, AthleteItemId = itemId });
+        }
+        else
+        {
+            var existing = await db.AthleteItemSelections.FirstOrDefaultAsync(s => s.AthleteId == athleteId && s.AthleteItemId == itemId);
+            if (existing != null) db.AthleteItemSelections.Remove(existing);
+        }
+        await db.SaveChangesAsync();
+        await LoadData();
+    }
+
+    private async Task StartPayment(Athlete athlete, decimal amount)
+    {
+        paymentError = null;
+        isProcessing = true;
+
+        try
+        {
+            var publishableKey = Environment.GetEnvironmentVariable("STRIPE_PUBLISHABLE_KEY")
+                ?? Configuration["Stripe:PublishableKey"] ?? "";
+            if (string.IsNullOrEmpty(publishableKey))
+            {
+                paymentError = "Stripe is not configured. Contact your administrator.";
+                isProcessing = false;
+                return;
+            }
+
+            var levelName = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "Program";
+
+            var options = new Stripe.Checkout.SessionCreateOptions
+            {
+                PaymentMethodTypes = new List<string> { "card" },
+                LineItems = new List<Stripe.Checkout.SessionLineItemOptions>
+                {
+                    new()
+                    {
+                        PriceData = new Stripe.Checkout.SessionLineItemPriceDataOptions
+                        {
+                            UnitAmount = (long)(amount * 100),
+                            Currency = "usd",
+                            ProductData = new Stripe.Checkout.SessionLineItemPriceDataProductDataOptions
+                            {
+                                Name = $"{athlete.Name} - {levelName} Fees",
+                            },
+                        },
+                        Quantity = 1,
+                    },
+                },
+                Mode = "payment",
+                SuccessUrl = Navigation.BaseUri + "parent?payment=success",
+                CancelUrl = Navigation.BaseUri + "parent?payment=cancelled",
+            };
+
+            var service = new Stripe.Checkout.SessionService();
+            var session = await service.CreateAsync(options);
+
+            // Record pending payment
+            using var db = await DbFactory.CreateDbContextAsync();
+            db.Payments.Add(new Payment
+            {
+                AthleteId = athlete.Id,
+                PayerUserId = userId!,
+                Amount = amount,
+                Status = PaymentStatus.Pending,
+                StripeSessionId = session.Id,
+                Description = $"{athlete.Name} - {levelName} Fees"
+            });
+            await db.SaveChangesAsync();
+
+            Navigation.NavigateTo(session.Url, forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            paymentError = $"Payment error: {ex.Message}";
+            isProcessing = false;
+        }
+    }
+}

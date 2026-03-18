@@ -1,0 +1,135 @@
+@page "/claim"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+<h3>Link Your Athlete</h3>
+<p class="text-muted">Enter the invite code provided by your coach or program administrator to link your athlete to your account.</p>
+
+<div class="card p-4" style="max-width: 500px;">
+    <div class="mb-3">
+        <label class="form-label fw-bold">Invite Code</label>
+        <input class="form-control form-control-lg text-center font-monospace" maxlength="8"
+               placeholder="e.g. AB3K7NP2" @bind="inviteCode" style="letter-spacing: 3px;" />
+    </div>
+    <button class="btn btn-primary" @onclick="ClaimInvite" disabled="@isClaiming">
+        @if (isClaiming) { <span class="spinner-border spinner-border-sm me-1"></span> }
+        Link Athlete
+    </button>
+
+    @if (successMessage != null)
+    {
+        <div class="alert alert-success mt-3">
+            @successMessage
+            <br/>
+            <a href="/parent" class="btn btn-sm btn-success mt-2">Go to My Athletes</a>
+        </div>
+    }
+    @if (errorMessage != null)
+    {
+        <div class="alert alert-danger mt-3">@errorMessage</div>
+    }
+</div>
+
+@if (myAthletes.Any())
+{
+    <div class="card mt-4 p-4" style="max-width: 500px;">
+        <h5>Already Linked Athletes</h5>
+        <ul class="list-group">
+            @foreach (var a in myAthletes)
+            {
+                <li class="list-group-item d-flex justify-content-between">
+                    <span><strong>@a.Name</strong></span>
+                    <span class="text-muted">@a.TeamLevel</span>
+                </li>
+            }
+        </ul>
+        <a href="/parent" class="btn btn-outline-primary mt-3">Go to My Athletes</a>
+    </div>
+}
+
+@code {
+    private string inviteCode = "";
+    private bool isClaiming;
+    private string? successMessage;
+    private string? errorMessage;
+    private string? userId;
+    private List<(string Name, string TeamLevel)> myAthletes = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        await LoadMyAthletes();
+    }
+
+    private async Task LoadMyAthletes()
+    {
+        if (userId == null) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var links = await db.ParentLinks
+            .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
+            .ToListAsync();
+        var athleteIds = links.Select(l => l.AthleteId).ToList();
+        var athletes = await db.Athletes
+            .Include(a => a.TeamLevel)
+            .Where(a => athleteIds.Contains(a.Id))
+            .ToListAsync();
+        myAthletes = athletes.Select(a => (a.Name, a.TeamLevel?.Name ?? "")).ToList();
+    }
+
+    private async Task ClaimInvite()
+    {
+        successMessage = null;
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(inviteCode))
+        {
+            errorMessage = "Please enter an invite code.";
+            return;
+        }
+
+        isClaiming = true;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var link = await db.ParentLinks
+            .FirstOrDefaultAsync(pl => pl.InviteCode == inviteCode.Trim().ToUpper());
+
+        if (link == null)
+        {
+            errorMessage = "Invalid invite code. Please check with your coach.";
+            isClaiming = false;
+            return;
+        }
+
+        if (link.IsClaimed && link.ParentUserId != userId)
+        {
+            errorMessage = "This invite code has already been claimed by another account.";
+            isClaiming = false;
+            return;
+        }
+
+        if (link.IsClaimed && link.ParentUserId == userId)
+        {
+            errorMessage = "You've already linked this athlete.";
+            isClaiming = false;
+            return;
+        }
+
+        link.ParentUserId = userId;
+        link.IsClaimed = true;
+        link.ClaimedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        var athlete = await db.Athletes.FindAsync(link.AthleteId);
+        successMessage = $"Successfully linked to {athlete?.Name ?? "athlete"}!";
+        inviteCode = "";
+        await LoadMyAthletes();
+        isClaiming = false;
+    }
+}

@@ -1,0 +1,199 @@
+@page "/payments"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using GymBudgetApp.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h3>Payment Tracking</h3>
+
+@if (seasons == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="mb-3">
+        <label>Select Season</label>
+        <select class="form-select w-auto d-inline-block ms-2" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @foreach (var s in seasons)
+            {
+                <option value="@s.Id">@s.Name</option>
+            }
+        </select>
+    </div>
+
+    @if (selectedSeasonId > 0)
+    {
+        <div class="row mb-4">
+            <div class="col-md-3 mb-2">
+                <div class="card text-white bg-primary">
+                    <div class="card-body">
+                        <h6>Total Owed</h6>
+                        <h4>$@totalOwed.ToString("N2")</h4>
+                        <small>@athletes.Count athlete(s)</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-2">
+                <div class="card text-white bg-success">
+                    <div class="card-body">
+                        <h6>Total Collected</h6>
+                        <h4>$@totalPaid.ToString("N2")</h4>
+                        <small>@paidPayments.Count payment(s)</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-2">
+                <div class="card text-white bg-warning">
+                    <div class="card-body">
+                        <h6>Outstanding</h6>
+                        <h4>$@(totalOwed - totalPaid).ToString("N2")</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-2">
+                <div class="card text-white bg-info">
+                    <div class="card-body">
+                        <h6>Collection Rate</h6>
+                        <h4>@(totalOwed > 0 ? (totalPaid / totalOwed * 100).ToString("N0") : "0")%</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0">Athlete Payment Status</h5></div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Athlete</th>
+                            <th>@labels.TeamLevel</th>
+                            <th class="text-end">Total Fees</th>
+                            <th class="text-end">Paid</th>
+                            <th class="text-end">Balance</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-center">Parent Linked</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var athlete in athletes)
+                        {
+                            var levelItems = athleteItems.Where(i => i.TeamLevelId == athlete.TeamLevelId).ToList();
+                            var requiredCost = levelItems.Where(i => i.IsRequired).Sum(i => i.Cost);
+                            var athleteSel = selections.Where(s => s.AthleteId == athlete.Id).Select(s => s.AthleteItemId).ToHashSet();
+                            var optionalCost = levelItems.Where(i => !i.IsRequired && athleteSel.Contains(i.Id)).Sum(i => i.Cost);
+                            var fees = requiredCost + optionalCost;
+                            var paid = payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid).Sum(p => p.Amount);
+                            var balance = fees - paid;
+                            var link = parentLinks.FirstOrDefault(pl => pl.AthleteId == athlete.Id);
+                            var levelName = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "";
+
+                            <tr>
+                                <td><strong>@athlete.Name</strong></td>
+                                <td>@levelName</td>
+                                <td class="text-end">$@fees.ToString("N2")</td>
+                                <td class="text-end text-success">$@paid.ToString("N2")</td>
+                                <td class="text-end @(balance <= 0 ? "text-success" : "text-danger") fw-bold">$@balance.ToString("N2")</td>
+                                <td class="text-center">
+                                    @if (balance <= 0)
+                                    {
+                                        <span class="badge bg-success">Paid</span>
+                                    }
+                                    else if (paid > 0)
+                                    {
+                                        <span class="badge bg-warning text-dark">Partial</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger">Unpaid</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    @if (link?.IsClaimed == true)
+                                    {
+                                        <span class="badge bg-success">Yes</span>
+                                    }
+                                    else if (link != null)
+                                    {
+                                        <span class="badge bg-secondary font-monospace">@link.InviteCode</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot class="table-light fw-bold">
+                        <tr>
+                            <td colspan="2">Totals</td>
+                            <td class="text-end">$@totalOwed.ToString("N2")</td>
+                            <td class="text-end text-success">$@totalPaid.ToString("N2")</td>
+                            <td class="text-end">$@(totalOwed - totalPaid).ToString("N2")</td>
+                            <td colspan="2"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<Season>? seasons;
+    private List<TeamLevel> teamLevels = new();
+    private List<AthleteItem> athleteItems = new();
+    private List<Athlete> athletes = new();
+    private List<AthleteItemSelection> selections = new();
+    private List<Payment> payments = new();
+    private List<ParentLink> parentLinks = new();
+    private int selectedSeasonId;
+    private string? userId;
+    private ProjectLabels labels = ProjectLabels.Default;
+
+    private List<Payment> paidPayments => payments.Where(p => p.Status == PaymentStatus.Paid).ToList();
+    private decimal totalPaid => paidPayments.Sum(p => p.Amount);
+    private decimal totalOwed => athletes.Sum(a =>
+    {
+        var items = athleteItems.Where(i => i.TeamLevelId == a.TeamLevelId).ToList();
+        var req = items.Where(i => i.IsRequired).Sum(i => i.Cost);
+        var sel = selections.Where(s => s.AthleteId == a.Id).Select(s => s.AthleteItemId).ToHashSet();
+        var opt = items.Where(i => !i.IsRequired && sel.Contains(i.Id)).Sum(i => i.Cost);
+        return req + opt;
+    });
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasons = await db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToListAsync();
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        labels = new ProjectLabels(seasons?.FirstOrDefault(s => s.Id == selectedSeasonId));
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        teamLevels = await db.TeamLevels.AsNoTracking().Where(t => t.SeasonId == selectedSeasonId).ToListAsync();
+        var levelIds = teamLevels.Select(t => t.Id).ToList();
+        athleteItems = await db.AthleteItems.AsNoTracking().Where(i => levelIds.Contains(i.TeamLevelId)).ToListAsync();
+        athletes = await db.Athletes.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).OrderBy(a => a.Name).ToListAsync();
+        var athleteIds = athletes.Select(a => a.Id).ToList();
+        selections = await db.AthleteItemSelections.AsNoTracking().Where(s => athleteIds.Contains(s.AthleteId)).ToListAsync();
+        payments = await db.Payments.AsNoTracking().Where(p => athleteIds.Contains(p.AthleteId)).ToListAsync();
+        parentLinks = await db.ParentLinks.AsNoTracking().Where(pl => athleteIds.Contains(pl.AthleteId)).ToListAsync();
+    }
+}

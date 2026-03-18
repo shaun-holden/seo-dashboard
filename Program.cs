@@ -25,6 +25,12 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options =>
 .AddRoles<IdentityRole>()
 .AddEntityFrameworkStores<AppDbContext>();
 
+// Stripe configuration
+var stripeSecretKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY")
+    ?? builder.Configuration["Stripe:SecretKey"] ?? "";
+if (!string.IsNullOrEmpty(stripeSecretKey))
+    Stripe.StripeConfiguration.ApiKey = stripeSecretKey;
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -45,6 +51,43 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapBlazorHub();
+
+// Stripe webhook endpoint
+app.MapPost("/api/stripe-webhook", async (HttpContext context, AppDbContext db) =>
+{
+    var webhookSecret = Environment.GetEnvironmentVariable("STRIPE_WEBHOOK_SECRET")
+        ?? app.Configuration["Stripe:WebhookSecret"] ?? "";
+    var json = await new StreamReader(context.Request.Body).ReadToEndAsync();
+
+    try
+    {
+        var stripeEvent = Stripe.EventUtility.ConstructEvent(json,
+            context.Request.Headers["Stripe-Signature"], webhookSecret);
+
+        if (stripeEvent.Type == "checkout.session.completed")
+        {
+            var session = stripeEvent.Data.Object as Stripe.Checkout.Session;
+            if (session != null)
+            {
+                var payment = db.Set<GymBudgetApp.Models.Payment>()
+                    .FirstOrDefault(p => p.StripeSessionId == session.Id);
+                if (payment != null)
+                {
+                    payment.Status = GymBudgetApp.Models.PaymentStatus.Paid;
+                    payment.StripePaymentIntentId = session.PaymentIntentId;
+                    payment.PaidAt = DateTime.UtcNow;
+                    await db.SaveChangesAsync();
+                }
+            }
+        }
+        return Results.Ok();
+    }
+    catch
+    {
+        return Results.BadRequest();
+    }
+}).AllowAnonymous();
+
 app.MapFallbackToPage("/_Host");
 
 app.Run();
