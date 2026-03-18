@@ -340,6 +340,7 @@ else
     private List<SharedFee> sharedFees = new();
     private List<SharedFeeTeamLevelAssignment> sharedFeeAssignments = new();
     private List<TeamLevel> allSeasonLevels = new();
+    private List<Season> seasons = new();
     private HashSet<int> expandedAthletes = new();
     private bool isProcessing;
     private string? paymentError;
@@ -386,8 +387,9 @@ else
         selections = await db.AthleteItemSelections.AsNoTracking().Where(s => athleteIds.Contains(s.AthleteId)).ToListAsync();
         payments = await db.Payments.AsNoTracking().Where(p => athleteIds.Contains(p.AthleteId)).ToListAsync();
 
-        // Load shared fees
+        // Load seasons and shared fees
         var seasonIds = teamLevels.Select(t => t.SeasonId).Distinct().ToList();
+        seasons = await db.Seasons.AsNoTracking().Where(s => seasonIds.Contains(s.Id)).ToListAsync();
         sharedFees = await db.SharedFees.AsNoTracking()
             .Where(f => seasonIds.Contains(f.SeasonId) && f.IsIncludedInBudget)
             .ToListAsync();
@@ -427,10 +429,16 @@ else
 
     private decimal GetSharedFeeCostPerAthlete(int teamLevelId)
     {
-        decimal total = 0;
         var level = allSeasonLevels.FirstOrDefault(t => t.Id == teamLevelId);
         if (level == null) return 0;
 
+        // Get season's total athlete count
+        var season = seasons.FirstOrDefault(s => s.Id == level.SeasonId);
+        var totalAthletes = season?.AthleteCount ?? 0;
+        if (totalAthletes == 0) return 0;
+
+        // Sum all shared fees assigned to this level
+        decimal total = 0;
         foreach (var fee in sharedFees)
         {
             var assignedLevelIds = sharedFeeAssignments
@@ -440,13 +448,7 @@ else
                 assignedLevelIds = allSeasonLevels.Where(t => t.SeasonId == fee.SeasonId).Select(t => t.Id).ToList();
             if (!assignedLevelIds.Contains(teamLevelId)) continue;
 
-            var totalAssignedAthletes = allSeasonLevels
-                .Where(t => assignedLevelIds.Contains(t.Id))
-                .Sum(t => t.AthleteCount);
-            if (totalAssignedAthletes > 0)
-                total += Math.Round(fee.Amount / totalAssignedAthletes, 2);
-            else
-                total += Math.Round(fee.Amount / assignedLevelIds.Count, 2);
+            total += Math.Round(fee.Amount / totalAthletes, 2);
         }
         return total;
     }
