@@ -56,6 +56,7 @@ namespace GymBudgetApp
         public DbSet<AthleteItemSelection> AthleteItemSelections { get; set; }
         public DbSet<ParentLink> ParentLinks { get; set; }
         public DbSet<Payment> Payments { get; set; }
+        public DbSet<Gymnast> Gymnasts { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {

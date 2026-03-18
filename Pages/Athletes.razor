@@ -71,6 +71,19 @@ else
         {
             <div class="card mb-4 p-3">
                 <h5>@(editingAthlete == null ? "Add Athlete" : "Edit Athlete")</h5>
+                @if (editingAthlete == null && rosterGymnasts.Any())
+                {
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Add from Roster</label>
+                        <select class="form-select" style="max-width: 400px;" @onchange="OnRosterSelect">
+                            <option value="">-- Pick from roster or type below --</option>
+                            @foreach (var g in rosterGymnasts)
+                            {
+                                <option value="@g.Id">@g.Name @(!string.IsNullOrEmpty(g.Level) ? $"({g.Level})" : "")</option>
+                            }
+                        </select>
+                    </div>
+                }
                 <div class="row">
                     <div class="col-md-4 mb-2">
                         <label>Name</label>
@@ -254,6 +267,7 @@ else
 
     private int filterLevelId = 0;
     private HashSet<int> expandedLevels = new();
+    private List<Gymnast> rosterGymnasts = new();
 
     private bool showInviteForm;
     private int inviteAthleteId;
@@ -305,6 +319,30 @@ else
 
         // Auto-expand levels that have athletes
         expandedLevels = athletes.Select(a => a.TeamLevelId).Distinct().ToHashSet();
+
+        // Load roster for quick-add (exclude already added names)
+        var existingNames = athletes.Select(a => a.Name.ToLower()).ToHashSet();
+        rosterGymnasts = await db.Gymnasts.AsNoTracking()
+            .Where(g => g.UserId == userId && !existingNames.Contains(g.Name.ToLower()))
+            .OrderBy(g => g.Name)
+            .ToListAsync();
+    }
+
+    private void OnRosterSelect(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var gymnastId))
+        {
+            var g = rosterGymnasts.FirstOrDefault(r => r.Id == gymnastId);
+            if (g != null)
+            {
+                formName = g.Name;
+                // Try to match roster level to a team level
+                var matchedLevel = teamLevels.FirstOrDefault(t =>
+                    t.Name.Equals(g.Level, StringComparison.OrdinalIgnoreCase));
+                if (matchedLevel != null)
+                    formTeamLevelId = matchedLevel.Id;
+            }
+        }
     }
 
     private void ShowAddForm()
