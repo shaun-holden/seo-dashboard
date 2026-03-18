@@ -350,6 +350,8 @@ else
         meetLevelAssignments = await db.MeetTeamLevelAssignments.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
 
         expandedAthletes = athletes.Select(a => a.Id).ToHashSet();
+        foreach (var a in athletes)
+            customAmounts.TryAdd(a.Id, 0);
     }
 
     private async Task ToggleSelection(int athleteId, int itemId, bool isChecked)
