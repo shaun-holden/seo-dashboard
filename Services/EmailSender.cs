@@ -1,6 +1,7 @@
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Identity.UI.Services;
-using SendGrid;
-using SendGrid.Helpers.Mail;
 
 namespace GymBudgetApp.Services
 {
@@ -17,34 +18,44 @@ namespace GymBudgetApp.Services
 
         public async Task SendEmailAsync(string email, string subject, string htmlMessage)
         {
-            var apiKey = Environment.GetEnvironmentVariable("SENDGRID_API_KEY")
-                ?? _configuration["SendGrid:ApiKey"] ?? "";
-            var fromEmail = Environment.GetEnvironmentVariable("SENDGRID_FROM_EMAIL")
-                ?? _configuration["SendGrid:FromEmail"] ?? "deshaun@tntgym.org";
+            var apiKey = Environment.GetEnvironmentVariable("RESEND_API_KEY")
+                ?? _configuration["Resend:ApiKey"] ?? "";
+            var fromEmail = Environment.GetEnvironmentVariable("RESEND_FROM_EMAIL")
+                ?? _configuration["Resend:FromEmail"] ?? "onboarding@resend.dev";
 
             if (string.IsNullOrEmpty(apiKey))
             {
-                _logger.LogWarning("SendGrid not configured. Email to {Email} with subject '{Subject}' was not sent.", email, subject);
+                _logger.LogWarning("Resend not configured. Email to {Email} with subject '{Subject}' was not sent.", email, subject);
                 return;
             }
 
-            var client = new SendGridClient(apiKey);
-            var from = new EmailAddress(fromEmail, "Top Notch Training");
-            var to = new EmailAddress(email);
-            var msg = MailHelper.CreateSingleEmail(from, to, subject, null, htmlMessage);
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+
+            var payload = new
+            {
+                from = $"Top Notch Training <{fromEmail}>",
+                to = new[] { email },
+                subject,
+                html = htmlMessage
+            };
+
+            var json = JsonSerializer.Serialize(payload);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             try
             {
-                var response = await client.SendEmailAsync(msg);
+                var response = await httpClient.PostAsync("https://api.resend.com/emails", content);
+                var body = await response.Content.ReadAsStringAsync();
+
                 if (response.IsSuccessStatusCode)
                 {
                     _logger.LogInformation("Email sent to {Email} with subject '{Subject}'", email, subject);
                 }
                 else
                 {
-                    var body = await response.Body.ReadAsStringAsync();
-                    _logger.LogError("SendGrid failed ({StatusCode}): {Body}", response.StatusCode, body);
-                    throw new Exception($"SendGrid error: {response.StatusCode} - {body}");
+                    _logger.LogError("Resend failed ({StatusCode}): {Body}", response.StatusCode, body);
+                    throw new Exception($"Resend error: {response.StatusCode} - {body}");
                 }
             }
             catch (Exception ex)
