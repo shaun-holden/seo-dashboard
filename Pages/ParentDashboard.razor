@@ -75,21 +75,15 @@ else
                         <tr><th>Item</th><th>Type</th><th class="text-end">Cost</th></tr>
                     </thead>
                     <tbody>
-                        @foreach (var fee in sharedFees)
+                        @if (sharedFeeCost > 0)
                         {
-                            var feeAssignedIds = sharedFeeAssignments.Where(a => a.SharedFeeId == fee.Id).Select(a => a.TeamLevelId).ToList();
-                            if (feeAssignedIds.Count == 0)
-                                feeAssignedIds = allSeasonLevels.Where(t => t.SeasonId == fee.SeasonId).Select(t => t.Id).ToList();
-                            if (!feeAssignedIds.Contains(athlete.TeamLevelId)) continue;
-                            var feeTotalAthletes = allSeasonLevels.Where(t => feeAssignedIds.Contains(t.Id)).Sum(t => t.AthleteCount);
-                            var feePerAthlete = feeTotalAthletes > 0 ? Math.Round(fee.Amount / feeTotalAthletes, 2) : 0m;
                             <tr>
                                 <td>
                                     <input type="checkbox" class="form-check-input me-2" checked disabled />
-                                    @fee.Name
+                                    Shared Fees
                                 </td>
                                 <td><span class="badge bg-secondary">Shared Fee</span></td>
-                                <td class="text-end">$@feePerAthlete.ToString("N2")</td>
+                                <td class="text-end">$@sharedFeeCost.ToString("N2")</td>
                             </tr>
                         }
                         @foreach (var item in requiredItems)
