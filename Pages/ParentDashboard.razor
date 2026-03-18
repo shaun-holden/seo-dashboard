@@ -134,12 +134,90 @@ else
                     </div>
                 </div>
 
+                @{
+                    var monthlyAmount = Math.Round(balance / 8, 2);
+                    var scheduleStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 15);
+                    if (DateTime.Today.Day > 15) scheduleStart = scheduleStart.AddMonths(1);
+                }
+
                 @if (balance > 0 && stripeEnabled)
                 {
-                    <button class="btn btn-success btn-lg w-100" @onclick="() => StartPayment(athlete, balance)" disabled="@isProcessing">
-                        @if (isProcessing) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                        Pay $@balance.ToString("N2") Now
-                    </button>
+                    <!-- Payment Schedule -->
+                    <div class="card bg-light mb-3">
+                        <div class="card-body">
+                            <h6 class="card-title">Payment Plan</h6>
+                            <p class="text-muted mb-2">8 monthly payments of <strong>$@monthlyAmount.ToString("N2")</strong>, due on the 15th</p>
+                            <div class="table-responsive">
+                                <table class="table table-sm mb-0">
+                                    <thead class="table-light">
+                                        <tr><th>#</th><th>Due Date</th><th class="text-end">Amount</th><th>Status</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        @for (int i = 0; i < 8; i++)
+                                        {
+                                            var dueDate = scheduleStart.AddMonths(i);
+                                            var installmentNum = i + 1;
+                                            var cumulativeDue = monthlyAmount * installmentNum;
+                                            var isPaid = totalPaid >= cumulativeDue;
+                                            var isPartial = !isPaid && totalPaid > monthlyAmount * i;
+                                            var isPastDue = dueDate < DateTime.Today && !isPaid;
+                                            <tr class="@(isPastDue ? "table-danger" : isPaid ? "table-success" : "")">
+                                                <td>@installmentNum</td>
+                                                <td>@dueDate.ToString("MMM 15, yyyy")</td>
+                                                <td class="text-end">$@monthlyAmount.ToString("N2")</td>
+                                                <td>
+                                                    @if (isPaid)
+                                                    {
+                                                        <span class="badge bg-success">Paid</span>
+                                                    }
+                                                    else if (isPartial)
+                                                    {
+                                                        <span class="badge bg-info">Partial</span>
+                                                    }
+                                                    else if (isPastDue)
+                                                    {
+                                                        <span class="badge bg-danger">Past Due</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-secondary">Upcoming</span>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Payment Options -->
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-4">
+                            <button class="btn btn-success w-100" @onclick="() => StartPayment(athlete, monthlyAmount)" disabled="@isProcessing">
+                                @if (isProcessing) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                Pay Monthly ($@monthlyAmount.ToString("N2"))
+                            </button>
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-primary w-100" @onclick="() => StartPayment(athlete, balance)" disabled="@isProcessing">
+                                @if (isProcessing) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                Pay in Full ($@balance.ToString("N2"))
+                            </button>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" placeholder="Amount"
+                                       min="1" max="@balance" step="0.01"
+                                       @bind="customAmounts[athlete.Id]" />
+                                <button class="btn btn-outline-success" disabled="@(isProcessing || !customAmounts.ContainsKey(athlete.Id) || customAmounts[athlete.Id] <= 0)"
+                                        @onclick="() => StartPayment(athlete, customAmounts.GetValueOrDefault(athlete.Id, 0))">
+                                    Pay
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 }
                 else if (balance > 0 && !stripeEnabled)
                 {
@@ -221,6 +299,7 @@ else
     private bool isProcessing;
     private string? paymentError;
     private bool stripeEnabled;
+    private Dictionary<int, decimal> customAmounts = new();
 
     private void ToggleAthlete(int athleteId)
     {
