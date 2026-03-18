@@ -138,44 +138,80 @@ else
 
         @if (sharedFees.Any())
         {
-            <h5>Shared Fees</h5>
-            <table class="table table-striped mb-4">
-                <thead><tr><th>Fee</th><th>Amount</th></tr></thead>
-                <tbody>
-                    @foreach (var fee in sharedFees)
-                    {
-                        <tr><td>@fee.DisplayName</td><td>$@fee.Amount.ToString("N2")</td></tr>
-                    }
-                </tbody>
-                <tfoot>
-                    <tr class="fw-bold"><td>Total Shared Fees</td><td>$@sharedFeesTotal.ToString("N2")</td></tr>
-                </tfoot>
-            </table>
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center"
+                     @onclick="() => showReportSharedFees = !showReportSharedFees" style="cursor: pointer;">
+                    <h5 class="mb-0">Shared Fees</h5>
+                    <div>
+                        <span class="fw-bold me-2">$@sharedFeesTotal.ToString("N2")</span>
+                        <span class="oi @(showReportSharedFees ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+                    </div>
+                </div>
+                @if (showReportSharedFees)
+                {
+                <div class="card-body p-0">
+                    <table class="table table-striped mb-0">
+                        <thead><tr><th>Fee</th><th>Amount</th></tr></thead>
+                        <tbody>
+                            @foreach (var fee in sharedFees)
+                            {
+                                <tr><td>@fee.DisplayName</td><td>$@fee.Amount.ToString("N2")</td></tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr class="fw-bold"><td>Total Shared Fees</td><td>$@sharedFeesTotal.ToString("N2")</td></tr>
+                        </tfoot>
+                    </table>
+                </div>
+                }
+            </div>
         }
 
         @if (athleteItems.Any())
         {
-            <h5>@labels.AthleteItems</h5>
-            <table class="table table-striped mb-4">
-                <thead><tr><th>@labels.TeamLevel</th><th>Item</th><th>Cost</th></tr></thead>
-                <tbody>
-                    @foreach (var level in teamLevels)
-                    {
-                        var items = athleteItems.Where(i => i.TeamLevelId == level.Id).ToList();
-                        @foreach (var item in items)
-                        {
-                            <tr><td>@level.Name</td><td>@item.Name</td><td>$@item.Cost.ToString("N2")</td></tr>
-                        }
-                    }
-                </tbody>
-                <tfoot>
-                    <tr class="fw-bold"><td colspan="2">Total @labels.AthleteItems</td><td>$@athleteItemsTotal.ToString("N2")</td></tr>
-                </tfoot>
-            </table>
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center"
+                     @onclick="() => showReportAthleteItems = !showReportAthleteItems" style="cursor: pointer;">
+                    <h5 class="mb-0">@labels.AthleteItems</h5>
+                    <div>
+                        <span class="fw-bold me-2">$@athleteItemsTotal.ToString("N2")</span>
+                        <span class="oi @(showReportAthleteItems ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+                    </div>
+                </div>
+                @if (showReportAthleteItems)
+                {
+                <div class="card-body p-0">
+                    <table class="table table-striped mb-0">
+                        <thead><tr><th>@labels.TeamLevel</th><th>Item</th><th>Cost</th></tr></thead>
+                        <tbody>
+                            @foreach (var level in teamLevels)
+                            {
+                                var items = athleteItems.Where(i => i.TeamLevelId == level.Id).ToList();
+                                @foreach (var item in items)
+                                {
+                                    <tr><td>@level.Name</td><td>@item.Name</td><td>$@item.Cost.ToString("N2")</td></tr>
+                                }
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr class="fw-bold"><td colspan="2">Total @labels.AthleteItems</td><td>$@athleteItemsTotal.ToString("N2")</td></tr>
+                        </tfoot>
+                    </table>
+                </div>
+                }
+            </div>
         }
 
-        <h5>Budget vs Actual by Category</h5>
-        <table class="table table-striped mb-4">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 @onclick="() => showReportBudgetVsActual = !showReportBudgetVsActual" style="cursor: pointer;">
+                <h5 class="mb-0">Budget vs Actual by Category</h5>
+                <span class="oi @(showReportBudgetVsActual ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+            </div>
+            @if (showReportBudgetVsActual)
+            {
+            <div class="card-body p-0">
+        <table class="table table-striped mb-0">
             <thead>
                 <tr>
                     <th>Category</th>
@@ -219,10 +255,21 @@ else
                 </tr>
             </tfoot>
         </table>
+            </div>
+            }
+        </div>
 
         @if (selectedMeetFilter == 0 && showFilter != "actual" && string.IsNullOrEmpty(selectedCategoryFilter) && teamLevels.Any())
         {
-            <h5>@labels.TeamLevel Cost Breakdown</h5>
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center"
+                     @onclick="() => showReportLevelBreakdown = !showReportLevelBreakdown" style="cursor: pointer;">
+                    <h5 class="mb-0">@labels.TeamLevel Cost Breakdown</h5>
+                    <span class="oi @(showReportLevelBreakdown ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+                </div>
+                @if (showReportLevelBreakdown)
+                {
+                <div class="card-body">
             @if (seasonGroups.Any())
             {
                 @foreach (var group in seasonGroups)
@@ -261,6 +308,9 @@ else
                     @RenderLevelBreakdown(level)
                 }
             }
+                </div>
+                }
+            </div>
         }
     }
 }
@@ -283,6 +333,10 @@ else
     private string showFilter = "both";
     private string? userId;
     private ProjectLabels labels = ProjectLabels.Default;
+    private bool showReportSharedFees = true;
+    private bool showReportAthleteItems = true;
+    private bool showReportBudgetVsActual = true;
+    private bool showReportLevelBreakdown = true;
 
     private IEnumerable<BudgetCategory> visibleCategories =>
         string.IsNullOrEmpty(selectedCategoryFilter)

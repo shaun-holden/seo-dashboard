@@ -599,10 +599,19 @@ else
         @if (sharedFees.Any())
         {
             <div class="card mb-4 border-warning">
-                <div class="card-header bg-warning bg-opacity-25 d-flex justify-content-between">
-                    <h5 class="mb-0">Shared Fees</h5>
-                    <span class="fw-bold">Total: $@sharedFees.Sum(f => f.Amount).ToString("N2")</span>
+                <div class="card-header bg-warning bg-opacity-25 d-flex justify-content-between align-items-center"
+                     @onclick="() => showSharedFeesSection = !showSharedFeesSection" style="cursor: pointer;">
+                    <div>
+                        <h5 class="mb-0 d-inline">Shared Fees</h5>
+                        <span class="badge bg-warning text-dark ms-2">@sharedFees.Count fee(s)</span>
+                    </div>
+                    <div>
+                        <span class="fw-bold me-2">Total: $@sharedFees.Sum(f => f.Amount).ToString("N2")</span>
+                        <span class="oi @(showSharedFeesSection ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+                    </div>
                 </div>
+                @if (showSharedFeesSection)
+                {
                 <div class="card-body p-0">
                     <table class="table table-sm mb-0">
                         <thead><tr><th>Category</th><th>Name</th><th>Amount</th><th>In Budget</th><th></th></tr></thead>
@@ -623,17 +632,27 @@ else
                         </tbody>
                     </table>
                 </div>
+                }
             </div>
         }
 
         @if (sharedFees.Any() && teamLevels.Any())
         {
             <div class="card mb-4 border-info">
-                <div class="card-header bg-info bg-opacity-10 d-flex justify-content-between">
+                <div class="card-header bg-info bg-opacity-10 d-flex justify-content-between align-items-center"
+                     @onclick="() => showAssignFeesSection = !showAssignFeesSection" style="cursor: pointer;">
                     <h5 class="mb-0">Assign Shared Fees to @labels.TeamLevels</h5>
-                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="AssignAllFeesToAllLevels">Select All</button>
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="UnassignAllFeesFromAllLevels">Deselect All</button>
+                    <div>
+                        @if (showAssignFeesSection)
+                        {
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="AssignAllFeesToAllLevels" @onclick:stopPropagation="true">Select All</button>
+                            <button class="btn btn-sm btn-outline-secondary me-2" @onclick="UnassignAllFeesFromAllLevels" @onclick:stopPropagation="true">Deselect All</button>
+                        }
+                        <span class="oi @(showAssignFeesSection ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+                    </div>
                 </div>
+                @if (showAssignFeesSection)
+                {
                 <div class="card-body p-0" style="overflow-x: auto;">
                     <table class="table table-sm table-bordered mb-0">
                         <thead>
@@ -673,6 +692,7 @@ else
                         </tbody>
                     </table>
                 </div>
+                }
             </div>
         }
 
@@ -836,6 +856,8 @@ else
     private string? userId;
     private ProjectLabels labels = ProjectLabels.Default;
     private HashSet<int> expandedLevels = new();
+    private bool showSharedFeesSection = true;
+    private bool showAssignFeesSection = true;
 
     private void ToggleLevelExpand(int levelId)
     {
