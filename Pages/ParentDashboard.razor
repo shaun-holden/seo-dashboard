@@ -40,7 +40,8 @@ else
         var athleteSelections = selections.Where(s => s.AthleteId == athlete.Id).Select(s => s.AthleteItemId).ToHashSet();
         var requiredCost = requiredItems.Sum(i => i.Cost);
         var optionalCost = optionalItems.Where(i => athleteSelections.Contains(i.Id)).Sum(i => i.Cost);
-        var totalCost = requiredCost + optionalCost;
+        var sharedFeeCost = GetSharedFeeCostPerAthlete(athlete.TeamLevelId);
+        var totalCost = requiredCost + optionalCost + sharedFeeCost;
         var athletePayments = payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid).ToList();
         var totalPaid = athletePayments.Sum(p => p.Amount);
         var balance = totalCost - totalPaid;
@@ -74,6 +75,23 @@ else
                         <tr><th>Item</th><th>Type</th><th class="text-end">Cost</th></tr>
                     </thead>
                     <tbody>
+                        @foreach (var fee in sharedFees)
+                        {
+                            var feeAssignedIds = sharedFeeAssignments.Where(a => a.SharedFeeId == fee.Id).Select(a => a.TeamLevelId).ToList();
+                            if (feeAssignedIds.Count == 0)
+                                feeAssignedIds = allSeasonLevels.Where(t => t.SeasonId == fee.SeasonId).Select(t => t.Id).ToList();
+                            if (!feeAssignedIds.Contains(athlete.TeamLevelId)) continue;
+                            var feeTotalAthletes = allSeasonLevels.Where(t => feeAssignedIds.Contains(t.Id)).Sum(t => t.AthleteCount);
+                            var feePerAthlete = feeTotalAthletes > 0 ? Math.Round(fee.Amount / feeTotalAthletes, 2) : 0m;
+                            <tr>
+                                <td>
+                                    <input type="checkbox" class="form-check-input me-2" checked disabled />
+                                    @fee.Name
+                                </td>
+                                <td><span class="badge bg-secondary">Shared Fee</span></td>
+                                <td class="text-end">$@feePerAthlete.ToString("N2")</td>
+                            </tr>
+                        }
                         @foreach (var item in requiredItems)
                         {
                             <tr>
@@ -298,6 +316,9 @@ else
     private List<Payment> payments = new();
     private List<Meet> meets = new();
     private List<MeetTeamLevelAssignment> meetLevelAssignments = new();
+    private List<SharedFee> sharedFees = new();
+    private List<SharedFeeTeamLevelAssignment> sharedFeeAssignments = new();
+    private List<TeamLevel> allSeasonLevels = new();
     private HashSet<int> expandedAthletes = new();
     private bool isProcessing;
     private string? paymentError;
@@ -344,8 +365,20 @@ else
         selections = await db.AthleteItemSelections.AsNoTracking().Where(s => athleteIds.Contains(s.AthleteId)).ToListAsync();
         payments = await db.Payments.AsNoTracking().Where(p => athleteIds.Contains(p.AthleteId)).ToListAsync();
 
-        // Load meets for upcoming events
+        // Load shared fees
         var seasonIds = teamLevels.Select(t => t.SeasonId).Distinct().ToList();
+        sharedFees = await db.SharedFees.AsNoTracking()
+            .Where(f => seasonIds.Contains(f.SeasonId) && f.IsIncludedInBudget)
+            .ToListAsync();
+        var sharedFeeIds = sharedFees.Select(f => f.Id).ToList();
+        sharedFeeAssignments = await db.SharedFeeTeamLevelAssignments.AsNoTracking()
+            .Where(a => sharedFeeIds.Contains(a.SharedFeeId))
+            .ToListAsync();
+        allSeasonLevels = await db.TeamLevels.AsNoTracking()
+            .Where(t => seasonIds.Contains(t.SeasonId))
+            .ToListAsync();
+
+        // Load meets for upcoming events
         meets = await db.Meets.AsNoTracking().Where(m => seasonIds.Contains(m.SeasonId)).ToListAsync();
         meetLevelAssignments = await db.MeetTeamLevelAssignments.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
 
@@ -369,6 +402,32 @@ else
         }
         await db.SaveChangesAsync();
         await LoadData();
+    }
+
+    private decimal GetSharedFeeCostPerAthlete(int teamLevelId)
+    {
+        decimal total = 0;
+        var level = allSeasonLevels.FirstOrDefault(t => t.Id == teamLevelId);
+        if (level == null || level.AthleteCount == 0) return 0;
+
+        foreach (var fee in sharedFees)
+        {
+            var assignedLevelIds = sharedFeeAssignments
+                .Where(a => a.SharedFeeId == fee.Id)
+                .Select(a => a.TeamLevelId).ToList();
+            if (assignedLevelIds.Count == 0)
+                assignedLevelIds = allSeasonLevels.Where(t => t.SeasonId == fee.SeasonId).Select(t => t.Id).ToList();
+            if (!assignedLevelIds.Contains(teamLevelId)) continue;
+
+            var totalAssignedAthletes = allSeasonLevels
+                .Where(t => assignedLevelIds.Contains(t.Id))
+                .Sum(t => t.AthleteCount);
+            if (totalAssignedAthletes > 0)
+                total += Math.Round(fee.Amount / totalAssignedAthletes, 2);
+            else
+                total += Math.Round(fee.Amount / assignedLevelIds.Count, 2);
+        }
+        return total;
     }
 
     private async Task StartPayment(Athlete athlete, decimal amount)
