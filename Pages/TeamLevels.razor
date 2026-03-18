@@ -835,6 +835,13 @@ else
     private decimal calcMisc = 0;
     private string? userId;
     private ProjectLabels labels = ProjectLabels.Default;
+    private HashSet<int> expandedLevels = new();
+
+    private void ToggleLevelExpand(int levelId)
+    {
+        if (!expandedLevels.Remove(levelId))
+            expandedLevels.Add(levelId);
+    }
 
     private RenderFragment RenderLevelCard(TeamLevel level) => __builder =>
     {
@@ -842,9 +849,12 @@ else
         var assignedGroups = seasonGroups.Where(g => levelGroups.Any(a => a.SeasonGroupId == g.Id)).ToList();
         var assignedMeetIds = meetLevelAssignments.Where(a => a.TeamLevelId == level.Id).Select(a => a.MeetId).ToHashSet();
         var assignedMeets = meets.Where(m => assignedMeetIds.Contains(m.Id)).ToList();
+        var isExpanded = expandedLevels.Contains(level.Id);
+        var levelItems = athleteItems.Where(i => i.TeamLevelId == level.Id).ToList();
 
         <div class="card mb-3">
-            <div class="card-header d-flex justify-content-between">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 @onclick="() => ToggleLevelExpand(level.Id)" style="cursor: pointer;">
                 <div>
                     <h5 class="mb-0 d-inline">@level.Name</h5>
                     @if (assignedGroups.Any())
@@ -855,12 +865,16 @@ else
                     {
                         <span class="badge bg-info ms-2">@assignedMeets.Count @labels.Meets</span>
                     }
+                    <span class="badge bg-secondary ms-2">@levelItems.Count @labels.AthleteItems — $@levelItems.Sum(i => i.Cost).ToString("N2")</span>
                 </div>
                 <div>
-                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditLevel(level)">Edit</button>
-                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteLevel(level)">Delete</button>
+                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditLevel(level)" @onclick:stopPropagation="true">Edit</button>
+                    <button class="btn btn-sm btn-outline-danger me-2" @onclick="() => DeleteLevel(level)" @onclick:stopPropagation="true">Delete</button>
+                    <span class="oi @(isExpanded ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
                 </div>
             </div>
+            @if (isExpanded)
+            {
             <div class="card-body">
                 @if (assignedMeets.Any())
                 {
@@ -890,7 +904,6 @@ else
                 <table class="table table-sm">
                     <thead><tr><th>Item</th><th>Cost</th><th>Required</th><th></th></tr></thead>
                     <tbody>
-                        @{ var levelItems = athleteItems.Where(i => i.TeamLevelId == level.Id).ToList(); }
                         @foreach (var item in levelItems)
                         {
                             var itemId = item.Id;
@@ -948,6 +961,7 @@ else
                     </div>
                 </div>
             </div>
+            }
         </div>
     };
 
