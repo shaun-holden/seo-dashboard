@@ -17,12 +17,19 @@
 {
     <p>Loading...</p>
 }
-else if (!athletes.Any())
+else if (!athletes.Any() && !budgetNotReady)
 {
     <div class="text-center py-5">
         <h4 class="text-muted">No athletes linked yet</h4>
         <p>Enter your invite code to get started.</p>
         <a href="/claim" class="btn btn-primary">Link an Athlete</a>
+    </div>
+}
+else if (budgetNotReady)
+{
+    <div class="text-center py-5">
+        <h4 class="text-muted">Your budget is being prepared. Check back soon.</h4>
+        <p>Your season information has not been published yet. Please check back later.</p>
     </div>
 }
 else
@@ -261,7 +268,8 @@ else
 
                 <!-- Payment History -->
                 @{
-                    var allAthleteTransactions = athletePayments.Cast<Payment>().Concat(athleteCredits).OrderByDescending(p => p.PaidAt ?? p.CreatedAt).ToList();
+                    var athletePending = payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Pending && p.Type == PaymentType.Payment).ToList();
+                    var allAthleteTransactions = athletePayments.Cast<Payment>().Concat(athleteCredits).Concat(athletePending).OrderByDescending(p => p.PaidAt ?? p.CreatedAt).ToList();
                 }
                 @if (allAthleteTransactions.Any())
                 {
@@ -280,6 +288,10 @@ else
                                         @if (isCredit)
                                         {
                                             <span class="badge bg-info">Credit</span>
+                                        }
+                                        else if (p.Status == PaymentStatus.Pending)
+                                        {
+                                            <span class="badge bg-warning text-dark">Pending</span>
                                         }
                                         else
                                         {
@@ -353,6 +365,8 @@ else
             expandedAthletes.Add(athleteId);
     }
 
+    private bool budgetNotReady;
+
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
@@ -363,7 +377,48 @@ else
         stripeEnabled = !string.IsNullOrEmpty(stripeKey);
 
         await LoadData();
+
+        // Verify pending payments on return from Stripe
+        var uri = new Uri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        if (query["payment"] == "success" && stripeEnabled)
+        {
+            await VerifyPendingPayments();
+            await LoadData();
+        }
+
         loading = false;
+    }
+
+    private async Task VerifyPendingPayments()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var athleteIds = athletes.Select(a => a.Id).ToList();
+        var pendingPayments = await db.Payments
+            .Where(p => athleteIds.Contains(p.AthleteId) && p.Status == PaymentStatus.Pending && p.StripeSessionId != null)
+            .ToListAsync();
+
+        if (!pendingPayments.Any()) return;
+
+        var sessionService = new Stripe.Checkout.SessionService();
+        foreach (var payment in pendingPayments)
+        {
+            try
+            {
+                var session = await sessionService.GetAsync(payment.StripeSessionId);
+                if (session.PaymentStatus == "paid")
+                {
+                    payment.Status = PaymentStatus.Paid;
+                    payment.PaidAt = DateTime.UtcNow;
+                    payment.StripePaymentIntentId = session.PaymentIntentId;
+                }
+            }
+            catch
+            {
+                // Stripe session retrieval failed; skip
+            }
+        }
+        await db.SaveChangesAsync();
     }
 
     private async Task LoadData()
@@ -383,6 +438,25 @@ else
 
         var levelIds = athletes.Select(a => a.TeamLevelId).Distinct().ToList();
         teamLevels = await db.TeamLevels.AsNoTracking().Where(t => levelIds.Contains(t.Id)).ToListAsync();
+
+        // Filter to only published seasons
+        var levelSeasonIds = teamLevels.Select(t => t.SeasonId).Distinct().ToList();
+        var publishedSeasonIds = await db.Seasons.AsNoTracking()
+            .Where(s => levelSeasonIds.Contains(s.Id) && s.IsPublished)
+            .Select(s => s.Id)
+            .ToListAsync();
+        teamLevels = teamLevels.Where(t => publishedSeasonIds.Contains(t.SeasonId)).ToList();
+
+        if (!teamLevels.Any() && athletes.Any())
+        {
+            budgetNotReady = true;
+            return;
+        }
+        budgetNotReady = false;
+
+        // Re-filter athletes to only those with published levels
+        levelIds = teamLevels.Select(t => t.Id).ToList();
+        athletes = athletes.Where(a => levelIds.Contains(a.TeamLevelId)).ToList();
         athleteItems = await db.AthleteItems.AsNoTracking().Where(i => levelIds.Contains(i.TeamLevelId)).ToListAsync();
         selections = await db.AthleteItemSelections.AsNoTracking().Where(s => athleteIds.Contains(s.AthleteId)).ToListAsync();
         payments = await db.Payments.AsNoTracking().Where(p => athleteIds.Contains(p.AthleteId)).ToListAsync();

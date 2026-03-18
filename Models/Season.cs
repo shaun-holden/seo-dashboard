@@ -15,6 +15,7 @@ namespace GymBudgetApp.Models
         [Range(0, 10000, ErrorMessage = "Athlete count must be between 0 and 10,000.")]
         public int AthleteCount { get; set; }
         public bool IsActive { get; set; }
+        public bool IsPublished { get; set; }
         public string UserId { get; set; } = string.Empty;
 
         // Project type
