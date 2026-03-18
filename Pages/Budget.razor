@@ -103,10 +103,19 @@ else
         @if (sharedFees.Any())
         {
             <div class="card mb-4 border-warning">
-                <div class="card-header bg-warning bg-opacity-25 d-flex justify-content-between">
-                    <h5 class="mb-0">Shared Fees</h5>
-                    <span class="fw-bold">$@sharedFeesTotal.ToString("N2")</span>
+                <div class="card-header bg-warning bg-opacity-25 d-flex justify-content-between align-items-center"
+                     @onclick="() => showBudgetSharedFees = !showBudgetSharedFees" style="cursor: pointer;">
+                    <div>
+                        <h5 class="mb-0 d-inline">Shared Fees</h5>
+                        <span class="badge bg-warning text-dark ms-2">@sharedFees.Count fee(s)</span>
+                    </div>
+                    <div>
+                        <span class="fw-bold me-2">$@sharedFeesTotal.ToString("N2")</span>
+                        <span class="oi @(showBudgetSharedFees ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+                    </div>
                 </div>
+                @if (showBudgetSharedFees)
+                {
                 <div class="card-body p-0">
                     <table class="table table-sm mb-0">
                         <thead><tr><th>Category</th><th>Name</th><th>Total</th><th>Per Athlete</th><th>Shared Across</th></tr></thead>
@@ -129,6 +138,7 @@ else
                         </tbody>
                     </table>
                 </div>
+                }
             </div>
         }
 
@@ -148,17 +158,29 @@ else
                     else
                     {
                         var groupTotal = groupLevels.Sum(l => GetLevelTotal(l.Id));
+                        var gId = group.Id;
+                        var groupExpanded = expandedGroups.Contains(gId);
                         <div class="card mb-4 border-primary">
-                            <div class="card-header bg-light d-flex justify-content-between">
-                                <h5 class="mb-0">@group.Name</h5>
-                                <span class="fw-bold">$@groupTotal.ToString("N2")</span>
+                            <div class="card-header bg-light d-flex justify-content-between align-items-center"
+                                 @onclick="() => ToggleGroup(gId)" style="cursor: pointer;">
+                                <div>
+                                    <h5 class="mb-0 d-inline">@group.Name</h5>
+                                    <span class="badge bg-primary ms-2">@groupLevels.Count @labels.TeamLevels</span>
+                                </div>
+                                <div>
+                                    <span class="fw-bold me-2">$@groupTotal.ToString("N2")</span>
+                                    <span class="oi @(groupExpanded ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+                                </div>
                             </div>
+                            @if (groupExpanded)
+                            {
                             <div class="card-body">
                                 @foreach (var level in groupLevels)
                                 {
                                     @RenderLevelBudget(level)
                                 }
                             </div>
+                            }
                         </div>
                     }
                 }
@@ -197,6 +219,21 @@ else
     private Dictionary<int, int> scenarioAthletes = new();
     private int filterLevelId = 0;
     private int filterGroupId = 0;
+    private bool showBudgetSharedFees = true;
+    private HashSet<int> expandedGroups = new();
+    private HashSet<int> expandedLevels = new();
+
+    private void ToggleGroup(int groupId)
+    {
+        if (!expandedGroups.Remove(groupId))
+            expandedGroups.Add(groupId);
+    }
+
+    private void ToggleLevel(int levelId)
+    {
+        if (!expandedLevels.Remove(levelId))
+            expandedLevels.Add(levelId);
+    }
 
     private List<TeamLevel> filteredTeamLevels
     {
@@ -268,14 +305,22 @@ else
         var scenarioCost = scenarioCount > 0 ? scenarioLevelTotal / scenarioCount : 0;
         var scenarioMonthly = scenarioCount > 0 && level.PaymentPlanMonths > 0 ? scenarioCost / level.PaymentPlanMonths : 0;
 
+        var levelExpanded = expandedLevels.Contains(level.Id);
+
         <div class="card mb-3">
-            <div class="card-header d-flex justify-content-between">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 @onclick="() => ToggleLevel(level.Id)" style="cursor: pointer;">
                 <div>
                     <strong>@level.Name</strong>
                     <small class="text-muted ms-2">@level.AthleteCount athletes | @level.PaymentPlanMonths mo plan</small>
                 </div>
-                <span class="fw-bold">$@levelTotal.ToString("N2")</span>
+                <div>
+                    <span class="fw-bold me-2">$@levelTotal.ToString("N2")</span>
+                    <span class="oi @(levelExpanded ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+                </div>
             </div>
+            @if (levelExpanded)
+            {
             <div class="card-body p-0">
                 <table class="table table-sm mb-0">
                     <tbody>
@@ -333,6 +378,7 @@ else
                     </div>
                 </div>
             </div>
+            }
         </div>
     };
 
