@@ -173,7 +173,7 @@
 
         if (userId != null)
         {
-            activeSeason = await Db.Seasons.Where(s => s.UserId == userId && s.IsActive).FirstOrDefaultAsync();
+            activeSeason = await Db.Seasons.Where(s => s.IsActive).FirstOrDefaultAsync();
             labels = new ProjectLabels(activeSeason);
 
             if (activeSeason != null)

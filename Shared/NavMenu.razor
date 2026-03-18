@@ -116,7 +116,7 @@
         isAdmin = string.Equals(email, adminEmail, StringComparison.OrdinalIgnoreCase);
         if (userId != null)
         {
-            var activeSeason = await Db.Seasons.Where(s => s.UserId == userId && s.IsActive).FirstOrDefaultAsync();
+            var activeSeason = await Db.Seasons.Where(s => s.IsActive).FirstOrDefaultAsync();
             labels = new ProjectLabels(activeSeason);
         }
     }

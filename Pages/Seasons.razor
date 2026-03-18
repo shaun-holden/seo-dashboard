@@ -296,7 +296,7 @@ else
 
     private async Task LoadSeasons()
     {
-        seasons = await Task.FromResult(Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToList());
+        seasons = await Task.FromResult(Db.Seasons.OrderByDescending(s => s.Name).ToList());
     }
 
     private void ShowForm()

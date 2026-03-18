@@ -133,7 +133,6 @@
     {
         using var db = await DbFactory.CreateDbContextAsync();
         gymnasts = await db.Gymnasts.AsNoTracking()
-            .Where(g => g.UserId == userId)
             .OrderBy(g => g.Level).ThenBy(g => g.Name)
             .ToListAsync();
     }

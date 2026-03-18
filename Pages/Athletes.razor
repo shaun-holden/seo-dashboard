@@ -295,7 +295,7 @@ else
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        seasons = await Db.Seasons.Where(s => s.UserId == userId).OrderByDescending(s => s.Name).ToListAsync();
+        seasons = await Db.Seasons.OrderByDescending(s => s.Name).ToListAsync();
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)
@@ -323,7 +323,7 @@ else
         // Load roster for quick-add (exclude already added names)
         var existingNames = athletes.Select(a => a.Name.ToLower()).ToHashSet();
         rosterGymnasts = await db.Gymnasts.AsNoTracking()
-            .Where(g => g.UserId == userId && !existingNames.Contains(g.Name.ToLower()))
+            .Where(g => !existingNames.Contains(g.Name.ToLower()))
             .OrderBy(g => g.Name)
             .ToListAsync();
     }
