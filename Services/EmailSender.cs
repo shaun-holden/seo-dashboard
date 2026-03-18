@@ -1,6 +1,6 @@
-using System.Net;
-using System.Net.Mail;
 using Microsoft.AspNetCore.Identity.UI.Services;
+using SendGrid;
+using SendGrid.Helpers.Mail;
 
 namespace GymBudgetApp.Services
 {
@@ -17,45 +17,39 @@ namespace GymBudgetApp.Services
 
         public async Task SendEmailAsync(string email, string subject, string htmlMessage)
         {
-            var smtpEmail = Environment.GetEnvironmentVariable("SMTP_EMAIL")
-                ?? _configuration["Smtp:Email"] ?? "";
-            var smtpPassword = Environment.GetEnvironmentVariable("SMTP_PASSWORD")
-                ?? _configuration["Smtp:Password"] ?? "";
+            var apiKey = Environment.GetEnvironmentVariable("SENDGRID_API_KEY")
+                ?? _configuration["SendGrid:ApiKey"] ?? "";
+            var fromEmail = Environment.GetEnvironmentVariable("SENDGRID_FROM_EMAIL")
+                ?? _configuration["SendGrid:FromEmail"] ?? "deshaun@tntgym.org";
 
-            if (string.IsNullOrEmpty(smtpEmail) || string.IsNullOrEmpty(smtpPassword))
+            if (string.IsNullOrEmpty(apiKey))
             {
-                _logger.LogWarning("SMTP not configured. Email to {Email} with subject '{Subject}' was not sent.", email, subject);
+                _logger.LogWarning("SendGrid not configured. Email to {Email} with subject '{Subject}' was not sent.", email, subject);
                 return;
             }
 
-            var smtpHost = Environment.GetEnvironmentVariable("SMTP_HOST") ?? "smtp.gmail.com";
-            var smtpPort = int.TryParse(Environment.GetEnvironmentVariable("SMTP_PORT"), out var p) ? p : 587;
-
-            _logger.LogInformation("Attempting to send email to {Email} via {Host}:{Port} from {From}", email, smtpHost, smtpPort, smtpEmail);
-
-            using var client = new SmtpClient(smtpHost, smtpPort)
-            {
-                Credentials = new NetworkCredential(smtpEmail, smtpPassword),
-                EnableSsl = true
-            };
-
-            var mailMessage = new MailMessage
-            {
-                From = new MailAddress(smtpEmail, "Top Notch Training"),
-                Subject = subject,
-                Body = htmlMessage,
-                IsBodyHtml = true
-            };
-            mailMessage.To.Add(email);
+            var client = new SendGridClient(apiKey);
+            var from = new EmailAddress(fromEmail, "Top Notch Training");
+            var to = new EmailAddress(email);
+            var msg = MailHelper.CreateSingleEmail(from, to, subject, null, htmlMessage);
 
             try
             {
-                await client.SendMailAsync(mailMessage);
-                _logger.LogInformation("Email sent successfully to {Email}", email);
+                var response = await client.SendEmailAsync(msg);
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("Email sent to {Email} with subject '{Subject}'", email, subject);
+                }
+                else
+                {
+                    var body = await response.Body.ReadAsStringAsync();
+                    _logger.LogError("SendGrid failed ({StatusCode}): {Body}", response.StatusCode, body);
+                    throw new Exception($"SendGrid error: {response.StatusCode} - {body}");
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to send email to {Email} via {Host}:{Port}", email, smtpHost, smtpPort);
+                _logger.LogError(ex, "Failed to send email to {Email}", email);
                 throw;
             }
         }
