@@ -61,6 +61,9 @@ namespace GymBudgetApp
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<Announcement> Announcements { get; set; }
         public DbSet<AnnouncementReadReceipt> AnnouncementReadReceipts { get; set; }
+        public DbSet<EventRsvp> EventRsvps { get; set; }
+        public DbSet<Practice> Practices { get; set; }
+        public DbSet<PracticeRsvp> PracticeRsvps { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {

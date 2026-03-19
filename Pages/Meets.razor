@@ -118,7 +118,10 @@ else
     private List<MeetGroupAssignment> groupAssignments = new();
     private List<MeetTeamLevelAssignment> teamLevelAssignments = new();
     private List<TeamLevel> teamLevels = new();
+    private List<Athlete> allAthletes = new();
+    private List<EventRsvp> eventRsvps = new();
     private HashSet<int> expandedMeets = new();
+    private HashSet<int> rsvpExpandedMeets = new();
     private int selectedSeasonId;
     private bool showForm;
     private Meet? editingMeet;
@@ -254,6 +257,62 @@ else
                             </div>
                         }
                     }
+
+                    @{
+                        var rsvpLevelIds = meetLevelIds.Any() ? meetLevelIds : teamLevels.Select(t => t.Id).ToHashSet();
+                        var meetAthletes = allAthletes.Where(a => rsvpLevelIds.Contains(a.TeamLevelId)).ToList();
+                        var meetRsvps = eventRsvps.Where(r => r.MeetId == meet.Id).ToList();
+                        var goingCount = meetRsvps.Count(r => r.Status == RsvpStatus.Going);
+                        var notGoingCount = meetRsvps.Count(r => r.Status == RsvpStatus.NotGoing);
+                        var maybeCount = meetRsvps.Count(r => r.Status == RsvpStatus.Maybe);
+                        var noResponseCount = meetAthletes.Count - meetRsvps.Count(r => r.Status != RsvpStatus.NoResponse);
+                        var isRsvpExpanded = rsvpExpandedMeets.Contains(meet.Id);
+                    }
+                    <div class="mt-3">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <h6 class="mb-0">RSVPs</h6>
+                            <span class="badge bg-success">@goingCount Going</span>
+                            <span class="badge bg-warning text-dark">@maybeCount Maybe</span>
+                            <span class="badge bg-danger">@notGoingCount Not Going</span>
+                            <span class="badge bg-secondary">@noResponseCount No Response</span>
+                            <span class="text-muted">(@meetAthletes.Count total)</span>
+                            <button class="btn btn-sm btn-outline-info ms-2" @onclick="() => ToggleRsvpExpand(meet.Id)" @onclick:stopPropagation="true">
+                                @(isRsvpExpanded ? "Hide RSVPs" : "View RSVPs")
+                            </button>
+                        </div>
+                        @if (isRsvpExpanded)
+                        {
+                            <table class="table table-sm table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Athlete</th>
+                                        <th>Level</th>
+                                        <th>Status</th>
+                                        <th>Note</th>
+                                        <th>Updated</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var athlete in meetAthletes.OrderBy(a => a.Name))
+                                    {
+                                        var rsvp = meetRsvps.FirstOrDefault(r => r.AthleteId == athlete.Id);
+                                        var status = rsvp?.Status ?? RsvpStatus.NoResponse;
+                                        var badgeClass = status == RsvpStatus.Going ? "bg-success"
+                                            : status == RsvpStatus.Maybe ? "bg-warning text-dark"
+                                            : status == RsvpStatus.NotGoing ? "bg-danger"
+                                            : "bg-secondary";
+                                        <tr>
+                                            <td>@athlete.Name</td>
+                                            <td>@(teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "—")</td>
+                                            <td><span class="badge @badgeClass">@status</span></td>
+                                            <td>@(rsvp?.Note ?? "—")</td>
+                                            <td>@(rsvp != null ? rsvp.UpdatedAt.ToLocalTime().ToString("MM/dd hh:mm tt") : "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
                 </div>
             }
         </div>
@@ -266,6 +325,12 @@ else
     {
         if (!expandedMeets.Remove(meetId))
             expandedMeets.Add(meetId);
+    }
+
+    private void ToggleRsvpExpand(int meetId)
+    {
+        if (!rsvpExpandedMeets.Remove(meetId))
+            rsvpExpandedMeets.Add(meetId);
     }
 
     private void ToggleGroupSelection(int meetId, int groupId, bool isChecked)
@@ -340,6 +405,9 @@ else
         groupAssignments = await db.MeetGroupAssignments.AsNoTracking().Where(a => meetIds.Contains(a.MeetId)).ToListAsync();
         teamLevelAssignments = await db.MeetTeamLevelAssignments.AsNoTracking().Where(a => meetIds.Contains(a.MeetId)).ToListAsync();
         teamLevels = await db.TeamLevels.AsNoTracking().Where(t => t.SeasonId == selectedSeasonId).ToListAsync();
+        var tlIds = teamLevels.Select(t => t.Id).ToList();
+        allAthletes = await db.Athletes.AsNoTracking().Where(a => tlIds.Contains(a.TeamLevelId)).ToListAsync();
+        eventRsvps = await db.EventRsvps.AsNoTracking().Where(r => meetIds.Contains(r.MeetId)).ToListAsync();
     }
 
     private void ToggleFormGroup(int groupId, bool isChecked)

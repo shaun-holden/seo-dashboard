@@ -387,14 +387,90 @@ else
                         @foreach (var meet in upcomingMeets)
                         {
                             var daysUntil = (meet.Date - DateTime.Today).Days;
-                            <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <div>
-                                    <strong>@meet.Name</strong>
-                                    <br/><small class="text-muted">@meet.Date.ToString("dddd, MMMM d, yyyy")</small>
+                            var currentRsvp = eventRsvps.FirstOrDefault(r => r.MeetId == meet.Id && r.AthleteId == athlete.Id);
+                            var currentStatus = currentRsvp?.Status ?? RsvpStatus.NoResponse;
+                            var rsvpNoteKey = $"meet-{meet.Id}-{athlete.Id}";
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>@meet.Name</strong>
+                                        <br/><small class="text-muted">@meet.Date.ToString("dddd, MMMM d, yyyy")</small>
+                                    </div>
+                                    <div class="text-end">
+                                        <span class="badge bg-@(meet.TravelType == TravelType.Fly ? "info" : "secondary")">@meet.TravelType</span>
+                                        <br/><small class="text-muted">@daysUntil day(s) away</small>
+                                    </div>
                                 </div>
-                                <div class="text-end">
-                                    <span class="badge bg-@(meet.TravelType == TravelType.Fly ? "info" : "secondary")">@meet.TravelType</span>
-                                    <br/><small class="text-muted">@daysUntil day(s) away</small>
+                                <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
+                                    <span class="me-1">RSVP:</span>
+                                    <button class="btn btn-sm @(currentStatus == RsvpStatus.Going ? "btn-success" : "btn-outline-success")"
+                                            @onclick="() => SetMeetRsvp(meet.Id, athlete.Id, RsvpStatus.Going)">Going</button>
+                                    <button class="btn btn-sm @(currentStatus == RsvpStatus.Maybe ? "btn-warning" : "btn-outline-warning")"
+                                            @onclick="() => SetMeetRsvp(meet.Id, athlete.Id, RsvpStatus.Maybe)">Maybe</button>
+                                    <button class="btn btn-sm @(currentStatus == RsvpStatus.NotGoing ? "btn-danger" : "btn-outline-danger")"
+                                            @onclick="() => SetMeetRsvp(meet.Id, athlete.Id, RsvpStatus.NotGoing)">Not Going</button>
+                                    @if (currentStatus != RsvpStatus.NoResponse)
+                                    {
+                                        <span class="badge bg-info ms-1">@currentStatus</span>
+                                    }
+                                </div>
+                                <div class="mt-1">
+                                    <input class="form-control form-control-sm" placeholder="Add a note (optional)"
+                                           value="@(currentRsvp?.Note ?? GetRsvpNote(rsvpNoteKey))"
+                                           @onchange="(e) => SetRsvpNote(rsvpNoteKey, e.Value?.ToString())" />
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <!-- Upcoming Practices -->
+                @{
+                    var athletePractices = upcomingPractices
+                        .Where(p => p.TeamLevelId == null || p.TeamLevelId == athlete.TeamLevelId)
+                        .OrderBy(p => p.Date).ToList();
+                }
+                @if (athletePractices.Any())
+                {
+                    <h6 class="mt-3">Upcoming Practices</h6>
+                    <div class="list-group">
+                        @foreach (var practice in athletePractices)
+                        {
+                            var daysUntil = (practice.Date - DateTime.Today).Days;
+                            var currentPRsvp = practiceRsvpList.FirstOrDefault(r => r.PracticeId == practice.Id && r.AthleteId == athlete.Id);
+                            var currentPStatus = currentPRsvp?.Status ?? RsvpStatus.NoResponse;
+                            var pNoteKey = $"practice-{practice.Id}-{athlete.Id}";
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>@practice.Name</strong>
+                                        <br/><small class="text-muted">@practice.Date.ToString("dddd, MMMM d, yyyy") @practice.StartTime - @practice.EndTime</small>
+                                        @if (!string.IsNullOrEmpty(practice.Location))
+                                        {
+                                            <br/><small class="text-muted">@practice.Location</small>
+                                        }
+                                    </div>
+                                    <div class="text-end">
+                                        <small class="text-muted">@daysUntil day(s) away</small>
+                                    </div>
+                                </div>
+                                <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
+                                    <span class="me-1">RSVP:</span>
+                                    <button class="btn btn-sm @(currentPStatus == RsvpStatus.Going ? "btn-success" : "btn-outline-success")"
+                                            @onclick="() => SetPracticeRsvp(practice.Id, athlete.Id, RsvpStatus.Going)">Going</button>
+                                    <button class="btn btn-sm @(currentPStatus == RsvpStatus.Maybe ? "btn-warning" : "btn-outline-warning")"
+                                            @onclick="() => SetPracticeRsvp(practice.Id, athlete.Id, RsvpStatus.Maybe)">Maybe</button>
+                                    <button class="btn btn-sm @(currentPStatus == RsvpStatus.NotGoing ? "btn-danger" : "btn-outline-danger")"
+                                            @onclick="() => SetPracticeRsvp(practice.Id, athlete.Id, RsvpStatus.NotGoing)">Not Going</button>
+                                    @if (currentPStatus != RsvpStatus.NoResponse)
+                                    {
+                                        <span class="badge bg-info ms-1">@currentPStatus</span>
+                                    }
+                                </div>
+                                <div class="mt-1">
+                                    <input class="form-control form-control-sm" placeholder="Add a note (optional)"
+                                           value="@(currentPRsvp?.Note ?? GetRsvpNote(pNoteKey))"
+                                           @onchange="(e) => SetRsvpNote(pNoteKey, e.Value?.ToString())" />
                                 </div>
                             </div>
                         }
@@ -430,6 +506,10 @@ else
     private List<Announcement> announcements = new();
     private HashSet<int> readAnnouncementIds = new();
     private int announcementDisplayCount = 10;
+    private List<EventRsvp> eventRsvps = new();
+    private List<Practice> upcomingPractices = new();
+    private List<PracticeRsvp> practiceRsvpList = new();
+    private Dictionary<string, string> rsvpNotes = new();
 
     private List<Announcement> displayedAnnouncements =>
         announcements
@@ -621,6 +701,22 @@ else
         meets = await db.Meets.AsNoTracking().Where(m => seasonIds.Contains(m.SeasonId)).ToListAsync();
         meetLevelAssignments = await db.MeetTeamLevelAssignments.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
 
+        // Load RSVP data
+        var meetIds = meets.Select(m => m.Id).ToList();
+        eventRsvps = await db.EventRsvps.AsNoTracking()
+            .Where(r => r.ParentUserId == userId && athleteIds.Contains(r.AthleteId))
+            .ToListAsync();
+
+        // Load upcoming practices
+        upcomingPractices = await db.Practices.AsNoTracking()
+            .Where(p => seasonIds.Contains(p.SeasonId) && p.Date >= DateTime.Today)
+            .OrderBy(p => p.Date)
+            .ToListAsync();
+        var practiceIds = upcomingPractices.Select(p => p.Id).ToList();
+        practiceRsvpList = await db.PracticeRsvps.AsNoTracking()
+            .Where(r => r.ParentUserId == userId && athleteIds.Contains(r.AthleteId))
+            .ToListAsync();
+
         expandedAthletes = athletes.Select(a => a.Id).ToHashSet();
         foreach (var a in athletes)
             customAmounts.TryAdd(a.Id, 0);
@@ -704,6 +800,82 @@ else
             total += Math.Round(fee.Amount / totalAthletes, 2);
         }
         return total;
+    }
+
+    private string GetRsvpNote(string key)
+    {
+        return rsvpNotes.TryGetValue(key, out var note) ? note : "";
+    }
+
+    private void SetRsvpNote(string key, string? value)
+    {
+        rsvpNotes[key] = value ?? "";
+    }
+
+    private async Task SetMeetRsvp(int meetId, int athleteId, RsvpStatus status)
+    {
+        if (userId == null) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.EventRsvps
+            .FirstOrDefaultAsync(r => r.MeetId == meetId && r.AthleteId == athleteId && r.ParentUserId == userId);
+
+        var noteKey = $"meet-{meetId}-{athleteId}";
+        var note = GetRsvpNote(noteKey);
+
+        if (existing != null)
+        {
+            existing.Status = status;
+            existing.UpdatedAt = DateTime.UtcNow;
+            if (!string.IsNullOrWhiteSpace(note))
+                existing.Note = note;
+        }
+        else
+        {
+            db.EventRsvps.Add(new EventRsvp
+            {
+                MeetId = meetId,
+                AthleteId = athleteId,
+                ParentUserId = userId,
+                Status = status,
+                Note = string.IsNullOrWhiteSpace(note) ? null : note,
+                UpdatedAt = DateTime.UtcNow
+            });
+        }
+        await db.SaveChangesAsync();
+        await LoadData();
+    }
+
+    private async Task SetPracticeRsvp(int practiceId, int athleteId, RsvpStatus status)
+    {
+        if (userId == null) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.PracticeRsvps
+            .FirstOrDefaultAsync(r => r.PracticeId == practiceId && r.AthleteId == athleteId && r.ParentUserId == userId);
+
+        var noteKey = $"practice-{practiceId}-{athleteId}";
+        var note = GetRsvpNote(noteKey);
+
+        if (existing != null)
+        {
+            existing.Status = status;
+            existing.UpdatedAt = DateTime.UtcNow;
+            if (!string.IsNullOrWhiteSpace(note))
+                existing.Note = note;
+        }
+        else
+        {
+            db.PracticeRsvps.Add(new PracticeRsvp
+            {
+                PracticeId = practiceId,
+                AthleteId = athleteId,
+                ParentUserId = userId,
+                Status = status,
+                Note = string.IsNullOrWhiteSpace(note) ? null : note,
+                UpdatedAt = DateTime.UtcNow
+            });
+        }
+        await db.SaveChangesAsync();
+        await LoadData();
     }
 
     private async Task EnableAutoPay(Athlete athlete, decimal monthlyAmount)

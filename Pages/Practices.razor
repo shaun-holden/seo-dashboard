@@ -1,0 +1,334 @@
+@page "/practices"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using GymBudgetApp.Services
+@using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h3>Practices</h3>
+
+@if (seasons == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="mb-3">
+        <label>Select Season</label>
+        <select class="form-select w-auto d-inline-block ms-2" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @foreach (var s in seasons)
+            {
+                <option value="@s.Id" selected="@(s.Id == selectedSeasonId)">@s.Name</option>
+            }
+        </select>
+    </div>
+
+    @if (selectedSeasonId > 0)
+    {
+        <button class="btn btn-primary mb-3" @onclick="ShowForm">+ Add Practice</button>
+
+        @if (showForm)
+        {
+            <div class="card mb-4 p-3">
+                <h5>@(editingPractice == null ? "Add Practice" : "Edit Practice")</h5>
+                <div class="row">
+                    <div class="col-md-4 mb-2">
+                        <label>Name</label>
+                        <input class="form-control" @bind="formName" placeholder="e.g. Tumbling Practice" />
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label>Date</label>
+                        <input type="date" class="form-control" @bind="formDate" />
+                    </div>
+                    <div class="col-md-2 mb-2">
+                        <label>Start Time</label>
+                        <input class="form-control" @bind="formStartTime" placeholder="4:00 PM" />
+                    </div>
+                    <div class="col-md-2 mb-2">
+                        <label>End Time</label>
+                        <input class="form-control" @bind="formEndTime" placeholder="7:00 PM" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-2">
+                        <label>Location</label>
+                        <input class="form-control" @bind="formLocation" placeholder="Main Gym" />
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label>Team Level</label>
+                        <select class="form-select" @bind="formTeamLevelId">
+                            <option value="0">All Levels</option>
+                            @foreach (var tl in teamLevels)
+                            {
+                                <option value="@tl.Id">@tl.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-success me-2" @onclick="SavePractice">Save</button>
+                <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+            </div>
+        }
+
+        @if (!practices.Any())
+        {
+            <div class="alert alert-info">No practices found for this season.</div>
+        }
+        else
+        {
+            var grouped = practices
+                .Where(p => p.Date >= DateTime.Today)
+                .OrderBy(p => p.Date)
+                .ThenBy(p => p.StartTime)
+                .GroupBy(p => p.Date.Date)
+                .ToList();
+
+            var pastPractices = practices
+                .Where(p => p.Date < DateTime.Today)
+                .OrderByDescending(p => p.Date)
+                .ToList();
+
+            @if (grouped.Any())
+            {
+                <h5>Upcoming</h5>
+                @foreach (var group in grouped)
+                {
+                    <h6 class="mt-3 text-muted">@group.Key.ToString("dddd, MMMM d, yyyy")</h6>
+                    @foreach (var practice in group)
+                    {
+                        var levelName = practice.TeamLevelId.HasValue
+                            ? (teamLevels.FirstOrDefault(t => t.Id == practice.TeamLevelId)?.Name ?? "Unknown")
+                            : "All Levels";
+                        var practiceAthletes = GetPracticeAthletes(practice);
+                        var pRsvps = practiceRsvps.Where(r => r.PracticeId == practice.Id).ToList();
+                        var pGoing = pRsvps.Count(r => r.Status == RsvpStatus.Going);
+                        var isRsvpExpanded = rsvpExpandedPractices.Contains(practice.Id);
+                        <div class="card mb-2">
+                            <div class="card-body py-2 px-3">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>@practice.Name</strong>
+                                        <span class="text-muted ms-2">@practice.StartTime - @practice.EndTime</span>
+                                        @if (!string.IsNullOrEmpty(practice.Location))
+                                        {
+                                            <span class="text-muted ms-2">| @practice.Location</span>
+                                        }
+                                        <span class="badge bg-primary ms-2">@levelName</span>
+                                        <span class="badge bg-success ms-1">@pGoing / @practiceAthletes.Count Going</span>
+                                    </div>
+                                    <div>
+                                        <button class="btn btn-sm btn-outline-info me-1" @onclick="() => ToggleRsvpExpand(practice.Id)">
+                                            @(isRsvpExpanded ? "Hide RSVPs" : "View RSVPs")
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditPractice(practice)">Edit</button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeletePractice(practice)">Delete</button>
+                                    </div>
+                                </div>
+                                @if (isRsvpExpanded)
+                                {
+                                    <table class="table table-sm table-bordered mt-2 mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Athlete</th>
+                                                <th>Level</th>
+                                                <th>Status</th>
+                                                <th>Note</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var athlete in practiceAthletes.OrderBy(a => a.Name))
+                                            {
+                                                var rsvp = pRsvps.FirstOrDefault(r => r.AthleteId == athlete.Id);
+                                                var status = rsvp?.Status ?? RsvpStatus.NoResponse;
+                                                var badgeClass = status == RsvpStatus.Going ? "bg-success"
+                                                    : status == RsvpStatus.Maybe ? "bg-warning text-dark"
+                                                    : status == RsvpStatus.NotGoing ? "bg-danger"
+                                                    : "bg-secondary";
+                                                <tr>
+                                                    <td>@athlete.Name</td>
+                                                    <td>@(teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "—")</td>
+                                                    <td><span class="badge @badgeClass">@status</span></td>
+                                                    <td>@(rsvp?.Note ?? "—")</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            }
+
+            @if (pastPractices.Any())
+            {
+                <h5 class="mt-4">Past Practices</h5>
+                @foreach (var practice in pastPractices)
+                {
+                    var levelName = practice.TeamLevelId.HasValue
+                        ? (teamLevels.FirstOrDefault(t => t.Id == practice.TeamLevelId)?.Name ?? "Unknown")
+                        : "All Levels";
+                    var pRsvps = practiceRsvps.Where(r => r.PracticeId == practice.Id).ToList();
+                    var pGoing = pRsvps.Count(r => r.Status == RsvpStatus.Going);
+                    var practiceAthletes = GetPracticeAthletes(practice);
+                    <div class="card mb-2">
+                        <div class="card-body py-2 px-3">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>@practice.Name</strong>
+                                    <span class="text-muted ms-2">@practice.Date.ToString("MM/dd/yyyy")</span>
+                                    <span class="text-muted ms-2">@practice.StartTime - @practice.EndTime</span>
+                                    <span class="badge bg-primary ms-2">@levelName</span>
+                                    <span class="badge bg-success ms-1">@pGoing / @practiceAthletes.Count Going</span>
+                                </div>
+                                <div>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeletePractice(practice)">Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+        }
+    }
+}
+
+@code {
+    private List<Season>? seasons;
+    private List<Practice> practices = new();
+    private List<TeamLevel> teamLevels = new();
+    private List<Athlete> allAthletes = new();
+    private List<PracticeRsvp> practiceRsvps = new();
+    private HashSet<int> rsvpExpandedPractices = new();
+    private int selectedSeasonId;
+    private bool showForm;
+    private Practice? editingPractice;
+    private string formName = "";
+    private DateTime formDate = DateTime.Today;
+    private string formStartTime = "";
+    private string formEndTime = "";
+    private string formLocation = "";
+    private int formTeamLevelId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        practices = await db.Practices.AsNoTracking()
+            .Where(p => p.SeasonId == selectedSeasonId)
+            .OrderBy(p => p.Date)
+            .ToListAsync();
+        teamLevels = await db.TeamLevels.AsNoTracking()
+            .Where(t => t.SeasonId == selectedSeasonId)
+            .ToListAsync();
+        var tlIds = teamLevels.Select(t => t.Id).ToList();
+        allAthletes = await db.Athletes.AsNoTracking()
+            .Where(a => tlIds.Contains(a.TeamLevelId))
+            .ToListAsync();
+        var practiceIds = practices.Select(p => p.Id).ToList();
+        practiceRsvps = await db.PracticeRsvps.AsNoTracking()
+            .Where(r => practiceIds.Contains(r.PracticeId))
+            .ToListAsync();
+    }
+
+    private List<Athlete> GetPracticeAthletes(Practice practice)
+    {
+        if (practice.TeamLevelId.HasValue)
+            return allAthletes.Where(a => a.TeamLevelId == practice.TeamLevelId.Value).ToList();
+        return allAthletes;
+    }
+
+    private void ToggleRsvpExpand(int practiceId)
+    {
+        if (!rsvpExpandedPractices.Remove(practiceId))
+            rsvpExpandedPractices.Add(practiceId);
+    }
+
+    private void ShowForm()
+    {
+        editingPractice = null;
+        formName = "";
+        formDate = DateTime.Today;
+        formStartTime = "";
+        formEndTime = "";
+        formLocation = "";
+        formTeamLevelId = 0;
+        showForm = true;
+    }
+
+    private void CancelForm() { showForm = false; }
+
+    private void EditPractice(Practice practice)
+    {
+        editingPractice = practice;
+        formName = practice.Name;
+        formDate = practice.Date;
+        formStartTime = practice.StartTime;
+        formEndTime = practice.EndTime;
+        formLocation = practice.Location ?? "";
+        formTeamLevelId = practice.TeamLevelId ?? 0;
+        showForm = true;
+    }
+
+    private async Task SavePractice()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        if (editingPractice == null)
+        {
+            var practice = new Practice
+            {
+                Name = formName,
+                Date = formDate,
+                StartTime = formStartTime,
+                EndTime = formEndTime,
+                Location = string.IsNullOrWhiteSpace(formLocation) ? null : formLocation,
+                SeasonId = selectedSeasonId,
+                TeamLevelId = formTeamLevelId > 0 ? formTeamLevelId : null
+            };
+            db.Practices.Add(practice);
+        }
+        else
+        {
+            var practice = await db.Practices.FindAsync(editingPractice.Id);
+            if (practice != null)
+            {
+                practice.Name = formName;
+                practice.Date = formDate;
+                practice.StartTime = formStartTime;
+                practice.EndTime = formEndTime;
+                practice.Location = string.IsNullOrWhiteSpace(formLocation) ? null : formLocation;
+                practice.TeamLevelId = formTeamLevelId > 0 ? formTeamLevelId : null;
+            }
+        }
+        await db.SaveChangesAsync();
+        showForm = false;
+        await LoadData();
+    }
+
+    private async Task DeletePractice(Practice practice)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Practices.FindAsync(practice.Id);
+        if (entity != null)
+        {
+            db.Practices.Remove(entity);
+            await db.SaveChangesAsync();
+        }
+        await LoadData();
+    }
+}
