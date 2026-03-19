@@ -45,6 +45,11 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         };
+
+        // Register service worker for PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/service-worker.js');
+        }
     </script>
 </body>
 </html>
