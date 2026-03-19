@@ -256,31 +256,32 @@ else
                             </div>
                         </div>
                     </div>
-                }
+
                     <!-- Auto-Pay -->
-                    @{
-                        var athleteLink = parentLinksData.FirstOrDefault(pl => pl.AthleteId == athlete.Id);
-                    }
-                    @if (athleteLink != null && balance > 0)
+                    @if (balance > 0)
                     {
-                        <div class="mt-2">
-                            @if (athleteLink.AutoPayEnabled)
-                            {
-                                <div class="alert alert-success py-2 mb-0 d-flex justify-content-between align-items-center">
-                                    <span>Auto-Pay is <strong>enabled</strong> — $@monthlyAmount.ToString("N2") on the 15th monthly</span>
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DisableAutoPay(athlete.Id)" disabled="@isProcessing">
-                                        Disable Auto-Pay
+                        var athleteLink = parentLinksData.FirstOrDefault(pl => pl.AthleteId == athlete.Id);
+                        if (athleteLink != null)
+                        {
+                            <div class="mt-2">
+                                @if (athleteLink.AutoPayEnabled)
+                                {
+                                    <div class="alert alert-success py-2 mb-0 d-flex justify-content-between align-items-center">
+                                        <span>Auto-Pay is <strong>enabled</strong> — $@monthlyAmount.ToString("N2") on the 15th monthly</span>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DisableAutoPay(athlete.Id)" disabled="@isProcessing">
+                                            Disable Auto-Pay
+                                        </button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-outline-primary w-100" @onclick="() => EnableAutoPay(athlete, monthlyAmount)" disabled="@isProcessing">
+                                        @if (isProcessing) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                        Enable Auto-Pay ($@monthlyAmount.ToString("N2")/month on the 15th)
                                     </button>
-                                </div>
-                            }
-                            else
-                            {
-                                <button class="btn btn-outline-primary w-100" @onclick="() => EnableAutoPay(athlete, monthlyAmount)" disabled="@isProcessing">
-                                    @if (isProcessing) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                                    Enable Auto-Pay ($@monthlyAmount.ToString("N2")/month on the 15th)
-                                </button>
-                            }
-                        </div>
+                                }
+                            </div>
+                        }
                     }
                 }
                 else if (balance > 0 && !stripeEnabled)
