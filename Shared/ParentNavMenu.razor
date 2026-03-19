@@ -14,34 +14,18 @@
 </div>
 <div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
     <nav class="flex-column">
+        <!-- HOME -->
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="parent" Match="NavLinkMatch.All">
                 <span class="oi oi-home" aria-hidden="true"></span> My Athletes
             </NavLink>
         </div>
+
+        <!-- COMMUNICATION -->
+        <div class="px-3 mt-2"><small class="text-uppercase" style="color: rgba(255,255,255,0.4); font-size: 0.65rem; letter-spacing: 1px;">Communication</small></div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="parent/announcements">
                 <span class="oi oi-bullhorn" aria-hidden="true"></span> Announcements
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="parent/commitment">
-                <span class="oi oi-task" aria-hidden="true"></span> Commitment Form
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="parent/resources">
-                <span class="oi oi-folder" aria-hidden="true"></span> Resources
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="parent/schedule">
-                <span class="oi oi-calendar" aria-hidden="true"></span> Schedule
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="parent/calendar">
-                <span class="oi oi-calendar" aria-hidden="true"></span> Calendar
             </NavLink>
         </div>
         <div class="nav-item px-3">
@@ -62,11 +46,43 @@
                 }
             </NavLink>
         </div>
+
+        <!-- SCHEDULE -->
+        <div class="px-3 mt-2"><small class="text-uppercase" style="color: rgba(255,255,255,0.4); font-size: 0.65rem; letter-spacing: 1px;">Schedule</small></div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="parent/calendar">
+                <span class="oi oi-calendar" aria-hidden="true"></span> Calendar
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="parent/schedule">
+                <span class="oi oi-clock" aria-hidden="true"></span> Events & RSVP
+            </NavLink>
+        </div>
+
+        <!-- DOCUMENTS -->
+        <div class="px-3 mt-2"><small class="text-uppercase" style="color: rgba(255,255,255,0.4); font-size: 0.65rem; letter-spacing: 1px;">Documents</small></div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="parent/commitment">
+                <span class="oi oi-task" aria-hidden="true"></span> Commitment Form
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="parent/resources">
+                <span class="oi oi-folder" aria-hidden="true"></span> Resources
+            </NavLink>
+        </div>
+
+        <!-- MEDIA -->
+        <div class="px-3 mt-2"><small class="text-uppercase" style="color: rgba(255,255,255,0.4); font-size: 0.65rem; letter-spacing: 1px;">Media</small></div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="parent/gallery">
                 <span class="oi oi-image" aria-hidden="true"></span> Gallery
             </NavLink>
         </div>
+
+        <!-- ACCOUNT -->
+        <div class="px-3 mt-2"><small class="text-uppercase" style="color: rgba(255,255,255,0.4); font-size: 0.65rem; letter-spacing: 1px;">Account</small></div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="claim">
                 <span class="oi oi-link-intact" aria-hidden="true"></span> Link Athlete

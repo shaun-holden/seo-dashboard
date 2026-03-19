@@ -19,11 +19,15 @@
 </div>
 <div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
     <nav class="flex-column">
+        <!-- HOME -->
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
                 <span class="oi oi-home" aria-hidden="true"></span> Dashboard
             </NavLink>
         </div>
+
+        <!-- COMMUNICATION -->
+        <div class="px-3 mt-2"><small class="text-uppercase" style="color: rgba(255,255,255,0.4); font-size: 0.65rem; letter-spacing: 1px;">Communication</small></div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="announcements">
                 <span class="oi oi-bullhorn" aria-hidden="true"></span> Announcements
@@ -34,23 +38,26 @@
             </NavLink>
         </div>
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="commitment-forms">
-                <span class="oi oi-task" aria-hidden="true"></span> Commitment Forms
+            <NavLink class="nav-link" href="messages">
+                <span class="oi oi-envelope-closed" aria-hidden="true"></span> Messages
+                @if (unreadMessageCount > 0)
+                {
+                    <span class="badge bg-danger ms-1">@unreadMessageCount</span>
+                }
             </NavLink>
         </div>
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="resources-admin">
-                <span class="oi oi-folder" aria-hidden="true"></span> Resources
+            <NavLink class="nav-link" href="chat">
+                <span class="oi oi-chat" aria-hidden="true"></span> Chat
+                @if (unreadChatCount > 0)
+                {
+                    <span class="badge bg-danger ms-1">@unreadChatCount</span>
+                }
             </NavLink>
         </div>
-        @if (PermissionService.CanViewMeets)
-        {
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="calendar">
-                    <span class="oi oi-calendar" aria-hidden="true"></span> Calendar
-                </NavLink>
-            </div>
-        }
+
+        <!-- TEAM -->
+        <div class="px-3 mt-2"><small class="text-uppercase" style="color: rgba(255,255,255,0.4); font-size: 0.65rem; letter-spacing: 1px;">Team</small></div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="seasons">
                 <span class="oi oi-calendar" aria-hidden="true"></span> Seasons
@@ -63,17 +70,6 @@
                     <span class="oi oi-star" aria-hidden="true"></span> @labels.TeamLevels
                 </NavLink>
             </div>
-        }
-        @if (PermissionService.CanViewBudget)
-        {
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="budget">
-                    <span class="oi oi-dollar" aria-hidden="true"></span> Budget
-                </NavLink>
-            </div>
-        }
-        @if (labels.EnableTeamLevels && PermissionService.CanViewAthletes)
-        {
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="athletes">
                     <span class="oi oi-person" aria-hidden="true"></span> Athletes
@@ -96,13 +92,48 @@
                 </NavLink>
             </div>
         }
+
+        <!-- SCHEDULE -->
         @if (PermissionService.CanViewMeets)
         {
+            <div class="px-3 mt-2"><small class="text-uppercase" style="color: rgba(255,255,255,0.4); font-size: 0.65rem; letter-spacing: 1px;">Schedule</small></div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="calendar">
+                    <span class="oi oi-calendar" aria-hidden="true"></span> Calendar
+                </NavLink>
+            </div>
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="meets">
                     <span class="oi oi-map-marker" aria-hidden="true"></span> @labels.Meets
                 </NavLink>
             </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="practices">
+                    <span class="oi oi-clock" aria-hidden="true"></span> Practices
+                </NavLink>
+            </div>
+        }
+
+        <!-- FINANCE -->
+        <div class="px-3 mt-2"><small class="text-uppercase" style="color: rgba(255,255,255,0.4); font-size: 0.65rem; letter-spacing: 1px;">Finance</small></div>
+        @if (PermissionService.CanViewBudget)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="budget">
+                    <span class="oi oi-dollar" aria-hidden="true"></span> Budget
+                </NavLink>
+            </div>
+        }
+        @if (PermissionService.CanViewPayments)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="payments">
+                    <span class="oi oi-credit-card" aria-hidden="true"></span> Payments
+                </NavLink>
+            </div>
+        }
+        @if (PermissionService.CanViewMeets)
+        {
             @if (labels.EnablePerDiem)
             {
                 <div class="nav-item px-3">
@@ -119,25 +150,25 @@
                     </NavLink>
                 </div>
             }
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="practices">
-                    <span class="oi oi-clock" aria-hidden="true"></span> Practices
-                </NavLink>
-            </div>
         }
+
+        <!-- DOCUMENTS -->
+        <div class="px-3 mt-2"><small class="text-uppercase" style="color: rgba(255,255,255,0.4); font-size: 0.65rem; letter-spacing: 1px;">Documents</small></div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="commitment-forms">
+                <span class="oi oi-task" aria-hidden="true"></span> Commitment Forms
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="resources-admin">
+                <span class="oi oi-folder" aria-hidden="true"></span> Resources
+            </NavLink>
+        </div>
         @if (PermissionService.CanViewReports)
         {
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="reports">
                     <span class="oi oi-document" aria-hidden="true"></span> Reports
-                </NavLink>
-            </div>
-        }
-        @if (PermissionService.CanViewPayments)
-        {
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="payments">
-                    <span class="oi oi-credit-card" aria-hidden="true"></span> Payments
                 </NavLink>
             </div>
         }
@@ -149,24 +180,9 @@
                 </NavLink>
             </div>
         }
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="messages">
-                <span class="oi oi-envelope-closed" aria-hidden="true"></span> Messages
-                @if (unreadMessageCount > 0)
-                {
-                    <span class="badge bg-danger ms-1">@unreadMessageCount</span>
-                }
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="chat">
-                <span class="oi oi-chat" aria-hidden="true"></span> Chat
-                @if (unreadChatCount > 0)
-                {
-                    <span class="badge bg-danger ms-1">@unreadChatCount</span>
-                }
-            </NavLink>
-        </div>
+
+        <!-- MEDIA -->
+        <div class="px-3 mt-2"><small class="text-uppercase" style="color: rgba(255,255,255,0.4); font-size: 0.65rem; letter-spacing: 1px;">Media</small></div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="gallery">
                 <span class="oi oi-image" aria-hidden="true"></span> Gallery
