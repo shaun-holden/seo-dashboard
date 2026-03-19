@@ -12,6 +12,43 @@
 @inject NavigationManager Navigation
 @inject GymBudgetApp.Services.NotificationService NotificationService
 
+@if (!loading && announcements.Any())
+{
+    <div class="mb-4">
+        <h5>Announcements</h5>
+        @foreach (var ann in displayedAnnouncements)
+        {
+            var isNew = !readAnnouncementIds.Contains(ann.Id);
+            <div class="card mb-2 @(ann.IsPinned ? "border-warning" : "")">
+                <div class="card-body py-2 px-3">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            @if (ann.IsPinned)
+                            {
+                                <span class="oi oi-pin text-warning me-1" style="font-size: 0.75rem;"></span>
+                            }
+                            <strong>@ann.Title</strong>
+                            @if (isNew)
+                            {
+                                <span class="badge bg-danger ms-1">New</span>
+                            }
+                        </div>
+                        <small class="text-muted">@ann.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy")</small>
+                    </div>
+                    <div class="mt-1" style="white-space: pre-wrap; word-break: break-word;">@ann.Content</div>
+                    <small class="text-muted">— @ann.AuthorEmail</small>
+                </div>
+            </div>
+        }
+        @if (announcements.Count > announcementDisplayCount)
+        {
+            <button class="btn btn-sm btn-outline-secondary" @onclick="ShowMoreAnnouncements">
+                View All (@announcements.Count total)
+            </button>
+        }
+    </div>
+}
+
 <h3>My Athletes</h3>
 
 @if (loading)
@@ -390,6 +427,21 @@ else
     private Dictionary<int, decimal> customAmounts = new();
     private List<ParentLink> parentLinksData = new();
     private Dictionary<int, DateTime> lastPaymentAttempt = new();
+    private List<Announcement> announcements = new();
+    private HashSet<int> readAnnouncementIds = new();
+    private int announcementDisplayCount = 10;
+
+    private List<Announcement> displayedAnnouncements =>
+        announcements
+            .OrderByDescending(a => a.IsPinned)
+            .ThenByDescending(a => a.CreatedAt)
+            .Take(announcementDisplayCount)
+            .ToList();
+
+    private void ShowMoreAnnouncements()
+    {
+        announcementDisplayCount = announcements.Count;
+    }
 
     private void ToggleAthlete(int athleteId)
     {
@@ -422,6 +474,56 @@ else
         }
 
         loading = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && userId != null && announcements.Any())
+        {
+            await MarkAnnouncementsAsRead();
+        }
+    }
+
+    private async Task MarkAnnouncementsAsRead()
+    {
+        try
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            var unreadIds = announcements
+                .Where(a => !readAnnouncementIds.Contains(a.Id))
+                .Select(a => a.Id)
+                .ToList();
+
+            if (!unreadIds.Any()) return;
+
+            // Check which ones already have receipts (in case of race condition)
+            var existingIds = await db.AnnouncementReadReceipts
+                .Where(r => r.UserId == userId && unreadIds.Contains(r.AnnouncementId))
+                .Select(r => r.AnnouncementId)
+                .ToListAsync();
+
+            foreach (var annId in unreadIds.Where(id => !existingIds.Contains(id)))
+            {
+                db.AnnouncementReadReceipts.Add(new AnnouncementReadReceipt
+                {
+                    AnnouncementId = annId,
+                    UserId = userId!,
+                    ReadAt = DateTime.UtcNow
+                });
+            }
+
+            await db.SaveChangesAsync();
+
+            // Update local state
+            foreach (var id in unreadIds)
+                readAnnouncementIds.Add(id);
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Non-critical - don't crash if read receipt creation fails
+        }
     }
 
     private async Task VerifyPendingPayments()
@@ -522,6 +624,24 @@ else
         expandedAthletes = athletes.Select(a => a.Id).ToHashSet();
         foreach (var a in athletes)
             customAmounts.TryAdd(a.Id, 0);
+
+        // Load announcements for this parent's levels
+        if (levelIds.Any() && seasonIds.Any())
+        {
+            announcements = await db.Announcements.AsNoTracking()
+                .Where(a => seasonIds.Contains(a.SeasonId)
+                    && (a.TeamLevelId == null || levelIds.Contains(a.TeamLevelId.Value)))
+                .OrderByDescending(a => a.IsPinned)
+                .ThenByDescending(a => a.CreatedAt)
+                .ToListAsync();
+
+            var annIds = announcements.Select(a => a.Id).ToList();
+            readAnnouncementIds = (await db.AnnouncementReadReceipts.AsNoTracking()
+                .Where(r => r.UserId == userId && annIds.Contains(r.AnnouncementId))
+                .Select(r => r.AnnouncementId)
+                .ToListAsync())
+                .ToHashSet();
+        }
     }
 
     private async Task ToggleSelection(int athleteId, int itemId, bool isChecked)

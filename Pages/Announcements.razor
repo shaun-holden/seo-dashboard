@@ -1,0 +1,474 @@
+@page "/announcements"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Identity.UI.Services
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IEmailSender EmailSender
+
+<h3>Announcements</h3>
+
+<div class="row mb-3">
+    <div class="col-md-3">
+        <select class="form-select" @onchange="OnSeasonChanged">
+            <option value="0">-- Select Season --</option>
+            @if (seasons != null)
+            {
+                @foreach (var s in seasons)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            }
+        </select>
+    </div>
+    @if (selectedSeasonId > 0)
+    {
+        <div class="col-md-3">
+            <button class="btn btn-primary" @onclick="ToggleForm">
+                @(showForm ? "Cancel" : "New Announcement")
+            </button>
+        </div>
+    }
+</div>
+
+@if (selectedSeasonId > 0 && showForm)
+{
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5>@(editingId > 0 ? "Edit Announcement" : "New Announcement")</h5>
+            <div class="mb-2">
+                <label class="form-label">Title</label>
+                <input type="text" class="form-control" @bind="formTitle" maxlength="200" />
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Content</label>
+                <textarea class="form-control" rows="4" @bind="formContent"></textarea>
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Audience</label>
+                <select class="form-select" @bind="formTeamLevelId">
+                    <option value="0">All Athletes</option>
+                    @foreach (var level in teamLevels)
+                    {
+                        <option value="@level.Id">@level.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="form-check mb-2">
+                <input type="checkbox" class="form-check-input" id="pinCheck" @bind="formIsPinned" />
+                <label class="form-check-label" for="pinCheck">Pin this</label>
+            </div>
+            <div class="form-check mb-3">
+                <input type="checkbox" class="form-check-input" id="emailCheck" @bind="formSendEmail" />
+                <label class="form-check-label" for="emailCheck">Send email notification</label>
+            </div>
+            <button class="btn btn-success" @onclick="SaveAnnouncement" disabled="@isSaving">
+                @if (isSaving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                @(editingId > 0 ? "Update" : "Post")
+            </button>
+        </div>
+    </div>
+}
+
+@if (saveMessage != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @saveMessage
+        <button type="button" class="btn-close" @onclick="() => saveMessage = null"></button>
+    </div>
+}
+
+@if (saveError != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        @saveError
+        <button type="button" class="btn-close" @onclick="() => saveError = null"></button>
+    </div>
+}
+
+@if (selectedSeasonId > 0)
+{
+    @if (announcements.Any(a => a.IsPinned))
+    {
+        <h6 class="text-warning"><span class="oi oi-pin me-1"></span>Pinned</h6>
+        @foreach (var ann in announcements.Where(a => a.IsPinned))
+        {
+            @RenderAnnouncement(ann)
+        }
+    }
+
+    @if (announcements.Any(a => !a.IsPinned))
+    {
+        @if (announcements.Any(a => a.IsPinned))
+        {
+            <h6 class="mt-3">All Announcements</h6>
+        }
+        @foreach (var ann in announcements.Where(a => !a.IsPinned))
+        {
+            @RenderAnnouncement(ann)
+        }
+    }
+
+    @if (!announcements.Any())
+    {
+        <div class="text-center text-muted py-5">No announcements yet. Create one above.</div>
+    }
+}
+else
+{
+    <div class="text-center text-muted py-5">Select a season to view and manage announcements.</div>
+}
+
+@code {
+    private List<Season>? seasons;
+    private List<Announcement> announcements = new();
+    private List<TeamLevel> teamLevels = new();
+    private Dictionary<int, int> readCounts = new();
+    private Dictionary<int, List<ReadReceiptInfo>> readDetails = new();
+    private int selectedSeasonId;
+    private string? userId;
+    private string? userEmail;
+    private bool showForm;
+    private bool isSaving;
+    private string? saveMessage;
+    private string? saveError;
+    private HashSet<int> expandedReadCounts = new();
+
+    // Form fields
+    private int editingId;
+    private string formTitle = "";
+    private string formContent = "";
+    private int formTeamLevelId;
+    private bool formIsPinned;
+    private bool formSendEmail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? authState.User.FindFirst("email")?.Value
+                    ?? authState.User.Identity?.Name;
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        showForm = false;
+        editingId = 0;
+        await LoadTeamLevels();
+        await LoadAnnouncements();
+    }
+
+    private async Task LoadTeamLevels()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        teamLevels = await db.TeamLevels.AsNoTracking()
+            .Where(t => t.SeasonId == selectedSeasonId)
+            .OrderBy(t => t.Name)
+            .ToListAsync();
+    }
+
+    private async Task LoadAnnouncements()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        announcements = await db.Announcements.AsNoTracking()
+            .Where(a => a.SeasonId == selectedSeasonId)
+            .OrderByDescending(a => a.IsPinned)
+            .ThenByDescending(a => a.CreatedAt)
+            .ToListAsync();
+
+        var annIds = announcements.Select(a => a.Id).ToList();
+        var receipts = await db.AnnouncementReadReceipts.AsNoTracking()
+            .Where(r => annIds.Contains(r.AnnouncementId))
+            .ToListAsync();
+
+        readCounts = receipts.GroupBy(r => r.AnnouncementId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        // Load user emails for read receipts
+        var userIds = receipts.Select(r => r.UserId).Distinct().ToList();
+        var userEmails = await db.Users.AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.Email })
+            .ToDictionaryAsync(u => u.Id, u => u.Email ?? "Unknown");
+
+        readDetails = receipts.GroupBy(r => r.AnnouncementId)
+            .ToDictionary(g => g.Key, g => g.Select(r => new ReadReceiptInfo
+            {
+                Email = userEmails.GetValueOrDefault(r.UserId, "Unknown"),
+                ReadAt = r.ReadAt
+            }).OrderByDescending(r => r.ReadAt).ToList());
+    }
+
+    private void ToggleForm()
+    {
+        showForm = !showForm;
+        if (showForm)
+            ResetForm();
+    }
+
+    private void ResetForm()
+    {
+        editingId = 0;
+        formTitle = "";
+        formContent = "";
+        formTeamLevelId = 0;
+        formIsPinned = false;
+        formSendEmail = false;
+    }
+
+    private async Task SaveAnnouncement()
+    {
+        if (string.IsNullOrWhiteSpace(formTitle) || string.IsNullOrWhiteSpace(formContent)) return;
+        isSaving = true;
+        saveMessage = null;
+        saveError = null;
+
+        try
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+
+            if (editingId > 0)
+            {
+                var existing = await db.Announcements.FindAsync(editingId);
+                if (existing != null)
+                {
+                    existing.Title = formTitle.Trim();
+                    existing.Content = formContent.Trim();
+                    existing.TeamLevelId = formTeamLevelId > 0 ? formTeamLevelId : null;
+                    existing.IsPinned = formIsPinned;
+                    existing.SendEmail = formSendEmail;
+                    await db.SaveChangesAsync();
+                    saveMessage = "Announcement updated.";
+                }
+            }
+            else
+            {
+                var announcement = new Announcement
+                {
+                    Title = formTitle.Trim(),
+                    Content = formContent.Trim(),
+                    SeasonId = selectedSeasonId,
+                    TeamLevelId = formTeamLevelId > 0 ? formTeamLevelId : null,
+                    AuthorUserId = userId ?? "",
+                    AuthorEmail = userEmail ?? "",
+                    IsPinned = formIsPinned,
+                    SendEmail = formSendEmail,
+                    CreatedAt = DateTime.UtcNow
+                };
+                db.Announcements.Add(announcement);
+                await db.SaveChangesAsync();
+                saveMessage = "Announcement posted.";
+
+                // Send email notifications if requested
+                if (formSendEmail)
+                {
+                    await SendAnnouncementEmails(db, announcement);
+                }
+            }
+
+            showForm = false;
+            ResetForm();
+            await LoadAnnouncements();
+        }
+        catch (Exception ex)
+        {
+            saveError = $"Error saving announcement: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task SendAnnouncementEmails(AppDbContext db, Announcement announcement)
+    {
+        try
+        {
+            // Get athletes in the target level(s)
+            List<int> athleteIds;
+            if (announcement.TeamLevelId.HasValue)
+            {
+                athleteIds = await db.Athletes.AsNoTracking()
+                    .Where(a => a.TeamLevelId == announcement.TeamLevelId.Value)
+                    .Select(a => a.Id)
+                    .ToListAsync();
+            }
+            else
+            {
+                var levelIds = await db.TeamLevels.AsNoTracking()
+                    .Where(t => t.SeasonId == announcement.SeasonId)
+                    .Select(t => t.Id)
+                    .ToListAsync();
+                athleteIds = await db.Athletes.AsNoTracking()
+                    .Where(a => levelIds.Contains(a.TeamLevelId))
+                    .Select(a => a.Id)
+                    .ToListAsync();
+            }
+
+            // Get claimed parent links for those athletes
+            var parentUserIds = await db.ParentLinks.AsNoTracking()
+                .Where(pl => athleteIds.Contains(pl.AthleteId) && pl.IsClaimed && pl.ParentUserId != null)
+                .Select(pl => pl.ParentUserId!)
+                .Distinct()
+                .ToListAsync();
+
+            // Get parent emails from AspNetUsers
+            var parentEmails = await db.Users.AsNoTracking()
+                .Where(u => parentUserIds.Contains(u.Id) && u.Email != null)
+                .Select(u => u.Email!)
+                .Distinct()
+                .ToListAsync();
+
+            var levelName = announcement.TeamLevelId.HasValue
+                ? teamLevels.FirstOrDefault(t => t.Id == announcement.TeamLevelId.Value)?.Name ?? "Your Team"
+                : "All Athletes";
+
+            var subject = $"Announcement: {announcement.Title}";
+            var body = $@"
+                <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
+                    <h3>{System.Net.WebUtility.HtmlEncode(announcement.Title)}</h3>
+                    <p style='white-space: pre-wrap;'>{System.Net.WebUtility.HtmlEncode(announcement.Content)}</p>
+                    <p style='color: #6c757d; font-size: 0.9em;'>Audience: {System.Net.WebUtility.HtmlEncode(levelName)}</p>
+                    <p style='color: #6c757d; font-size: 0.9em;'>Posted by {System.Net.WebUtility.HtmlEncode(announcement.AuthorEmail)} on {announcement.CreatedAt:MMM dd, yyyy h:mm tt} UTC</p>
+                    <hr style='border: none; border-top: 1px solid #dee2e6;' />
+                    <p style='color: #6c757d; font-size: 0.9em;'>Top Notch Training</p>
+                </div>";
+
+            foreach (var email in parentEmails)
+            {
+                try
+                {
+                    await EmailSender.SendEmailAsync(email, subject, body);
+                }
+                catch (Exception ex)
+                {
+                    // Log but don't crash
+                    Console.WriteLine($"Failed to send announcement email to {email}: {ex.Message}");
+                }
+            }
+
+            var count = parentEmails.Count;
+            saveMessage = $"Announcement posted and emailed to {count} parent(s).";
+        }
+        catch (Exception ex)
+        {
+            saveError = $"Announcement posted but email sending failed: {ex.Message}";
+        }
+    }
+
+    private void StartEdit(Announcement ann)
+    {
+        editingId = ann.Id;
+        formTitle = ann.Title;
+        formContent = ann.Content;
+        formTeamLevelId = ann.TeamLevelId ?? 0;
+        formIsPinned = ann.IsPinned;
+        formSendEmail = ann.SendEmail;
+        showForm = true;
+    }
+
+    private async Task DeleteAnnouncement(Announcement ann)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Announcements.FindAsync(ann.Id);
+        if (entity != null)
+        {
+            // Delete read receipts first
+            var receipts = await db.AnnouncementReadReceipts.Where(r => r.AnnouncementId == ann.Id).ToListAsync();
+            db.AnnouncementReadReceipts.RemoveRange(receipts);
+            db.Announcements.Remove(entity);
+            await db.SaveChangesAsync();
+        }
+        await LoadAnnouncements();
+    }
+
+    private async Task TogglePin(Announcement ann)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Announcements.FindAsync(ann.Id);
+        if (entity != null)
+        {
+            entity.IsPinned = !entity.IsPinned;
+            await db.SaveChangesAsync();
+        }
+        await LoadAnnouncements();
+    }
+
+    private void ToggleReadCount(int announcementId)
+    {
+        if (!expandedReadCounts.Remove(announcementId))
+            expandedReadCounts.Add(announcementId);
+    }
+
+    private string GetAudienceName(Announcement ann)
+    {
+        if (!ann.TeamLevelId.HasValue) return "All";
+        return teamLevels.FirstOrDefault(t => t.Id == ann.TeamLevelId.Value)?.Name ?? "Unknown";
+    }
+
+    private RenderFragment RenderAnnouncement(Announcement ann) => __builder =>
+    {
+        var count = readCounts.GetValueOrDefault(ann.Id, 0);
+        var isExpanded = expandedReadCounts.Contains(ann.Id);
+        <div class="card mb-2 @(ann.IsPinned ? "border-warning" : "")">
+            <div class="card-body py-2 px-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        @if (ann.IsPinned)
+                        {
+                            <span class="oi oi-pin text-warning me-1" style="font-size: 0.75rem;"></span>
+                        }
+                        <strong>@ann.Title</strong>
+                        <span class="badge bg-secondary ms-1">@GetAudienceName(ann)</span>
+                        <span class="badge bg-info ms-1" style="cursor: pointer;" @onclick="() => ToggleReadCount(ann.Id)" title="Click to see who read it">
+                            @count read
+                        </span>
+                    </div>
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-warning py-0 px-1" title="@(ann.IsPinned ? "Unpin" : "Pin")" @onclick="() => TogglePin(ann)">
+                            <span class="oi oi-pin" style="font-size: 0.7rem;"></span>
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary py-0 px-1" title="Edit" @onclick="() => StartEdit(ann)">
+                            <span class="oi oi-pencil" style="font-size: 0.7rem;"></span>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Delete" @onclick="() => DeleteAnnouncement(ann)">
+                            <span class="oi oi-x" style="font-size: 0.7rem;"></span>
+                        </button>
+                    </div>
+                </div>
+                <div class="mt-1" style="white-space: pre-wrap; word-break: break-word;">@ann.Content</div>
+                <small class="text-muted">@ann.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy h:mm tt") — @ann.AuthorEmail</small>
+
+                @if (isExpanded && readDetails.ContainsKey(ann.Id))
+                {
+                    <div class="mt-2 border-top pt-2">
+                        <small class="text-muted fw-bold">Read by:</small>
+                        <ul class="list-unstyled mb-0 ms-2">
+                            @foreach (var receipt in readDetails[ann.Id])
+                            {
+                                <li><small class="text-muted">@receipt.Email — @receipt.ReadAt.ToLocalTime().ToString("MMM dd h:mm tt")</small></li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+        </div>
+    };
+
+    private class ReadReceiptInfo
+    {
+        public string Email { get; set; } = "";
+        public DateTime ReadAt { get; set; }
+    }
+}
