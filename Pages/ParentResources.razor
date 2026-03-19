@@ -1,0 +1,128 @@
+@page "/parent/resources"
+@attribute [Authorize]
+@layout GymBudgetApp.Shared.ParentLayout
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h3>Resources</h3>
+
+@if (loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border" role="status"></div>
+    </div>
+}
+else if (!resources.Any())
+{
+    <div class="text-center py-5">
+        <p class="text-muted">No resources available at this time.</p>
+    </div>
+}
+else
+{
+    @foreach (var category in Enum.GetValues<ResourceCategory>())
+    {
+        var catResources = resources.Where(r => r.Category == category).ToList();
+        if (catResources.Any())
+        {
+            <h5 class="mt-4 mb-3">@category</h5>
+            <div class="row">
+                @foreach (var res in catResources)
+                {
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <h6 class="card-title mb-1">@res.Name</h6>
+                                    @if (res.IsRequired)
+                                    {
+                                        <span class="badge bg-danger">Required</span>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrEmpty(res.Description))
+                                {
+                                    <p class="card-text text-muted small">@res.Description</p>
+                                }
+                                @if (!string.IsNullOrEmpty(res.Url))
+                                {
+                                    <a href="@res.Url" target="_blank" class="btn btn-sm btn-outline-primary">
+                                        <span class="oi oi-external-link me-1"></span> Open Link
+                                    </a>
+                                }
+                                else if (!string.IsNullOrEmpty(res.FileData) && !string.IsNullOrEmpty(res.FileName))
+                                {
+                                    var mimeType = GetMimeType(res.FileName);
+                                    var dataUri = $"data:{mimeType};base64,{res.FileData}";
+                                    <a href="@dataUri" download="@res.FileName" class="btn btn-sm btn-outline-success">
+                                        <span class="oi oi-data-transfer-download me-1"></span> Download @res.FileName
+                                    </a>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+}
+
+@code {
+    private bool loading = true;
+    private List<Resource> resources = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) { loading = false; return; }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        // Get parent's athletes
+        var parentLinks = await db.ParentLinks.AsNoTracking()
+            .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
+            .ToListAsync();
+        var athleteIds = parentLinks.Select(l => l.AthleteId).ToList();
+        var athletes = await db.Athletes.AsNoTracking()
+            .Where(a => athleteIds.Contains(a.Id))
+            .ToListAsync();
+
+        if (!athletes.Any()) { loading = false; return; }
+
+        // Get season IDs from athletes' team levels
+        var levelIds = athletes.Select(a => a.TeamLevelId).Distinct().ToList();
+        var seasonIds = await db.TeamLevels.AsNoTracking()
+            .Where(t => levelIds.Contains(t.Id))
+            .Select(t => t.SeasonId)
+            .Distinct()
+            .ToListAsync();
+
+        resources = await db.Resources.AsNoTracking()
+            .Where(r => seasonIds.Contains(r.SeasonId))
+            .OrderBy(r => r.Category).ThenBy(r => r.Name)
+            .ToListAsync();
+
+        loading = false;
+    }
+
+    private string GetMimeType(string fileName)
+    {
+        var ext = System.IO.Path.GetExtension(fileName)?.ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => "application/pdf",
+            ".doc" => "application/msword",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xls" => "application/vnd.ms-excel",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            _ => "application/octet-stream"
+        };
+    }
+}

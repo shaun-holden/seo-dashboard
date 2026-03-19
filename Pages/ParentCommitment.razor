@@ -1,0 +1,251 @@
+@page "/parent/commitment"
+@attribute [Authorize]
+@layout GymBudgetApp.Shared.ParentLayout
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@using System.Text.Json
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h3>Commitment Form</h3>
+
+@if (loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border" role="status"></div>
+    </div>
+}
+else if (alreadySigned)
+{
+    <div class="text-center py-5">
+        <div class="alert alert-success">
+            <h5>You have already completed this form</h5>
+            <p class="mb-0">Signed on @existingSignature!.SignedDate.ToLocalTime().ToString("MMMM dd, yyyy")</p>
+        </div>
+    </div>
+}
+else if (activeForm == null)
+{
+    <div class="text-center py-5">
+        <p class="text-muted">No active commitment form at this time.</p>
+    </div>
+}
+else
+{
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">@activeForm.Title</h5>
+        </div>
+        <div class="card-body">
+            <div class="mb-4" style="white-space: pre-wrap; word-break: break-word;">@((MarkupString)activeForm.Content)</div>
+
+            @if (sections.Any())
+            {
+                <h6>Please initial each section below:</h6>
+                @foreach (var section in sections)
+                {
+                    var sec = section;
+                    <div class="row mb-3 align-items-center">
+                        <div class="col-md-8">
+                            <strong>@sec</strong>
+                        </div>
+                        <div class="col-md-4">
+                            <input type="text" class="form-control" placeholder="Initials (e.g. DH)" maxlength="3"
+                                   value="@GetInitial(sec)"
+                                   @onchange="(e) => SetInitial(sec, e.Value?.ToString())" />
+                        </div>
+                    </div>
+                }
+            }
+
+            <hr />
+
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Full Legal Name (Signature)</label>
+                    <input type="text" class="form-control" @bind="signatureName" placeholder="Type your full legal name" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Date</label>
+                    <input type="date" class="form-control" @bind="signatureDate" />
+                </div>
+            </div>
+
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" @bind="agreedToTerms" />
+                <label class="form-check-label">I have read and agree to all terms</label>
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger">@errorMessage</div>
+            }
+
+            <button class="btn btn-primary btn-lg" @onclick="SubmitForm" disabled="@isSubmitting">
+                @if (isSubmitting)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Submit Commitment Form
+            </button>
+        </div>
+    </div>
+
+    @if (submitted)
+    {
+        <div class="alert alert-success text-center">
+            <h5>Thank you, your commitment form has been submitted.</h5>
+        </div>
+    }
+}
+
+@code {
+    private bool loading = true;
+    private string? userId;
+    private string? userEmail;
+    private CommitmentForm? activeForm;
+    private List<string> sections = new();
+    private Dictionary<string, string> initialsMap = new();
+    private string signatureName = "";
+    private DateTime signatureDate = DateTime.Today;
+    private bool agreedToTerms;
+    private bool alreadySigned;
+    private CommitmentSignature? existingSignature;
+    private bool isSubmitting;
+    private bool submitted;
+    private string? errorMessage;
+    private List<Athlete> athletes = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? authState.User.FindFirst("email")?.Value;
+
+        if (userId == null) { loading = false; return; }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        // Get parent's athletes
+        var parentLinks = await db.ParentLinks.AsNoTracking()
+            .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
+            .ToListAsync();
+        var athleteIds = parentLinks.Select(l => l.AthleteId).ToList();
+        athletes = await db.Athletes.AsNoTracking()
+            .Where(a => athleteIds.Contains(a.Id))
+            .ToListAsync();
+
+        if (!athletes.Any()) { loading = false; return; }
+
+        // Get season IDs from athletes' team levels
+        var levelIds = athletes.Select(a => a.TeamLevelId).Distinct().ToList();
+        var seasonIds = await db.TeamLevels.AsNoTracking()
+            .Where(t => levelIds.Contains(t.Id))
+            .Select(t => t.SeasonId)
+            .Distinct()
+            .ToListAsync();
+
+        // Find active commitment form
+        activeForm = await db.CommitmentForms.AsNoTracking()
+            .Where(f => seasonIds.Contains(f.SeasonId) && f.IsActive)
+            .OrderByDescending(f => f.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (activeForm != null)
+        {
+            sections = JsonSerializer.Deserialize<List<string>>(activeForm.InitialSections) ?? new();
+
+            // Check if already signed (for any of their athletes)
+            existingSignature = await db.CommitmentSignatures.AsNoTracking()
+                .Where(s => s.CommitmentFormId == activeForm.Id && s.ParentUserId == userId)
+                .FirstOrDefaultAsync();
+
+            alreadySigned = existingSignature != null;
+        }
+
+        loading = false;
+    }
+
+    private string GetInitial(string section)
+    {
+        return initialsMap.TryGetValue(section, out var val) ? val : "";
+    }
+
+    private void SetInitial(string section, string? value)
+    {
+        initialsMap[section] = value?.Trim().ToUpper() ?? "";
+    }
+
+    private async Task SubmitForm()
+    {
+        errorMessage = null;
+
+        if (activeForm == null) return;
+
+        // Validate initials
+        foreach (var section in sections)
+        {
+            if (!initialsMap.TryGetValue(section, out var initials) || string.IsNullOrWhiteSpace(initials))
+            {
+                errorMessage = $"Please provide your initials for: {section}";
+                return;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(signatureName))
+        {
+            errorMessage = "Please type your full legal name.";
+            return;
+        }
+
+        if (!agreedToTerms)
+        {
+            errorMessage = "You must agree to all terms before submitting.";
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            var initialsJson = JsonSerializer.Serialize(initialsMap);
+
+            // Create a signature for each athlete
+            foreach (var athlete in athletes)
+            {
+                var existing = await db.CommitmentSignatures
+                    .FirstOrDefaultAsync(s => s.CommitmentFormId == activeForm.Id && s.ParentUserId == userId && s.AthleteId == athlete.Id);
+
+                if (existing == null)
+                {
+                    db.CommitmentSignatures.Add(new CommitmentSignature
+                    {
+                        CommitmentFormId = activeForm.Id,
+                        AthleteId = athlete.Id,
+                        ParentUserId = userId!,
+                        ParentEmail = userEmail ?? "",
+                        SignatureName = signatureName.Trim(),
+                        SignedDate = signatureDate,
+                        Initials = initialsJson,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+            }
+
+            await db.SaveChangesAsync();
+            submitted = true;
+            alreadySigned = true;
+            existingSignature = new CommitmentSignature { SignedDate = signatureDate };
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error submitting form: {ex.Message}";
+        }
+
+        isSubmitting = false;
+    }
+}

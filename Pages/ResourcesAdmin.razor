@@ -1,0 +1,293 @@
+@page "/resources-admin"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Forms
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+<h3>Resources</h3>
+
+<div class="row mb-3">
+    <div class="col-md-3">
+        <select class="form-select" @onchange="OnSeasonChanged">
+            <option value="0">-- Select Season --</option>
+            @if (seasons != null)
+            {
+                @foreach (var s in seasons)
+                {
+                    <option value="@s.Id" selected="@(s.Id == selectedSeasonId)">@s.Name</option>
+                }
+            }
+        </select>
+    </div>
+    @if (selectedSeasonId > 0)
+    {
+        <div class="col-md-3">
+            <button class="btn btn-primary" @onclick="ToggleForm">
+                @(showForm ? "Cancel" : "Add Resource")
+            </button>
+        </div>
+    }
+</div>
+
+@if (selectedSeasonId > 0 && showForm)
+{
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5>@(editingId > 0 ? "Edit Resource" : "Add Resource")</h5>
+            <div class="mb-3">
+                <label class="form-label">Name</label>
+                <input type="text" class="form-control" @bind="formName" maxlength="200" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Description (optional)</label>
+                <textarea class="form-control" rows="2" @bind="formDescription"></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Category</label>
+                <select class="form-select" @bind="formCategory">
+                    <option value="@ResourceCategory.Handbook">Handbook</option>
+                    <option value="@ResourceCategory.Policies">Policies</option>
+                    <option value="@ResourceCategory.Forms">Forms</option>
+                    <option value="@ResourceCategory.Other">Other</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">External URL (for links)</label>
+                <input type="url" class="form-control" @bind="formUrl" placeholder="https://..." />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Or Upload File (max 5MB)</label>
+                <InputFile OnChange="HandleFileUpload" class="form-control" />
+                @if (!string.IsNullOrEmpty(uploadFileName))
+                {
+                    <small class="text-muted">Selected: @uploadFileName</small>
+                }
+                @if (!string.IsNullOrEmpty(uploadError))
+                {
+                    <div class="text-danger mt-1">@uploadError</div>
+                }
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" @bind="formIsRequired" />
+                <label class="form-check-label">Required Reading</label>
+            </div>
+            <button class="btn btn-success" @onclick="SaveResource">Save</button>
+            @if (!string.IsNullOrEmpty(saveMessage))
+            {
+                <span class="ms-2 text-success">@saveMessage</span>
+            }
+        </div>
+    </div>
+}
+
+@if (selectedSeasonId > 0)
+{
+    @foreach (var category in Enum.GetValues<ResourceCategory>())
+    {
+        var catResources = resources.Where(r => r.Category == category).ToList();
+        if (catResources.Any())
+        {
+            <h5 class="mt-3">@category</h5>
+            <div class="list-group mb-3">
+                @foreach (var res in catResources)
+                {
+                    var resId = res.Id;
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>@res.Name</strong>
+                            @if (res.IsRequired)
+                            {
+                                <span class="badge bg-danger ms-1">Required</span>
+                            }
+                            @if (!string.IsNullOrEmpty(res.Description))
+                            {
+                                <br /><small class="text-muted">@res.Description</small>
+                            }
+                            @if (!string.IsNullOrEmpty(res.Url))
+                            {
+                                <br /><small><a href="@res.Url" target="_blank">@res.Url</a></small>
+                            }
+                            @if (!string.IsNullOrEmpty(res.FileName))
+                            {
+                                <br /><small class="text-muted">File: @res.FileName</small>
+                            }
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditResource(res)">Edit</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteResource(resId)">Delete</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+
+    @if (!resources.Any())
+    {
+        <div class="text-muted">No resources for this season.</div>
+    }
+}
+
+@code {
+    private List<Season> seasons = new();
+    private int selectedSeasonId;
+    private bool showForm;
+    private int editingId;
+    private string formName = "";
+    private string? formDescription;
+    private ResourceCategory formCategory = ResourceCategory.Handbook;
+    private string? formUrl;
+    private bool formIsRequired;
+    private string? saveMessage;
+    private string? uploadError;
+
+    private string? uploadFileData;
+    private string? uploadFileName;
+
+    private List<Resource> resources = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasons = await db.Seasons.AsNoTracking().Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        if (seasons.Any())
+        {
+            selectedSeasonId = seasons.First().Id;
+            await LoadResources();
+        }
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        showForm = false;
+        editingId = 0;
+        await LoadResources();
+    }
+
+    private async Task LoadResources()
+    {
+        if (selectedSeasonId == 0) { resources.Clear(); return; }
+        using var db = await DbFactory.CreateDbContextAsync();
+        resources = await db.Resources.AsNoTracking()
+            .Where(r => r.SeasonId == selectedSeasonId)
+            .OrderBy(r => r.Category).ThenBy(r => r.Name)
+            .ToListAsync();
+    }
+
+    private void ToggleForm()
+    {
+        showForm = !showForm;
+        if (showForm)
+        {
+            editingId = 0;
+            formName = "";
+            formDescription = null;
+            formCategory = ResourceCategory.Handbook;
+            formUrl = null;
+            formIsRequired = false;
+            uploadFileData = null;
+            uploadFileName = null;
+            uploadError = null;
+            saveMessage = null;
+        }
+    }
+
+    private void EditResource(Resource res)
+    {
+        editingId = res.Id;
+        formName = res.Name;
+        formDescription = res.Description;
+        formCategory = res.Category;
+        formUrl = res.Url;
+        formIsRequired = res.IsRequired;
+        uploadFileData = res.FileData;
+        uploadFileName = res.FileName;
+        uploadError = null;
+        showForm = true;
+        saveMessage = null;
+    }
+
+    private async Task HandleFileUpload(InputFileChangeEventArgs e)
+    {
+        uploadError = null;
+        var file = e.File;
+        if (file.Size > 5 * 1024 * 1024)
+        {
+            uploadError = "File must be under 5MB.";
+            return;
+        }
+
+        try
+        {
+            using var stream = file.OpenReadStream(5 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            uploadFileData = Convert.ToBase64String(ms.ToArray());
+            uploadFileName = file.Name;
+        }
+        catch (Exception ex)
+        {
+            uploadError = $"Error reading file: {ex.Message}";
+        }
+    }
+
+    private async Task SaveResource()
+    {
+        if (string.IsNullOrWhiteSpace(formName)) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        if (editingId > 0)
+        {
+            var existing = await db.Resources.FindAsync(editingId);
+            if (existing != null)
+            {
+                existing.Name = formName.Trim();
+                existing.Description = formDescription;
+                existing.Category = formCategory;
+                existing.Url = string.IsNullOrWhiteSpace(formUrl) ? null : formUrl.Trim();
+                existing.IsRequired = formIsRequired;
+                if (uploadFileData != null)
+                {
+                    existing.FileData = uploadFileData;
+                    existing.FileName = uploadFileName;
+                }
+            }
+        }
+        else
+        {
+            db.Resources.Add(new Resource
+            {
+                Name = formName.Trim(),
+                Description = formDescription,
+                Category = formCategory,
+                Url = string.IsNullOrWhiteSpace(formUrl) ? null : formUrl.Trim(),
+                FileData = uploadFileData,
+                FileName = uploadFileName,
+                SeasonId = selectedSeasonId,
+                IsRequired = formIsRequired,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        await db.SaveChangesAsync();
+        saveMessage = "Saved!";
+        showForm = false;
+        await LoadResources();
+    }
+
+    private async Task DeleteResource(int id)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var res = await db.Resources.FindAsync(id);
+        if (res != null)
+        {
+            db.Resources.Remove(res);
+            await db.SaveChangesAsync();
+        }
+        await LoadResources();
+    }
+}

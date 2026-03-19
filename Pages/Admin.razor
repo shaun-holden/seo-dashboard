@@ -300,6 +300,71 @@ else
         }
     </div>
 
+    <!-- Commitment Form Status -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center" @onclick="() => showCommitmentStatus = !showCommitmentStatus" style="cursor: pointer;">
+            <strong>Commitment Form Status</strong>
+            <span class="oi @(showCommitmentStatus ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+        </div>
+        @if (showCommitmentStatus)
+        {
+            <div class="card-body">
+                @if (commitmentFormTitle == null)
+                {
+                    <div class="text-muted">No active commitment form found.</div>
+                }
+                else
+                {
+                    <h6>@commitmentFormTitle</h6>
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body text-center py-2">
+                                    <small class="text-muted">Total Athletes</small>
+                                    <h5 class="mb-0">@commitmentTotalAthletes</h5>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-success text-white">
+                                <div class="card-body text-center py-2">
+                                    <small>Signed</small>
+                                    <h5 class="mb-0">@commitmentSignedCount</h5>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-warning">
+                                <div class="card-body text-center py-2">
+                                    <small>Unsigned</small>
+                                    <h5 class="mb-0">@commitmentUnsignedCount</h5>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    @if (unsignedAthletes.Any())
+                    {
+                        <h6>Unsigned Athletes</h6>
+                        <table class="table table-sm table-hover">
+                            <thead class="table-light">
+                                <tr><th>Athlete Name</th><th>Level</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var ua in unsignedAthletes)
+                                {
+                                    <tr>
+                                        <td>@ua.Name</td>
+                                        <td>@ua.Level</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                }
+            </div>
+        }
+    </div>
+
     <!-- Audit Log -->
     <div class="card">
         <div class="card-header"><strong>Audit Log</strong></div>
@@ -355,6 +420,15 @@ else
 
     private bool showEmergencyContacts;
     private List<EmergencyContactInfo> emergencyContactInfos = new();
+
+    // Commitment form status
+    private bool showCommitmentStatus;
+    private string? commitmentFormTitle;
+    private int commitmentTotalAthletes;
+    private int commitmentSignedCount;
+    private int commitmentUnsignedCount;
+    private List<UnsignedAthleteInfo> unsignedAthletes = new();
+    private record UnsignedAthleteInfo(string Name, string Level);
 
     private record UserInfo(string UserId, string Email, string Role);
     private record InviteInfo(string AthleteName, string LevelName, string Code, bool IsClaimed);
@@ -419,6 +493,44 @@ else
             a.EmergencyContactRelationship,
             a.MedicalNotes
         )).ToList();
+
+        // Load commitment form status
+        var activeSeason = await db.Seasons.AsNoTracking().Where(s => s.IsActive).FirstOrDefaultAsync();
+        if (activeSeason != null)
+        {
+            var activeForm = await db.CommitmentForms.AsNoTracking()
+                .Where(f => f.SeasonId == activeSeason.Id && f.IsActive)
+                .OrderByDescending(f => f.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (activeForm != null)
+            {
+                commitmentFormTitle = activeForm.Title;
+                var signedAthleteIds = await db.CommitmentSignatures.AsNoTracking()
+                    .Where(s => s.CommitmentFormId == activeForm.Id)
+                    .Select(s => s.AthleteId)
+                    .Distinct()
+                    .ToListAsync();
+
+                var seasonAthletes = allAthletes
+                    .Where(a => a.TeamLevel != null && a.TeamLevel.SeasonId == activeSeason.Id)
+                    .ToList();
+
+                commitmentTotalAthletes = seasonAthletes.Count;
+                commitmentSignedCount = seasonAthletes.Count(a => signedAthleteIds.Contains(a.Id));
+                commitmentUnsignedCount = commitmentTotalAthletes - commitmentSignedCount;
+
+                unsignedAthletes = seasonAthletes
+                    .Where(a => !signedAthleteIds.Contains(a.Id))
+                    .Select(a => new UnsignedAthleteInfo(a.Name, a.TeamLevel?.Name ?? ""))
+                    .OrderBy(a => a.Name)
+                    .ToList();
+            }
+            else
+            {
+                commitmentFormTitle = null;
+            }
+        }
     }
 
     private Task MakeEmployee(string userId, string email) => ChangeRole(userId, email, "Employee");

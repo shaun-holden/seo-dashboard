@@ -70,6 +70,14 @@ else if (budgetNotReady)
         <p>Your season information has not been published yet. Please check back later.</p>
     </div>
 }
+else if (needsCommitment)
+{
+    <div class="text-center py-5">
+        <h4>Complete Your Commitment Form</h4>
+        <p class="text-muted">Before accessing your athlete's budget and payment information, please review and sign the team commitment form.</p>
+        <a href="/parent/commitment" class="btn btn-primary btn-lg">Review & Sign Commitment Form</a>
+    </div>
+}
 else
 {
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -614,6 +622,7 @@ else
     }
 
     private bool budgetNotReady;
+    private bool needsCommitment;
 
     protected override async Task OnInitializedAsync()
     {
@@ -758,6 +767,23 @@ else
             return;
         }
         budgetNotReady = false;
+
+        // Check for unsigned commitment forms
+        var activeCommitmentForm = await db.CommitmentForms.AsNoTracking()
+            .Where(f => publishedSeasonIds.Contains(f.SeasonId) && f.IsActive)
+            .OrderByDescending(f => f.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (activeCommitmentForm != null)
+        {
+            var hasSigned = await db.CommitmentSignatures.AsNoTracking()
+                .AnyAsync(s => s.CommitmentFormId == activeCommitmentForm.Id && s.ParentUserId == userId);
+            needsCommitment = !hasSigned;
+        }
+        else
+        {
+            needsCommitment = false;
+        }
 
         // Re-filter athletes to only those with published levels
         levelIds = teamLevels.Select(t => t.Id).ToList();

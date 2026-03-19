@@ -1,0 +1,289 @@
+@page "/commitment-forms"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@using System.Text.Json
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+<h3>Commitment Forms</h3>
+
+<div class="row mb-3">
+    <div class="col-md-3">
+        <select class="form-select" @onchange="OnSeasonChanged">
+            <option value="0">-- Select Season --</option>
+            @if (seasons != null)
+            {
+                @foreach (var s in seasons)
+                {
+                    <option value="@s.Id" selected="@(s.Id == selectedSeasonId)">@s.Name</option>
+                }
+            }
+        </select>
+    </div>
+    @if (selectedSeasonId > 0)
+    {
+        <div class="col-md-3">
+            <button class="btn btn-primary" @onclick="ToggleForm">
+                @(showForm ? "Cancel" : "New Commitment Form")
+            </button>
+        </div>
+    }
+</div>
+
+@if (selectedSeasonId > 0 && showForm)
+{
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5>@(editingId > 0 ? "Edit Commitment Form" : "New Commitment Form")</h5>
+            <div class="mb-3">
+                <label class="form-label">Title</label>
+                <input type="text" class="form-control" @bind="formTitle" maxlength="200" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Content (full form text, HTML allowed)</label>
+                <textarea class="form-control" rows="10" @bind="formContent"></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Sections Requiring Initials</label>
+                <div class="input-group mb-2">
+                    <input type="text" class="form-control" placeholder="e.g. Payment Policy" @bind="newSectionTitle" />
+                    <button class="btn btn-outline-secondary" type="button" @onclick="AddSection">Add</button>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    @foreach (var section in initialSections)
+                    {
+                        var s = section;
+                        <span class="badge bg-primary d-flex align-items-center gap-1" style="font-size: 0.9rem;">
+                            @s
+                            <button type="button" class="btn-close btn-close-white" style="font-size: 0.6rem;" @onclick="() => RemoveSection(s)"></button>
+                        </span>
+                    }
+                </div>
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" @bind="formIsActive" />
+                <label class="form-check-label">Active</label>
+            </div>
+            <button class="btn btn-success" @onclick="SaveForm">Save</button>
+            @if (!string.IsNullOrEmpty(saveMessage))
+            {
+                <span class="ms-2 text-success">@saveMessage</span>
+            }
+        </div>
+    </div>
+}
+
+@if (selectedSeasonId > 0)
+{
+    @if (!forms.Any())
+    {
+        <div class="text-muted">No commitment forms for this season.</div>
+    }
+    else
+    {
+        @foreach (var form in forms)
+        {
+            var formId = form.Id;
+            var sigCount = signatureCounts.GetValueOrDefault(formId, 0);
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>@form.Title</strong>
+                        <span class="badge @(form.IsActive ? "bg-success" : "bg-secondary") ms-2">@(form.IsActive ? "Active" : "Inactive")</span>
+                        <span class="badge bg-info ms-1">@sigCount signature(s)</span>
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditForm(form)">Edit</button>
+                        <button class="btn btn-sm btn-outline-info" @onclick="() => ToggleSignatures(formId)">
+                            @(expandedForms.Contains(formId) ? "Hide Signatures" : "View Signatures")
+                        </button>
+                    </div>
+                </div>
+                @if (expandedForms.Contains(formId))
+                {
+                    <div class="card-body p-0">
+                        @if (formSignatures.ContainsKey(formId) && formSignatures[formId].Any())
+                        {
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Parent Email</th>
+                                        <th>Athlete</th>
+                                        <th>Signed Name</th>
+                                        <th>Signed Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var sig in formSignatures[formId])
+                                    {
+                                        <tr>
+                                            <td>@sig.ParentEmail</td>
+                                            <td>@sig.Athlete.Name</td>
+                                            <td>@sig.SignatureName</td>
+                                            <td>@sig.SignedDate.ToLocalTime().ToString("MMM dd, yyyy")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                        else
+                        {
+                            <div class="p-3 text-muted text-center">No signatures yet.</div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<Season> seasons = new();
+    private int selectedSeasonId;
+    private bool showForm;
+    private int editingId;
+    private string formTitle = "";
+    private string formContent = "";
+    private bool formIsActive = true;
+    private List<string> initialSections = new();
+    private string newSectionTitle = "";
+    private string? saveMessage;
+
+    private List<CommitmentForm> forms = new();
+    private Dictionary<int, int> signatureCounts = new();
+    private HashSet<int> expandedForms = new();
+    private Dictionary<int, List<CommitmentSignature>> formSignatures = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasons = await db.Seasons.AsNoTracking().Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        if (seasons.Any())
+        {
+            selectedSeasonId = seasons.First().Id;
+            await LoadForms();
+        }
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        showForm = false;
+        editingId = 0;
+        await LoadForms();
+    }
+
+    private async Task LoadForms()
+    {
+        if (selectedSeasonId == 0) { forms.Clear(); return; }
+        using var db = await DbFactory.CreateDbContextAsync();
+        forms = await db.CommitmentForms.AsNoTracking()
+            .Where(f => f.SeasonId == selectedSeasonId)
+            .OrderByDescending(f => f.CreatedAt)
+            .ToListAsync();
+
+        var formIds = forms.Select(f => f.Id).ToList();
+        signatureCounts = await db.CommitmentSignatures.AsNoTracking()
+            .Where(s => formIds.Contains(s.CommitmentFormId))
+            .GroupBy(s => s.CommitmentFormId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+    }
+
+    private void ToggleForm()
+    {
+        showForm = !showForm;
+        if (showForm)
+        {
+            editingId = 0;
+            formTitle = "";
+            formContent = "";
+            formIsActive = true;
+            initialSections = new();
+            saveMessage = null;
+        }
+    }
+
+    private void EditForm(CommitmentForm form)
+    {
+        editingId = form.Id;
+        formTitle = form.Title;
+        formContent = form.Content;
+        formIsActive = form.IsActive;
+        initialSections = JsonSerializer.Deserialize<List<string>>(form.InitialSections) ?? new();
+        showForm = true;
+        saveMessage = null;
+    }
+
+    private void AddSection()
+    {
+        if (!string.IsNullOrWhiteSpace(newSectionTitle) && !initialSections.Contains(newSectionTitle.Trim()))
+        {
+            initialSections.Add(newSectionTitle.Trim());
+            newSectionTitle = "";
+        }
+    }
+
+    private void RemoveSection(string section)
+    {
+        initialSections.Remove(section);
+    }
+
+    private async Task SaveForm()
+    {
+        if (string.IsNullOrWhiteSpace(formTitle) || string.IsNullOrWhiteSpace(formContent)) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var sectionsJson = JsonSerializer.Serialize(initialSections);
+
+        if (editingId > 0)
+        {
+            var existing = await db.CommitmentForms.FindAsync(editingId);
+            if (existing != null)
+            {
+                existing.Title = formTitle.Trim();
+                existing.Content = formContent;
+                existing.InitialSections = sectionsJson;
+                existing.IsActive = formIsActive;
+            }
+        }
+        else
+        {
+            db.CommitmentForms.Add(new CommitmentForm
+            {
+                Title = formTitle.Trim(),
+                Content = formContent,
+                InitialSections = sectionsJson,
+                SeasonId = selectedSeasonId,
+                IsActive = formIsActive,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        await db.SaveChangesAsync();
+        saveMessage = "Saved!";
+        showForm = false;
+        await LoadForms();
+    }
+
+    private async Task ToggleSignatures(int formId)
+    {
+        if (expandedForms.Contains(formId))
+        {
+            expandedForms.Remove(formId);
+            return;
+        }
+
+        expandedForms.Add(formId);
+        if (!formSignatures.ContainsKey(formId))
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            formSignatures[formId] = await db.CommitmentSignatures.AsNoTracking()
+                .Include(s => s.Athlete)
+                .Where(s => s.CommitmentFormId == formId)
+                .OrderByDescending(s => s.SignedDate)
+                .ToListAsync();
+        }
+    }
+}
