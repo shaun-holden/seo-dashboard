@@ -67,7 +67,7 @@ else
                                 <div class="calendar-day-num">@day.Day</div>
                                 @foreach (var evt in eventsForDay.Take(3))
                                 {
-                                    <span class="calendar-event @evt.CssClass" title="@evt.Name">@evt.Name</span>
+                                    <span class="calendar-event @evt.CssClass" title="@evt.Name">@evt.ShortName</span>
                                 }
                                 @if (eventsForDay.Count > 3)
                                 {
@@ -176,17 +176,25 @@ else
     private void BuildEvents()
     {
         allEvents = new List<CalendarEvent>();
-        foreach (var meet in meets)
+        var meetsByDate = meets.GroupBy(m => m.Date.Date).ToList();
+        foreach (var group in meetsByDate)
         {
-            allEvents.Add(new CalendarEvent
+            var i = 1;
+            foreach (var meet in group)
             {
-                Date = meet.Date.Date,
-                Name = meet.Name,
-                Type = "Meet",
-                CssClass = "meet",
-                BadgeColor = "primary",
-                Detail = meet.TravelType.ToString()
-            });
+                var shortName = group.Count() > 1 ? $"Meet {i}" : "Meet";
+                allEvents.Add(new CalendarEvent
+                {
+                    Date = meet.Date.Date,
+                    Name = meet.Name,
+                    ShortName = shortName,
+                    Type = "Meet",
+                    CssClass = "meet",
+                    BadgeColor = "primary",
+                    Detail = meet.TravelType.ToString()
+                });
+                i++;
+            }
         }
         foreach (var practice in practices)
         {
@@ -199,6 +207,7 @@ else
             {
                 Date = practice.Date.Date,
                 Name = practice.Name,
+                ShortName = "Practice",
                 Type = "Practice",
                 CssClass = "practice",
                 BadgeColor = "success",
@@ -226,6 +235,7 @@ else
             {
                 Date = paymentDate,
                 Name = "Payment Due",
+                ShortName = "Payment Due",
                 Type = "Payment",
                 CssClass = "payment",
                 BadgeColor = "warning",
@@ -262,6 +272,7 @@ else
     {
         public DateTime Date { get; set; }
         public string Name { get; set; } = "";
+        public string ShortName { get; set; } = "";
         public string Type { get; set; } = "";
         public string CssClass { get; set; } = "";
         public string BadgeColor { get; set; } = "";
