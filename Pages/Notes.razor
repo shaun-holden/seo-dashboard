@@ -1,0 +1,286 @@
+@page "/notes"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h3>Notes</h3>
+
+<div class="row mb-3">
+    <div class="col-md-3">
+        <select class="form-select" @onchange="OnSeasonChanged">
+            <option value="0">-- Select Season --</option>
+            @if (seasons != null)
+            {
+                @foreach (var s in seasons)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            }
+        </select>
+    </div>
+    <div class="col-md-2">
+        <select class="form-select" @bind="filterCategory">
+            <option value="">All Categories</option>
+            <option value="Budget">Budget</option>
+            <option value="Parent">Parent</option>
+            <option value="Meet">Meet</option>
+            <option value="Team">Team</option>
+            <option value="Todo">To-Do</option>
+        </select>
+    </div>
+    <div class="col-md-3">
+        <input type="text" class="form-control" placeholder="Search notes..." @bind="searchText" @bind:event="oninput" />
+    </div>
+    <div class="col-md-2">
+        <span class="text-muted mt-2 d-block">@displayedNotes.Count note(s)</span>
+    </div>
+</div>
+
+@if (selectedSeasonId > 0)
+{
+    <!-- Add Note -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-7">
+                    <textarea class="form-control" rows="2" placeholder="Write a note..." @bind="newNote"></textarea>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" @bind="newCategory">
+                        <option value="">No category</option>
+                        <option value="Budget">Budget</option>
+                        <option value="Parent">Parent</option>
+                        <option value="Meet">Meet</option>
+                        <option value="Team">Team</option>
+                        <option value="Todo">To-Do</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-primary w-100" @onclick="AddNote">Add Note</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pinned Notes -->
+    @if (displayedNotes.Any(n => n.IsPinned))
+    {
+        <h6 class="text-warning"><span class="oi oi-pin me-1"></span>Pinned</h6>
+        @foreach (var note in displayedNotes.Where(n => n.IsPinned))
+        {
+            @RenderNote(note)
+        }
+    }
+
+    @if (displayedNotes.Any(n => !n.IsPinned))
+    {
+        @if (displayedNotes.Any(n => n.IsPinned))
+        {
+            <h6 class="mt-3">All Notes</h6>
+        }
+        @foreach (var note in displayedNotes.Where(n => !n.IsPinned))
+        {
+            @RenderNote(note)
+        }
+    }
+
+    @if (!displayedNotes.Any())
+    {
+        <div class="text-center text-muted py-4">
+            @(string.IsNullOrWhiteSpace(searchText) && string.IsNullOrEmpty(filterCategory) ? "No notes yet. Add one above." : "No matching notes.")
+        </div>
+    }
+}
+else
+{
+    <div class="text-center text-muted py-5">Select a season to view and manage notes.</div>
+}
+
+@code {
+    private List<Season>? seasons;
+    private List<SeasonNote> notes = new();
+    private int selectedSeasonId;
+    private string? userEmail;
+    private string newNote = "";
+    private string newCategory = "";
+    private string searchText = "";
+    private string filterCategory = "";
+    private int editingNoteId;
+    private string editContent = "";
+    private string editCategory = "";
+
+    private List<SeasonNote> displayedNotes
+    {
+        get
+        {
+            var list = notes.AsEnumerable();
+            if (!string.IsNullOrWhiteSpace(searchText))
+                list = list.Where(n => n.Content.Contains(searchText, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrEmpty(filterCategory))
+                list = list.Where(n => n.Category == filterCategory);
+            return list.OrderByDescending(n => n.IsPinned).ThenByDescending(n => n.CreatedAt).ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? authState.User.FindFirst("email")?.Value
+                    ?? authState.User.Identity?.Name;
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasons = await db.Seasons.OrderByDescending(s => s.Name).ToListAsync();
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        await LoadNotes();
+    }
+
+    private async Task LoadNotes()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        notes = await db.SeasonNotes.AsNoTracking()
+            .Where(n => n.SeasonId == selectedSeasonId)
+            .OrderByDescending(n => n.IsPinned)
+            .ThenByDescending(n => n.CreatedAt)
+            .ToListAsync();
+    }
+
+    private async Task AddNote()
+    {
+        if (string.IsNullOrWhiteSpace(newNote) || selectedSeasonId <= 0) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        db.SeasonNotes.Add(new SeasonNote
+        {
+            Content = newNote.Trim(),
+            CreatedAt = DateTime.UtcNow,
+            SeasonId = selectedSeasonId,
+            Category = string.IsNullOrEmpty(newCategory) ? null : newCategory,
+            Author = userEmail
+        });
+        await db.SaveChangesAsync();
+        newNote = "";
+        newCategory = "";
+        await LoadNotes();
+    }
+
+    private void StartEdit(SeasonNote note)
+    {
+        editingNoteId = note.Id;
+        editContent = note.Content;
+        editCategory = note.Category ?? "";
+    }
+
+    private void CancelEdit() { editingNoteId = 0; }
+
+    private async Task SaveEdit(SeasonNote note)
+    {
+        if (string.IsNullOrWhiteSpace(editContent)) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.SeasonNotes.FindAsync(note.Id);
+        if (entity != null)
+        {
+            entity.Content = editContent.Trim();
+            entity.Category = string.IsNullOrEmpty(editCategory) ? null : editCategory;
+            await db.SaveChangesAsync();
+        }
+        editingNoteId = 0;
+        await LoadNotes();
+    }
+
+    private async Task TogglePin(SeasonNote note)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.SeasonNotes.FindAsync(note.Id);
+        if (entity != null)
+        {
+            entity.IsPinned = !entity.IsPinned;
+            await db.SaveChangesAsync();
+        }
+        await LoadNotes();
+    }
+
+    private async Task DeleteNote(SeasonNote note)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.SeasonNotes.FindAsync(note.Id);
+        if (entity != null)
+        {
+            db.SeasonNotes.Remove(entity);
+            await db.SaveChangesAsync();
+        }
+        await LoadNotes();
+    }
+
+    private string GetCategoryColor(string category) => category switch
+    {
+        "Budget" => "success",
+        "Parent" => "info",
+        "Meet" => "primary",
+        "Team" => "warning",
+        "Todo" => "danger",
+        _ => "secondary"
+    };
+
+    private RenderFragment RenderNote(SeasonNote note) => __builder =>
+    {
+        <div class="card mb-2 @(note.IsPinned ? "border-warning" : "")">
+            <div class="card-body py-2 px-3">
+                @if (editingNoteId == note.Id)
+                {
+                    <textarea class="form-control mb-2" rows="2" @bind="editContent"></textarea>
+                    <div class="d-flex gap-2">
+                        <select class="form-select form-select-sm" style="max-width: 150px;" @bind="editCategory">
+                            <option value="">No category</option>
+                            <option value="Budget">Budget</option>
+                            <option value="Parent">Parent</option>
+                            <option value="Meet">Meet</option>
+                            <option value="Team">Team</option>
+                            <option value="Todo">To-Do</option>
+                        </select>
+                        <button class="btn btn-sm btn-success" @onclick="() => SaveEdit(note)">Save</button>
+                        <button class="btn btn-sm btn-secondary" @onclick="CancelEdit">Cancel</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            @if (note.IsPinned)
+                            {
+                                <span class="oi oi-pin text-warning me-1" style="font-size: 0.75rem;"></span>
+                            }
+                            @if (!string.IsNullOrEmpty(note.Category))
+                            {
+                                <span class="badge bg-@GetCategoryColor(note.Category) me-1">@note.Category</span>
+                            }
+                            <small class="text-muted">@note.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy h:mm tt")</small>
+                            @if (!string.IsNullOrEmpty(note.Author))
+                            {
+                                <small class="text-muted"> — @note.Author</small>
+                            }
+                        </div>
+                        <div class="d-flex gap-1">
+                            <button class="btn btn-sm btn-outline-warning py-0 px-1" title="@(note.IsPinned ? "Unpin" : "Pin")" @onclick="() => TogglePin(note)">
+                                <span class="oi oi-pin" style="font-size: 0.7rem;"></span>
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary py-0 px-1" title="Edit" @onclick="() => StartEdit(note)">
+                                <span class="oi oi-pencil" style="font-size: 0.7rem;"></span>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Delete" @onclick="() => DeleteNote(note)">
+                                <span class="oi oi-x" style="font-size: 0.7rem;"></span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mt-1" style="white-space: pre-wrap; word-break: break-word;">@note.Content</div>
+                }
+            </div>
+        </div>
+    };
+}

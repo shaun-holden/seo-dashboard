@@ -20,7 +20,7 @@
 
 .notes-sidebar-body {
     padding: 0 0.75rem 0.75rem;
-    max-height: 350px;
+    max-height: 400px;
     overflow-y: auto;
 }
 
@@ -38,10 +38,46 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.note-pinned {
+    background: rgba(255, 193, 7, 0.08);
+    border-left: 2px solid #ffc107;
+    padding-left: 6px;
+    margin-left: -6px;
+}
+
 .note-content {
     margin-top: 2px;
     font-size: 0.8rem;
     color: rgba(255, 255, 255, 0.85);
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+.note-actions {
+    display: flex;
+    gap: 2px;
+    opacity: 0.4;
+    transition: opacity 0.15s;
+}
+
+.note-item:hover .note-actions {
+    opacity: 1;
+}
+
+.note-btn {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    font-size: 0.6rem;
+    padding: 1px 3px;
+    line-height: 1;
+}
+
+.note-btn:hover {
+    color: #fff;
+}
+
+.note-btn.text-danger:hover {
+    color: #dc3545 !important;
 }
