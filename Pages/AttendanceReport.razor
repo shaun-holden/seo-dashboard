@@ -1,0 +1,356 @@
+@page "/reports/attendance"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using GymBudgetApp.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Text
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+
+<h3 class="mb-3">Attendance Report</h3>
+
+<div class="row g-2 align-items-center mb-3">
+    <div class="col-auto">
+        <label class="col-form-label fw-semibold">Season</label>
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @if (seasons != null)
+            {
+                @foreach (var s in seasons)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            }
+        </select>
+    </div>
+    @if (teamLevels.Any())
+    {
+        <div class="col-auto">
+            <label class="col-form-label fw-semibold">Level</label>
+        </div>
+        <div class="col-auto">
+            <select class="form-select" @bind="selectedLevelId" @bind:after="ApplyFilters">
+                <option value="0">All Levels</option>
+                @foreach (var tl in teamLevels)
+                {
+                    <option value="@tl.Id">@tl.Name</option>
+                }
+            </select>
+        </div>
+    }
+    @if (displayRows.Any())
+    {
+        <div class="col-auto">
+            <button class="btn btn-outline-success" @onclick="ExportCsv">
+                <span class="oi oi-data-transfer-download me-1"></span> Export CSV
+            </button>
+        </div>
+    }
+</div>
+
+@if (selectedSeasonId > 0 && loaded)
+{
+    <div class="row mb-4">
+        <div class="col-md-3 mb-2">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <h6>Total Events</h6>
+                    <h4>@totalEvents</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <h6>Avg Attendance Rate</h6>
+                    <h4>@avgAttendanceRate.ToString("F1")%</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card text-white bg-danger">
+                <div class="card-body">
+                    <h6>Most Absent</h6>
+                    <h4 class="text-truncate">@mostAbsent</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card text-white bg-info">
+                <div class="card-body">
+                    <h6>Most Reliable</h6>
+                    <h4 class="text-truncate">@mostReliable</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (displayRows.Any())
+    {
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th style="cursor:pointer" @onclick='() => SetSort("Name")'>Athlete Name @SortIcon("Name")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("Level")'>Level @SortIcon("Level")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("MeetsGoing")'>Meets Going @SortIcon("MeetsGoing")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("MeetsMaybe")'>Meets Maybe @SortIcon("MeetsMaybe")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("MeetsNotGoing")'>Meets Not Going @SortIcon("MeetsNotGoing")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("PracticesGoing")'>Practices Going @SortIcon("PracticesGoing")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("PracticesMaybe")'>Practices Maybe @SortIcon("PracticesMaybe")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("PracticesNotGoing")'>Practices Not Going @SortIcon("PracticesNotGoing")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("AttendanceRate")'>Attendance Rate @SortIcon("AttendanceRate")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in displayRows)
+                    {
+                        <tr>
+                            <td>@row.Name</td>
+                            <td>@row.Level</td>
+                            <td>@row.MeetsGoing</td>
+                            <td>@row.MeetsMaybe</td>
+                            <td>@row.MeetsNotGoing</td>
+                            <td>@row.PracticesGoing</td>
+                            <td>@row.PracticesMaybe</td>
+                            <td>@row.PracticesNotGoing</td>
+                            <td>
+                                <span class="badge @(row.AttendanceRate >= 80 ? "bg-success" : row.AttendanceRate >= 50 ? "bg-warning text-dark" : "bg-danger")">
+                                    @row.AttendanceRate.ToString("F1")%
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info">No athlete data found for this season.</div>
+    }
+}
+else if (selectedSeasonId == 0)
+{
+    <div class="alert alert-secondary">Select a season to view the attendance report.</div>
+}
+
+@code {
+    private List<Season>? seasons;
+    private int selectedSeasonId;
+    private int selectedLevelId;
+    private bool loaded;
+
+    private List<TeamLevel> teamLevels = new();
+    private List<AttendanceRow> allRows = new();
+    private List<AttendanceRow> displayRows = new();
+
+    private string sortColumn = "Name";
+    private bool sortAscending = true;
+
+    private int totalEvents;
+    private double avgAttendanceRate;
+    private string mostAbsent = "-";
+    private string mostReliable = "-";
+
+    private class AttendanceRow
+    {
+        public string Name { get; set; } = "";
+        public string Level { get; set; } = "";
+        public int TeamLevelId { get; set; }
+        public int MeetsGoing { get; set; }
+        public int MeetsMaybe { get; set; }
+        public int MeetsNotGoing { get; set; }
+        public int PracticesGoing { get; set; }
+        public int PracticesMaybe { get; set; }
+        public int PracticesNotGoing { get; set; }
+        public int TotalMeets { get; set; }
+        public int TotalPractices { get; set; }
+        public double AttendanceRate { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        selectedLevelId = 0;
+        if (selectedSeasonId > 0)
+            await LoadData();
+        else
+        {
+            allRows.Clear();
+            displayRows.Clear();
+            loaded = false;
+        }
+    }
+
+    private async Task LoadData()
+    {
+        loaded = false;
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        teamLevels = await db.TeamLevels.Where(t => t.SeasonId == selectedSeasonId).OrderBy(t => t.Name).ToListAsync();
+        var levelIds = teamLevels.Select(t => t.Id).ToList();
+
+        var athletes = await db.Athletes.Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
+        var meets = await db.Meets.Where(m => m.SeasonId == selectedSeasonId).ToListAsync();
+        var practices = await db.Practices.Where(p => p.SeasonId == selectedSeasonId).ToListAsync();
+
+        var meetIds = meets.Select(m => m.Id).ToList();
+        var practiceIds = practices.Select(p => p.Id).ToList();
+        var athleteIds = athletes.Select(a => a.Id).ToList();
+
+        var eventRsvps = await db.EventRsvps.Where(r => meetIds.Contains(r.MeetId) && athleteIds.Contains(r.AthleteId)).ToListAsync();
+        var practiceRsvps = await db.PracticeRsvps.Where(r => practiceIds.Contains(r.PracticeId) && athleteIds.Contains(r.AthleteId)).ToListAsync();
+
+        var meetTeamLevelAssignments = await db.MeetTeamLevelAssignments.Where(a => meetIds.Contains(a.MeetId)).ToListAsync();
+
+        allRows = new List<AttendanceRow>();
+
+        foreach (var athlete in athletes)
+        {
+            var levelName = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "";
+
+            // Meets assigned to this athlete's level (or all if no assignments)
+            var assignedMeetIds = meetTeamLevelAssignments
+                .Where(a => a.TeamLevelId == athlete.TeamLevelId)
+                .Select(a => a.MeetId)
+                .ToHashSet();
+            int athleteTotalMeets;
+            if (assignedMeetIds.Count > 0)
+                athleteTotalMeets = assignedMeetIds.Count;
+            else
+                athleteTotalMeets = meets.Count;
+
+            // Practices assigned to this athlete's level (null TeamLevelId = all)
+            var assignedPractices = practices
+                .Where(p => p.TeamLevelId == null || p.TeamLevelId == athlete.TeamLevelId)
+                .ToList();
+            int athleteTotalPractices = assignedPractices.Count;
+
+            var athleteEventRsvps = eventRsvps.Where(r => r.AthleteId == athlete.Id).ToList();
+            var athletePracticeRsvps = practiceRsvps.Where(r => r.AthleteId == athlete.Id).ToList();
+
+            int meetsGoing = athleteEventRsvps.Count(r => r.Status == RsvpStatus.Going);
+            int meetsMaybe = athleteEventRsvps.Count(r => r.Status == RsvpStatus.Maybe);
+            int meetsNotGoing = athleteEventRsvps.Count(r => r.Status == RsvpStatus.NotGoing);
+
+            int practicesGoing = athletePracticeRsvps.Count(r => r.Status == RsvpStatus.Going);
+            int practicesMaybe = athletePracticeRsvps.Count(r => r.Status == RsvpStatus.Maybe);
+            int practicesNotGoing = athletePracticeRsvps.Count(r => r.Status == RsvpStatus.NotGoing);
+
+            int totalAssigned = athleteTotalMeets + athleteTotalPractices;
+            double rate = totalAssigned > 0
+                ? (double)(meetsGoing + practicesGoing) / totalAssigned * 100.0
+                : 0;
+
+            allRows.Add(new AttendanceRow
+            {
+                Name = athlete.Name,
+                Level = levelName,
+                TeamLevelId = athlete.TeamLevelId,
+                MeetsGoing = meetsGoing,
+                MeetsMaybe = meetsMaybe,
+                MeetsNotGoing = meetsNotGoing,
+                PracticesGoing = practicesGoing,
+                PracticesMaybe = practicesMaybe,
+                PracticesNotGoing = practicesNotGoing,
+                TotalMeets = athleteTotalMeets,
+                TotalPractices = athleteTotalPractices,
+                AttendanceRate = rate
+            });
+        }
+
+        totalEvents = meets.Count + practices.Count;
+
+        loaded = true;
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        var rows = allRows.AsEnumerable();
+        if (selectedLevelId > 0)
+            rows = rows.Where(r => r.TeamLevelId == selectedLevelId);
+
+        displayRows = SortRows(rows).ToList();
+
+        if (displayRows.Any())
+        {
+            avgAttendanceRate = displayRows.Average(r => r.AttendanceRate);
+            var min = displayRows.OrderBy(r => r.AttendanceRate).First();
+            var max = displayRows.OrderByDescending(r => r.AttendanceRate).First();
+            mostAbsent = min.Name;
+            mostReliable = max.Name;
+        }
+        else
+        {
+            avgAttendanceRate = 0;
+            mostAbsent = "-";
+            mostReliable = "-";
+        }
+    }
+
+    private IEnumerable<AttendanceRow> SortRows(IEnumerable<AttendanceRow> rows)
+    {
+        return sortColumn switch
+        {
+            "Name" => sortAscending ? rows.OrderBy(r => r.Name) : rows.OrderByDescending(r => r.Name),
+            "Level" => sortAscending ? rows.OrderBy(r => r.Level) : rows.OrderByDescending(r => r.Level),
+            "MeetsGoing" => sortAscending ? rows.OrderBy(r => r.MeetsGoing) : rows.OrderByDescending(r => r.MeetsGoing),
+            "MeetsMaybe" => sortAscending ? rows.OrderBy(r => r.MeetsMaybe) : rows.OrderByDescending(r => r.MeetsMaybe),
+            "MeetsNotGoing" => sortAscending ? rows.OrderBy(r => r.MeetsNotGoing) : rows.OrderByDescending(r => r.MeetsNotGoing),
+            "PracticesGoing" => sortAscending ? rows.OrderBy(r => r.PracticesGoing) : rows.OrderByDescending(r => r.PracticesGoing),
+            "PracticesMaybe" => sortAscending ? rows.OrderBy(r => r.PracticesMaybe) : rows.OrderByDescending(r => r.PracticesMaybe),
+            "PracticesNotGoing" => sortAscending ? rows.OrderBy(r => r.PracticesNotGoing) : rows.OrderByDescending(r => r.PracticesNotGoing),
+            "AttendanceRate" => sortAscending ? rows.OrderBy(r => r.AttendanceRate) : rows.OrderByDescending(r => r.AttendanceRate),
+            _ => rows.OrderBy(r => r.Name)
+        };
+    }
+
+    private void SetSort(string column)
+    {
+        if (sortColumn == column)
+            sortAscending = !sortAscending;
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+        ApplyFilters();
+    }
+
+    private MarkupString SortIcon(string column)
+    {
+        if (sortColumn != column) return new MarkupString("");
+        return new MarkupString(sortAscending
+            ? "<span class=\"oi oi-caret-top ms-1\"></span>"
+            : "<span class=\"oi oi-caret-bottom ms-1\"></span>");
+    }
+
+    private string EscapeCsv(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        return value;
+    }
+
+    private async Task ExportCsv()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Athlete Name,Level,Meets Going,Meets Maybe,Meets Not Going,Practices Going,Practices Maybe,Practices Not Going,Attendance Rate");
+        foreach (var row in displayRows)
+        {
+            sb.AppendLine($"{EscapeCsv(row.Name)},{EscapeCsv(row.Level)},{row.MeetsGoing},{row.MeetsMaybe},{row.MeetsNotGoing},{row.PracticesGoing},{row.PracticesMaybe},{row.PracticesNotGoing},{row.AttendanceRate:F1}%");
+        }
+        await JS.InvokeVoidAsync("downloadFile", "attendance-report.csv", sb.ToString());
+    }
+}

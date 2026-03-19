@@ -1,0 +1,381 @@
+@page "/reports/payments"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using GymBudgetApp.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Text
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+
+<h3 class="mb-3">Payment Report</h3>
+
+<div class="row g-2 align-items-center mb-3">
+    <div class="col-auto">
+        <label class="col-form-label fw-semibold">Season</label>
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @if (seasons != null)
+            {
+                @foreach (var s in seasons)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            }
+        </select>
+    </div>
+    @if (teamLevels.Any())
+    {
+        <div class="col-auto">
+            <label class="col-form-label fw-semibold">Level</label>
+        </div>
+        <div class="col-auto">
+            <select class="form-select" @bind="selectedLevelId" @bind:after="ApplyFilters">
+                <option value="0">All Levels</option>
+                @foreach (var tl in teamLevels)
+                {
+                    <option value="@tl.Id">@tl.Name</option>
+                }
+            </select>
+        </div>
+    }
+    @if (loaded)
+    {
+        <div class="col-auto">
+            <label class="col-form-label fw-semibold">Status</label>
+        </div>
+        <div class="col-auto">
+            <select class="form-select" @bind="statusFilter" @bind:after="ApplyFilters">
+                <option value="All">All</option>
+                <option value="Paid">Paid</option>
+                <option value="Partial">Partial</option>
+                <option value="Unpaid">Unpaid</option>
+            </select>
+        </div>
+    }
+    @if (displayRows.Any())
+    {
+        <div class="col-auto">
+            <button class="btn btn-outline-success" @onclick="ExportCsv">
+                <span class="oi oi-data-transfer-download me-1"></span> Export CSV
+            </button>
+        </div>
+    }
+</div>
+
+@if (selectedSeasonId > 0 && loaded)
+{
+    <div class="row mb-4">
+        <div class="col mb-2">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <h6>Total Owed</h6>
+                    <h4>$@totalOwed.ToString("N2")</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col mb-2">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <h6>Total Collected</h6>
+                    <h4>$@totalCollected.ToString("N2")</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col mb-2">
+            <div class="card text-white bg-info">
+                <div class="card-body">
+                    <h6>Total Credits</h6>
+                    <h4>$@totalCredits.ToString("N2")</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col mb-2">
+            <div class="card text-white bg-warning">
+                <div class="card-body">
+                    <h6>Outstanding</h6>
+                    <h4>$@outstanding.ToString("N2")</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col mb-2">
+            <div class="card text-white bg-secondary">
+                <div class="card-body">
+                    <h6>Collection Rate</h6>
+                    <h4>@collectionRate.ToString("F1")%</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (displayRows.Any())
+    {
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Athlete Name</th>
+                        <th>Level</th>
+                        <th>Total Fees</th>
+                        <th>Paid</th>
+                        <th>Credits</th>
+                        <th>Balance</th>
+                        <th>Status</th>
+                        <th>Auto-Pay</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in displayRows)
+                    {
+                        <tr>
+                            <td>@row.Name</td>
+                            <td>@row.Level</td>
+                            <td>$@row.TotalFees.ToString("N2")</td>
+                            <td>$@row.Paid.ToString("N2")</td>
+                            <td>$@row.Credits.ToString("N2")</td>
+                            <td class="@(row.Balance > 0 ? "text-danger fw-bold" : "text-success fw-bold")">$@row.Balance.ToString("N2")</td>
+                            <td>
+                                @if (row.Status == "Paid")
+                                {
+                                    <span class="badge bg-success">Paid in Full</span>
+                                }
+                                else if (row.Status == "Partial")
+                                {
+                                    <span class="badge bg-warning text-dark">Partial</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger">Unpaid</span>
+                                }
+                            </td>
+                            <td>
+                                @if (row.AutoPay)
+                                {
+                                    <span class="badge bg-primary">Enabled</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold">
+                        <td colspan="2">Totals</td>
+                        <td>$@displayRows.Sum(r => r.TotalFees).ToString("N2")</td>
+                        <td>$@displayRows.Sum(r => r.Paid).ToString("N2")</td>
+                        <td>$@displayRows.Sum(r => r.Credits).ToString("N2")</td>
+                        <td>$@displayRows.Sum(r => r.Balance).ToString("N2")</td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info">No athlete data found for this season.</div>
+    }
+}
+else if (selectedSeasonId == 0)
+{
+    <div class="alert alert-secondary">Select a season to view the payment report.</div>
+}
+
+@code {
+    private List<Season>? seasons;
+    private Season? selectedSeason;
+    private int selectedSeasonId;
+    private int selectedLevelId;
+    private string statusFilter = "All";
+    private bool loaded;
+
+    private List<TeamLevel> teamLevels = new();
+    private List<PaymentRow> allRows = new();
+    private List<PaymentRow> displayRows = new();
+
+    private decimal totalOwed;
+    private decimal totalCollected;
+    private decimal totalCredits;
+    private decimal outstanding;
+    private double collectionRate;
+
+    private class PaymentRow
+    {
+        public string Name { get; set; } = "";
+        public string Level { get; set; } = "";
+        public int TeamLevelId { get; set; }
+        public decimal TotalFees { get; set; }
+        public decimal Paid { get; set; }
+        public decimal Credits { get; set; }
+        public decimal Balance { get; set; }
+        public string Status { get; set; } = "Unpaid";
+        public bool AutoPay { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        selectedSeason = seasons?.FirstOrDefault(s => s.Id == selectedSeasonId);
+        selectedLevelId = 0;
+        statusFilter = "All";
+        if (selectedSeasonId > 0)
+            await LoadData();
+        else
+        {
+            allRows.Clear();
+            displayRows.Clear();
+            loaded = false;
+        }
+    }
+
+    private async Task LoadData()
+    {
+        loaded = false;
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        teamLevels = await db.TeamLevels.Where(t => t.SeasonId == selectedSeasonId).OrderBy(t => t.Name).ToListAsync();
+        var levelIds = teamLevels.Select(t => t.Id).ToList();
+
+        var athletes = await db.Athletes.Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
+        var athleteIds = athletes.Select(a => a.Id).ToList();
+
+        var athleteItems = await db.AthleteItems.Where(ai => levelIds.Contains(ai.TeamLevelId)).ToListAsync();
+        var athleteItemSelections = await db.AthleteItemSelections.Where(s => athleteIds.Contains(s.AthleteId)).ToListAsync();
+
+        var sharedFees = await db.SharedFees.Where(f => f.SeasonId == selectedSeasonId && f.IsIncludedInBudget).ToListAsync();
+        var sharedFeeIds = sharedFees.Select(f => f.Id).ToList();
+        var sharedFeeAssignments = await db.SharedFeeTeamLevelAssignments.Where(a => sharedFeeIds.Contains(a.SharedFeeId)).ToListAsync();
+
+        var payments = await db.Payments.Where(p => athleteIds.Contains(p.AthleteId)).ToListAsync();
+        var parentLinks = await db.ParentLinks.Where(pl => athleteIds.Contains(pl.AthleteId)).ToListAsync();
+
+        int seasonAthleteCount = selectedSeason?.AthleteCount ?? teamLevels.Sum(t => t.AthleteCount);
+        if (seasonAthleteCount <= 0)
+            seasonAthleteCount = teamLevels.Sum(t => t.AthleteCount);
+
+        allRows = new List<PaymentRow>();
+
+        foreach (var athlete in athletes)
+        {
+            var level = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId);
+            var levelName = level?.Name ?? "";
+
+            // Calculate fees: required items + selected optional items
+            var levelItems = athleteItems.Where(ai => ai.TeamLevelId == athlete.TeamLevelId).ToList();
+            var selectedOptionalItemIds = athleteItemSelections
+                .Where(s => s.AthleteId == athlete.Id)
+                .Select(s => s.AthleteItemId)
+                .ToHashSet();
+
+            decimal itemFees = 0;
+            foreach (var item in levelItems)
+            {
+                if (item.IsRequired || selectedOptionalItemIds.Contains(item.Id))
+                    itemFees += item.Cost;
+            }
+
+            // Shared fee share for this athlete
+            decimal sharedFeeShare = 0;
+            foreach (var fee in sharedFees)
+            {
+                var assignedLevelIds = sharedFeeAssignments
+                    .Where(a => a.SharedFeeId == fee.Id)
+                    .Select(a => a.TeamLevelId)
+                    .ToList();
+                if (assignedLevelIds.Count == 0)
+                    assignedLevelIds = levelIds;
+
+                if (!assignedLevelIds.Contains(athlete.TeamLevelId))
+                    continue;
+
+                int totalAssignedAthletes = teamLevels
+                    .Where(t => assignedLevelIds.Contains(t.Id))
+                    .Sum(t => t.AthleteCount);
+
+                if (totalAssignedAthletes > 0)
+                    sharedFeeShare += Math.Round(fee.Amount / totalAssignedAthletes, 2);
+            }
+
+            decimal totalFees = itemFees + sharedFeeShare;
+
+            var athletePayments = payments.Where(p => p.AthleteId == athlete.Id).ToList();
+            decimal paid = athletePayments
+                .Where(p => p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment)
+                .Sum(p => p.Amount);
+            decimal credits = athletePayments
+                .Where(p => p.Status == PaymentStatus.Paid && p.Type == PaymentType.Credit)
+                .Sum(p => p.Amount);
+
+            decimal balance = totalFees - paid - credits;
+            if (balance < 0) balance = 0;
+
+            string status;
+            if (balance <= 0 && totalFees > 0)
+                status = "Paid";
+            else if (paid + credits > 0)
+                status = "Partial";
+            else
+                status = "Unpaid";
+
+            bool autoPay = parentLinks.Any(pl => pl.AthleteId == athlete.Id && pl.AutoPayEnabled);
+
+            allRows.Add(new PaymentRow
+            {
+                Name = athlete.Name,
+                Level = levelName,
+                TeamLevelId = athlete.TeamLevelId,
+                TotalFees = totalFees,
+                Paid = paid,
+                Credits = credits,
+                Balance = balance,
+                Status = status,
+                AutoPay = autoPay
+            });
+        }
+
+        loaded = true;
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        var rows = allRows.AsEnumerable();
+        if (selectedLevelId > 0)
+            rows = rows.Where(r => r.TeamLevelId == selectedLevelId);
+        if (statusFilter != "All")
+            rows = rows.Where(r => r.Status == statusFilter);
+
+        displayRows = rows.OrderBy(r => r.Name).ToList();
+
+        totalOwed = displayRows.Sum(r => r.TotalFees);
+        totalCollected = displayRows.Sum(r => r.Paid);
+        totalCredits = displayRows.Sum(r => r.Credits);
+        outstanding = displayRows.Sum(r => r.Balance);
+        collectionRate = totalOwed > 0 ? (double)(totalCollected + totalCredits) / (double)totalOwed * 100.0 : 0;
+    }
+
+    private string EscapeCsv(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        return value;
+    }
+
+    private async Task ExportCsv()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Athlete Name,Level,Total Fees,Paid,Credits,Balance,Status,Auto-Pay");
+        foreach (var row in displayRows)
+        {
+            sb.AppendLine($"{EscapeCsv(row.Name)},{EscapeCsv(row.Level)},{row.TotalFees:F2},{row.Paid:F2},{row.Credits:F2},{row.Balance:F2},{row.Status},{(row.AutoPay ? "Enabled" : "")}");
+        }
+        await JS.InvokeVoidAsync("downloadFile", "payment-report.csv", sb.ToString());
+    }
+}

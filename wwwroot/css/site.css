@@ -156,3 +156,81 @@ a, .btn-link {
 .calendar-event.meet { background: #cfe2ff; color: #0a58ca; }
 .calendar-event.practice { background: #d1e7dd; color: #0f5132; }
 .calendar-event.payment { background: #fff3cd; color: #664d03; }
+
+/* Mobile Optimization */
+@media (max-width: 768px) {
+    /* Cards stack properly */
+    .card-body { padding: 0.75rem; }
+
+    /* Larger touch targets */
+    .btn { min-height: 44px; }
+    .btn-sm { min-height: 36px; font-size: 0.85rem; }
+    .form-control, .form-select { min-height: 44px; font-size: 1rem; }
+
+    /* Table scroll */
+    .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { font-size: 0.85rem; }
+
+    /* Summary cards in rows */
+    .row > [class*="col-md"] { margin-bottom: 0.5rem; }
+
+    /* Payment buttons stack */
+    .row.g-2 > div { flex: 0 0 100%; max-width: 100%; }
+
+    /* Hide non-essential columns on small screens */
+    .hide-mobile { display: none !important; }
+
+    /* Compact headers */
+    h3 { font-size: 1.3rem; }
+    h5 { font-size: 1.1rem; }
+    h6 { font-size: 0.95rem; }
+}
+
+/* Bottom nav for parent portal on mobile */
+@media (max-width: 640.98px) {
+    .parent-portal .sidebar { display: none; }
+
+    .parent-bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: #1a6b3c;
+        display: flex;
+        justify-content: space-around;
+        padding: 8px 0;
+        z-index: 1000;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.15);
+    }
+
+    .parent-bottom-nav a {
+        color: rgba(255,255,255,0.7);
+        text-decoration: none;
+        text-align: center;
+        font-size: 0.65rem;
+        padding: 4px 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+    }
+
+    .parent-bottom-nav a.active,
+    .parent-bottom-nav a:hover {
+        color: #fff;
+    }
+
+    .parent-bottom-nav .oi {
+        font-size: 1.2rem;
+    }
+
+    /* Add padding at bottom so content isn't hidden behind bottom nav */
+    .parent-portal main article {
+        padding-bottom: 70px !important;
+    }
+}
+
+/* Show bottom nav only on mobile */
+@media (min-width: 641px) {
+    .parent-bottom-nav { display: none; }
+}

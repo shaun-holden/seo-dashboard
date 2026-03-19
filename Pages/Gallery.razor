@@ -1,0 +1,380 @@
+@page "/gallery"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Forms
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h3>Photo Gallery</h3>
+
+@if (successMessage != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @successMessage
+        <button type="button" class="btn-close" @onclick="() => successMessage = null"></button>
+    </div>
+}
+
+@if (errorMessage != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        @errorMessage
+        <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+    </div>
+}
+
+<div class="row mb-3">
+    <div class="col-md-4">
+        <label class="form-label">Season</label>
+        <select class="form-select" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @foreach (var s in seasons)
+            {
+                <option value="@s.Id" selected="@(s.Id == selectedSeasonId)">@s.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-4 d-flex align-items-end">
+        @if (selectedSeasonId > 0)
+        {
+            <button class="btn btn-primary" @onclick="() => showCreateForm = !showCreateForm">
+                <span class="oi oi-plus"></span> Create Album
+            </button>
+        }
+    </div>
+</div>
+
+@if (showCreateForm && selectedSeasonId > 0)
+{
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">New Album</h5>
+            <EditForm Model="newAlbum" OnValidSubmit="CreateAlbum">
+                <DataAnnotationsValidator />
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Name</label>
+                        <InputText class="form-control" @bind-Value="newAlbum.Name" />
+                        <ValidationMessage For="() => newAlbum.Name" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Team Level</label>
+                        <select class="form-select" @bind="newAlbumTeamLevelId">
+                            <option value="0">All Levels</option>
+                            @foreach (var tl in teamLevels)
+                            {
+                                <option value="@tl.Id">@tl.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Meet (optional)</label>
+                        <select class="form-select" @bind="newAlbumMeetId">
+                            <option value="0">None</option>
+                            @foreach (var m in meets)
+                            {
+                                <option value="@m.Id">@m.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <InputTextArea class="form-control" @bind-Value="newAlbum.Description" rows="2" />
+                </div>
+                <button type="submit" class="btn btn-success me-2">Save Album</button>
+                <button type="button" class="btn btn-secondary" @onclick="() => showCreateForm = false">Cancel</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (selectedSeasonId > 0)
+{
+    @if (!albums.Any())
+    {
+        <p class="text-muted">No albums yet. Create one to get started.</p>
+    }
+
+    @foreach (var album in albums)
+    {
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" @onclick="() => ToggleAlbum(album.Id)">
+                <div>
+                    <strong>@album.Name</strong>
+                    <span class="badge bg-secondary ms-2">@album.Photos.Count photo(s)</span>
+                    @if (album.TeamLevelId.HasValue)
+                    {
+                        var levelName = teamLevels.FirstOrDefault(t => t.Id == album.TeamLevelId)?.Name ?? "Level";
+                        <span class="badge bg-info ms-1">@levelName</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-success ms-1">All Levels</span>
+                    }
+                    @if (album.MeetId.HasValue)
+                    {
+                        var meetName = meets.FirstOrDefault(m => m.Id == album.MeetId)?.Name ?? "Meet";
+                        <span class="badge bg-warning text-dark ms-1">@meetName</span>
+                    }
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAlbum(album.Id)" @onclick:stopPropagation="true">
+                        <span class="oi oi-trash"></span> Delete Album
+                    </button>
+                </div>
+            </div>
+            @if (expandedAlbumId == album.Id)
+            {
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(album.Description))
+                    {
+                        <p class="text-muted">@album.Description</p>
+                    }
+
+                    <div class="mb-3 p-3 bg-light rounded">
+                        <h6>Upload Photo</h6>
+                        <div class="row align-items-end">
+                            <div class="col-md-5">
+                                <label class="form-label">Image (max 2MB)</label>
+                                <InputFile class="form-control" OnChange="(e) => OnFileSelected(e)" accept="image/*" />
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label">Caption (optional)</label>
+                                <input class="form-control" @bind="uploadCaption" />
+                            </div>
+                            <div class="col-md-2">
+                                <button class="btn btn-primary w-100" @onclick="() => UploadPhoto(album.Id)" disabled="@(uploadFileData == null || uploading)">
+                                    @if (uploading)
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <span>Upload</span>
+                                    }
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (album.Photos.Any())
+                    {
+                        <div class="row">
+                            @foreach (var photo in album.Photos.OrderByDescending(p => p.UploadedAt))
+                            {
+                                <div class="col-md-3 mb-3">
+                                    <div class="card h-100">
+                                        <img src="@photo.ImageData" class="card-img-top" alt="@(photo.Caption ?? photo.FileName)" style="max-height:200px; object-fit:cover;" />
+                                        <div class="card-body p-2">
+                                            @if (!string.IsNullOrEmpty(photo.Caption))
+                                            {
+                                                <small class="text-muted">@photo.Caption</small>
+                                            }
+                                            <div class="mt-1">
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeletePhoto(photo.Id, album.Id)">
+                                                    <span class="oi oi-trash"></span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No photos in this album yet.</p>
+                    }
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    private List<Season> seasons = new();
+    private List<TeamLevel> teamLevels = new();
+    private List<Meet> meets = new();
+    private List<PhotoAlbum> albums = new();
+    private int selectedSeasonId;
+    private int? expandedAlbumId;
+    private bool showCreateForm;
+    private PhotoAlbum newAlbum = new();
+    private int newAlbumTeamLevelId;
+    private int newAlbumMeetId;
+    private string? successMessage;
+    private string? errorMessage;
+    private string? uploadCaption;
+    private string? uploadFileData;
+    private string? uploadFileName;
+    private bool uploading;
+    private string currentUserId = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        currentUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasons = await db.Seasons.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id))
+        {
+            selectedSeasonId = id;
+        }
+        else
+        {
+            selectedSeasonId = 0;
+        }
+        expandedAlbumId = null;
+        showCreateForm = false;
+        newAlbum = new();
+        newAlbumTeamLevelId = 0;
+        newAlbumMeetId = 0;
+        await LoadSeasonData();
+    }
+
+    private async Task LoadSeasonData()
+    {
+        if (selectedSeasonId <= 0)
+        {
+            teamLevels = new();
+            meets = new();
+            albums = new();
+            return;
+        }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        teamLevels = await db.TeamLevels.Where(t => t.SeasonId == selectedSeasonId).OrderBy(t => t.Name).ToListAsync();
+        meets = await db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Name).ToListAsync();
+        albums = await db.PhotoAlbums
+            .Include(a => a.Photos)
+            .Where(a => a.SeasonId == selectedSeasonId)
+            .OrderByDescending(a => a.CreatedAt)
+            .ToListAsync();
+    }
+
+    private void ToggleAlbum(int albumId)
+    {
+        expandedAlbumId = expandedAlbumId == albumId ? null : albumId;
+        uploadFileData = null;
+        uploadFileName = null;
+        uploadCaption = null;
+    }
+
+    private async Task CreateAlbum()
+    {
+        errorMessage = null;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var album = new PhotoAlbum
+        {
+            Name = newAlbum.Name,
+            Description = newAlbum.Description,
+            SeasonId = selectedSeasonId,
+            TeamLevelId = newAlbumTeamLevelId > 0 ? newAlbumTeamLevelId : null,
+            MeetId = newAlbumMeetId > 0 ? newAlbumMeetId : null,
+            CreatedByUserId = currentUserId,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.PhotoAlbums.Add(album);
+        await db.SaveChangesAsync();
+        successMessage = $"Album \"{album.Name}\" created.";
+        showCreateForm = false;
+        newAlbum = new();
+        newAlbumTeamLevelId = 0;
+        newAlbumMeetId = 0;
+        await LoadSeasonData();
+    }
+
+    private async Task DeleteAlbum(int albumId)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var album = await db.PhotoAlbums.Include(a => a.Photos).FirstOrDefaultAsync(a => a.Id == albumId);
+        if (album != null)
+        {
+            db.Photos.RemoveRange(album.Photos);
+            db.PhotoAlbums.Remove(album);
+            await db.SaveChangesAsync();
+            successMessage = $"Album \"{album.Name}\" deleted.";
+            if (expandedAlbumId == albumId)
+                expandedAlbumId = null;
+            await LoadSeasonData();
+        }
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        errorMessage = null;
+        var file = e.File;
+        if (file == null) return;
+
+        if (file.Size > 2 * 1024 * 1024)
+        {
+            errorMessage = "File size exceeds 2MB limit.";
+            uploadFileData = null;
+            uploadFileName = null;
+            return;
+        }
+
+        var buffer = new byte[file.Size];
+        await file.OpenReadStream(2 * 1024 * 1024).ReadAsync(buffer);
+        var base64 = Convert.ToBase64String(buffer);
+        uploadFileData = $"data:{file.ContentType};base64,{base64}";
+        uploadFileName = file.Name;
+    }
+
+    private async Task UploadPhoto(int albumId)
+    {
+        if (uploadFileData == null || uploadFileName == null) return;
+
+        uploading = true;
+        errorMessage = null;
+        try
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            var photo = new Photo
+            {
+                AlbumId = albumId,
+                FileName = uploadFileName,
+                ImageData = uploadFileData,
+                Caption = string.IsNullOrWhiteSpace(uploadCaption) ? null : uploadCaption,
+                UploadedAt = DateTime.UtcNow
+            };
+            db.Photos.Add(photo);
+            await db.SaveChangesAsync();
+            successMessage = "Photo uploaded.";
+            uploadFileData = null;
+            uploadFileName = null;
+            uploadCaption = null;
+            await LoadSeasonData();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Upload failed: {ex.Message}";
+        }
+        finally
+        {
+            uploading = false;
+        }
+    }
+
+    private async Task DeletePhoto(int photoId, int albumId)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var photo = await db.Photos.FindAsync(photoId);
+        if (photo != null)
+        {
+            db.Photos.Remove(photo);
+            await db.SaveChangesAsync();
+            successMessage = "Photo deleted.";
+            await LoadSeasonData();
+        }
+    }
+}

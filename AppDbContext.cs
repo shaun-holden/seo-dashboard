@@ -65,6 +65,8 @@ namespace GymBudgetApp
         public DbSet<Practice> Practices { get; set; }
         public DbSet<PracticeRsvp> PracticeRsvps { get; set; }
         public DbSet<Message> Messages { get; set; }
+        public DbSet<PhotoAlbum> PhotoAlbums { get; set; }
+        public DbSet<Photo> Photos { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {

@@ -1,0 +1,386 @@
+@page "/reports/engagement"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using GymBudgetApp.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Text
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+
+<h3 class="mb-3">Parent Engagement Report</h3>
+
+<div class="row g-2 align-items-center mb-3">
+    <div class="col-auto">
+        <label class="col-form-label fw-semibold">Season</label>
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @if (seasons != null)
+            {
+                @foreach (var s in seasons)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            }
+        </select>
+    </div>
+    @if (displayRows.Any())
+    {
+        <div class="col-auto">
+            <button class="btn btn-outline-success" @onclick="ExportCsv">
+                <span class="oi oi-data-transfer-download me-1"></span> Export CSV
+            </button>
+        </div>
+    }
+</div>
+
+@if (selectedSeasonId > 0 && loaded)
+{
+    <div class="row mb-4">
+        <div class="col-md-3 mb-2">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <h6>Total Parents</h6>
+                    <h4>@totalParents</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <h6>Linked Parents</h6>
+                    <h4>@linkedParents</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card text-white bg-info">
+                <div class="card-body">
+                    <h6>Avg Read Rate</h6>
+                    <h4>@avgReadRate.ToString("F1")%</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card text-white bg-warning">
+                <div class="card-body">
+                    <h6>Avg RSVP Rate</h6>
+                    <h4>@avgRsvpRate.ToString("F1")%</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (displayRows.Any())
+    {
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th style="cursor:pointer" @onclick='() => SetSort("Email")'>Parent Email @SortIcon("Email")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("Athletes")'>Athletes @SortIcon("Athletes")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("AnnouncementsRead")'>Read @SortIcon("AnnouncementsRead")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("AnnouncementsTotal")'>Total Ann. @SortIcon("AnnouncementsTotal")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("ReadRate")'>Read Rate @SortIcon("ReadRate")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("RsvpsResponded")'>RSVPs @SortIcon("RsvpsResponded")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("RsvpsTotal")'>Total RSVPs @SortIcon("RsvpsTotal")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("ResponseRate")'>Response Rate @SortIcon("ResponseRate")</th>
+                        <th style="cursor:pointer" @onclick='() => SetSort("LastActive")'>Last Active @SortIcon("LastActive")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in displayRows)
+                    {
+                        <tr>
+                            <td>@row.Email</td>
+                            <td>@row.Athletes</td>
+                            <td>@row.AnnouncementsRead</td>
+                            <td>@row.AnnouncementsTotal</td>
+                            <td>
+                                <span class="badge @(row.ReadRate >= 80 ? "bg-success" : row.ReadRate >= 50 ? "bg-warning text-dark" : "bg-danger")">
+                                    @row.ReadRate.ToString("F1")%
+                                </span>
+                            </td>
+                            <td>@row.RsvpsResponded</td>
+                            <td>@row.RsvpsTotal</td>
+                            <td>
+                                <span class="badge @(row.ResponseRate >= 80 ? "bg-success" : row.ResponseRate >= 50 ? "bg-warning text-dark" : "bg-danger")">
+                                    @row.ResponseRate.ToString("F1")%
+                                </span>
+                            </td>
+                            <td>@(row.LastActive.HasValue ? row.LastActive.Value.ToString("MMM d, yyyy") : "Never")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info">No linked parent data found for this season.</div>
+    }
+}
+else if (selectedSeasonId == 0)
+{
+    <div class="alert alert-secondary">Select a season to view the engagement report.</div>
+}
+
+@code {
+    private List<Season>? seasons;
+    private int selectedSeasonId;
+    private bool loaded;
+
+    private List<EngagementRow> allRows = new();
+    private List<EngagementRow> displayRows = new();
+
+    private string sortColumn = "EngagementRate";
+    private bool sortAscending = false;
+
+    private int totalParents;
+    private int linkedParents;
+    private double avgReadRate;
+    private double avgRsvpRate;
+
+    private class EngagementRow
+    {
+        public string Email { get; set; } = "";
+        public string ParentUserId { get; set; } = "";
+        public string Athletes { get; set; } = "";
+        public int AnnouncementsRead { get; set; }
+        public int AnnouncementsTotal { get; set; }
+        public double ReadRate { get; set; }
+        public int RsvpsResponded { get; set; }
+        public int RsvpsTotal { get; set; }
+        public double ResponseRate { get; set; }
+        public double EngagementRate { get; set; }
+        public DateTime? LastActive { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        if (selectedSeasonId > 0)
+            await LoadData();
+        else
+        {
+            allRows.Clear();
+            displayRows.Clear();
+            loaded = false;
+        }
+    }
+
+    private async Task LoadData()
+    {
+        loaded = false;
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var teamLevels = await db.TeamLevels.Where(t => t.SeasonId == selectedSeasonId).ToListAsync();
+        var levelIds = teamLevels.Select(t => t.Id).ToList();
+        var athletes = await db.Athletes.Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
+        var athleteIds = athletes.Select(a => a.Id).ToList();
+
+        var parentLinks = await db.ParentLinks.Where(pl => athleteIds.Contains(pl.AthleteId)).ToListAsync();
+
+        // Get all claimed parent user IDs
+        var claimedLinks = parentLinks.Where(pl => pl.IsClaimed && !string.IsNullOrEmpty(pl.ParentUserId)).ToList();
+        var parentUserIds = claimedLinks.Select(pl => pl.ParentUserId!).Distinct().ToList();
+
+        // Announcements for this season
+        var announcements = await db.Announcements.Where(a => a.SeasonId == selectedSeasonId).ToListAsync();
+        var announcementIds = announcements.Select(a => a.Id).ToList();
+        var readReceipts = await db.AnnouncementReadReceipts
+            .Where(r => announcementIds.Contains(r.AnnouncementId) && parentUserIds.Contains(r.UserId))
+            .ToListAsync();
+
+        // Meets and practices for RSVPs
+        var meets = await db.Meets.Where(m => m.SeasonId == selectedSeasonId).ToListAsync();
+        var meetIds = meets.Select(m => m.Id).ToList();
+        var practices = await db.Practices.Where(p => p.SeasonId == selectedSeasonId).ToListAsync();
+        var practiceIds = practices.Select(p => p.Id).ToList();
+
+        var eventRsvps = await db.EventRsvps
+            .Where(r => meetIds.Contains(r.MeetId) && parentUserIds.Contains(r.ParentUserId))
+            .ToListAsync();
+        var practiceRsvps = await db.PracticeRsvps
+            .Where(r => practiceIds.Contains(r.PracticeId) && parentUserIds.Contains(r.ParentUserId))
+            .ToListAsync();
+
+        // Payments
+        var payments = await db.Payments
+            .Where(p => athleteIds.Contains(p.AthleteId) && parentUserIds.Contains(p.PayerUserId))
+            .ToListAsync();
+
+        // Messages
+        var messages = await db.Messages
+            .Where(m => parentUserIds.Contains(m.SenderUserId) || parentUserIds.Contains(m.RecipientUserId))
+            .ToListAsync();
+
+        // Look up user emails
+        var users = await db.Users.Where(u => parentUserIds.Contains(u.Id)).ToListAsync();
+        var userEmailMap = users.ToDictionary(u => u.Id, u => u.Email ?? u.UserName ?? "Unknown");
+
+        totalParents = parentLinks.Select(pl => pl.AthleteId).Distinct().Count();
+        linkedParents = claimedLinks.Count;
+
+        allRows = new List<EngagementRow>();
+
+        foreach (var parentUserId in parentUserIds)
+        {
+            var email = userEmailMap.GetValueOrDefault(parentUserId, "Unknown");
+            var parentAthleteIds = claimedLinks
+                .Where(pl => pl.ParentUserId == parentUserId)
+                .Select(pl => pl.AthleteId)
+                .ToList();
+            var parentAthleteNames = athletes
+                .Where(a => parentAthleteIds.Contains(a.Id))
+                .Select(a => a.Name)
+                .ToList();
+
+            // Announcement read rate
+            // Consider announcements targeted to this parent's athlete levels (or all levels)
+            var parentLevelIds = athletes
+                .Where(a => parentAthleteIds.Contains(a.Id))
+                .Select(a => a.TeamLevelId)
+                .Distinct()
+                .ToList();
+            var relevantAnnouncements = announcements
+                .Where(a => a.TeamLevelId == null || parentLevelIds.Contains(a.TeamLevelId.Value))
+                .ToList();
+            int announcementsTotal = relevantAnnouncements.Count;
+            var relevantAnnouncementIds = relevantAnnouncements.Select(a => a.Id).ToHashSet();
+            int announcementsRead = readReceipts
+                .Count(r => r.UserId == parentUserId && relevantAnnouncementIds.Contains(r.AnnouncementId));
+
+            double readRate = announcementsTotal > 0 ? (double)announcementsRead / announcementsTotal * 100.0 : 0;
+
+            // RSVP response rate: how many RSVPs did they respond to (not NoResponse) out of total possible
+            var parentEventRsvps = eventRsvps.Where(r => r.ParentUserId == parentUserId).ToList();
+            var parentPracticeRsvps = practiceRsvps.Where(r => r.ParentUserId == parentUserId).ToList();
+            int rsvpsResponded = parentEventRsvps.Count(r => r.Status != RsvpStatus.NoResponse)
+                + parentPracticeRsvps.Count(r => r.Status != RsvpStatus.NoResponse);
+            int rsvpsTotal = parentEventRsvps.Count + parentPracticeRsvps.Count;
+            double responseRate = rsvpsTotal > 0 ? (double)rsvpsResponded / rsvpsTotal * 100.0 : 0;
+
+            double engagementRate = (readRate + responseRate) / 2.0;
+
+            // Last active: most recent of read receipt, RSVP, payment, message
+            var dates = new List<DateTime>();
+            var lastRead = readReceipts.Where(r => r.UserId == parentUserId).Select(r => r.ReadAt).DefaultIfEmpty().Max();
+            if (lastRead != default) dates.Add(lastRead);
+
+            var lastEventRsvp = parentEventRsvps.Select(r => r.UpdatedAt).DefaultIfEmpty().Max();
+            if (lastEventRsvp != default) dates.Add(lastEventRsvp);
+
+            var lastPracticeRsvp = parentPracticeRsvps.Select(r => r.UpdatedAt).DefaultIfEmpty().Max();
+            if (lastPracticeRsvp != default) dates.Add(lastPracticeRsvp);
+
+            var lastPayment = payments.Where(p => p.PayerUserId == parentUserId).Select(p => p.PaidAt ?? p.CreatedAt).DefaultIfEmpty().Max();
+            if (lastPayment != default) dates.Add(lastPayment);
+
+            var lastMessage = messages
+                .Where(m => m.SenderUserId == parentUserId)
+                .Select(m => m.CreatedAt).DefaultIfEmpty().Max();
+            if (lastMessage != default) dates.Add(lastMessage);
+
+            DateTime? lastActive = dates.Any() ? dates.Max() : null;
+
+            allRows.Add(new EngagementRow
+            {
+                Email = email ?? "Unknown",
+                ParentUserId = parentUserId,
+                Athletes = string.Join(", ", parentAthleteNames),
+                AnnouncementsRead = announcementsRead,
+                AnnouncementsTotal = announcementsTotal,
+                ReadRate = readRate,
+                RsvpsResponded = rsvpsResponded,
+                RsvpsTotal = rsvpsTotal,
+                ResponseRate = responseRate,
+                EngagementRate = engagementRate,
+                LastActive = lastActive
+            });
+        }
+
+        loaded = true;
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        displayRows = SortRows(allRows).ToList();
+
+        if (displayRows.Any())
+        {
+            avgReadRate = displayRows.Average(r => r.ReadRate);
+            avgRsvpRate = displayRows.Average(r => r.ResponseRate);
+        }
+        else
+        {
+            avgReadRate = 0;
+            avgRsvpRate = 0;
+        }
+    }
+
+    private IEnumerable<EngagementRow> SortRows(IEnumerable<EngagementRow> rows)
+    {
+        return sortColumn switch
+        {
+            "Email" => sortAscending ? rows.OrderBy(r => r.Email) : rows.OrderByDescending(r => r.Email),
+            "Athletes" => sortAscending ? rows.OrderBy(r => r.Athletes) : rows.OrderByDescending(r => r.Athletes),
+            "AnnouncementsRead" => sortAscending ? rows.OrderBy(r => r.AnnouncementsRead) : rows.OrderByDescending(r => r.AnnouncementsRead),
+            "AnnouncementsTotal" => sortAscending ? rows.OrderBy(r => r.AnnouncementsTotal) : rows.OrderByDescending(r => r.AnnouncementsTotal),
+            "ReadRate" => sortAscending ? rows.OrderBy(r => r.ReadRate) : rows.OrderByDescending(r => r.ReadRate),
+            "RsvpsResponded" => sortAscending ? rows.OrderBy(r => r.RsvpsResponded) : rows.OrderByDescending(r => r.RsvpsResponded),
+            "RsvpsTotal" => sortAscending ? rows.OrderBy(r => r.RsvpsTotal) : rows.OrderByDescending(r => r.RsvpsTotal),
+            "ResponseRate" => sortAscending ? rows.OrderBy(r => r.ResponseRate) : rows.OrderByDescending(r => r.ResponseRate),
+            "LastActive" => sortAscending ? rows.OrderBy(r => r.LastActive) : rows.OrderByDescending(r => r.LastActive),
+            "EngagementRate" => sortAscending ? rows.OrderBy(r => r.EngagementRate) : rows.OrderByDescending(r => r.EngagementRate),
+            _ => rows.OrderByDescending(r => r.EngagementRate)
+        };
+    }
+
+    private void SetSort(string column)
+    {
+        if (sortColumn == column)
+            sortAscending = !sortAscending;
+        else
+        {
+            sortColumn = column;
+            sortAscending = column == "Email";
+        }
+        ApplyFilters();
+    }
+
+    private MarkupString SortIcon(string column)
+    {
+        if (sortColumn != column) return new MarkupString("");
+        return new MarkupString(sortAscending
+            ? "<span class=\"oi oi-caret-top ms-1\"></span>"
+            : "<span class=\"oi oi-caret-bottom ms-1\"></span>");
+    }
+
+    private string EscapeCsv(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        return value;
+    }
+
+    private async Task ExportCsv()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Parent Email,Athletes,Announcements Read,Announcements Total,Read Rate,RSVPs Responded,RSVPs Total,Response Rate,Last Active");
+        foreach (var row in displayRows)
+        {
+            sb.AppendLine($"{EscapeCsv(row.Email)},{EscapeCsv(row.Athletes)},{row.AnnouncementsRead},{row.AnnouncementsTotal},{row.ReadRate:F1}%,{row.RsvpsResponded},{row.RsvpsTotal},{row.ResponseRate:F1}%,{(row.LastActive.HasValue ? row.LastActive.Value.ToString("yyyy-MM-dd") : "")}");
+        }
+        await JS.InvokeVoidAsync("downloadFile", "engagement-report.csv", sb.ToString());
+    }
+}
