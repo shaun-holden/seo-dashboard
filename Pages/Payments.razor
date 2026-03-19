@@ -7,6 +7,7 @@
 @using System.Security.Claims
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject GymBudgetApp.Services.AuditService AuditService
 
 <h3>Payment Tracking</h3>
 
@@ -233,6 +234,7 @@ else
     private List<ParentLink> parentLinks = new();
     private int selectedSeasonId;
     private string? userId;
+    private string? userEmail;
     private ProjectLabels labels = ProjectLabels.Default;
     private bool showCreditForm;
     private int creditAthleteId;
@@ -256,6 +258,8 @@ else
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? authState.User.FindFirst("email")?.Value;
         using var db = await DbFactory.CreateDbContextAsync();
         seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
     }
@@ -283,6 +287,7 @@ else
             PaidAt = DateTime.UtcNow
         });
         await db.SaveChangesAsync();
+        await AuditService.LogAsync(userId ?? "", userEmail ?? "", "CreditApplied", $"Applied ${creditAmount:N2} credit to {athlete?.Name ?? "athlete"}");
         creditMessage = $"Credit of ${creditAmount:N2} applied to {athlete?.Name ?? "athlete"}.";
         creditAthleteId = 0;
         creditAmount = 0;

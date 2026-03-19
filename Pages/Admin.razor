@@ -8,6 +8,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IConfiguration Configuration
 @inject IDbContextFactory<AppDbContext> DbFactory
+@inject GymBudgetApp.Services.AuditService AuditService
 
 <h3>Admin</h3>
 
@@ -30,6 +31,30 @@ else
                     <span class="oi oi-reload me-1"></span> Create Backup Now
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Two-Factor Authentication -->
+    <div class="card mb-4">
+        <div class="card-header"><strong>Two-Factor Authentication</strong></div>
+        <div class="card-body">
+            @if (is2faEnabled)
+            {
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-success me-2">Enabled</span>
+                    <span>2FA is active on your account.</span>
+                </div>
+            }
+            else
+            {
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-warning text-dark me-2">Disabled</span>
+                    <span>Secure your account with an authenticator app.</span>
+                </div>
+            }
+            <a href="/Identity/Account/Manage/EnableAuthenticator" class="btn btn-outline-primary mt-2">
+                @(is2faEnabled ? "Manage 2FA" : "Setup 2FA")
+            </a>
         </div>
     </div>
 
@@ -195,7 +220,7 @@ else
     }
 
     <!-- Invite Codes -->
-    <div class="card">
+    <div class="card mb-4">
         <div class="card-header"><strong>Parent Invite Codes</strong></div>
         <div class="card-body p-0">
             <table class="table table-sm mb-0">
@@ -229,11 +254,45 @@ else
             </table>
         </div>
     </div>
+
+    <!-- Audit Log -->
+    <div class="card">
+        <div class="card-header"><strong>Audit Log</strong></div>
+        <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>User</th>
+                        <th>Action</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entry in auditLogs)
+                    {
+                        <tr>
+                            <td>@entry.Timestamp.ToLocalTime().ToString("MMM dd, yyyy h:mm tt")</td>
+                            <td>@entry.UserEmail</td>
+                            <td><span class="badge bg-secondary">@entry.Action</span></td>
+                            <td>@entry.Details</td>
+                        </tr>
+                    }
+                    @if (!auditLogs.Any())
+                    {
+                        <tr><td colspan="4" class="text-center text-muted py-3">No audit entries yet.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
 }
 
 @code {
     private bool isAdmin;
     private string adminEmail = "";
+    private string adminUserId = "";
+    private bool is2faEnabled;
     private string resetEmail = "";
     private string resetPassword = "TntGym2026!";
     private bool isResetting;
@@ -242,6 +301,7 @@ else
     private List<IdentityUser> allUsers = new();
     private List<UserInfo> userInfos = new();
     private List<InviteInfo> inviteInfos = new();
+    private List<GymBudgetApp.Models.AuditLog> auditLogs = new();
 
     // Permissions editor
     private string? editingPermUserId;
@@ -256,11 +316,19 @@ else
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var email = authState.User.FindFirst(ClaimTypes.Email)?.Value
                     ?? authState.User.FindFirst("email")?.Value;
+        adminUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
         adminEmail = Configuration["AdminEmail"] ?? "deshaun@tntgym.org";
         isAdmin = string.Equals(email, adminEmail, StringComparison.OrdinalIgnoreCase);
 
         if (isAdmin)
+        {
+            // Check 2FA status
+            var adminUser = await UserManager.FindByEmailAsync(adminEmail);
+            if (adminUser != null)
+                is2faEnabled = await UserManager.GetTwoFactorEnabledAsync(adminUser);
+
             await LoadData();
+        }
     }
 
     private async Task LoadData()
@@ -286,6 +354,11 @@ else
             var level = athlete != null ? levels.FirstOrDefault(t => t.Id == athlete.TeamLevelId) : null;
             return new InviteInfo(athlete?.Name ?? "Unknown", level?.Name ?? "", l.InviteCode, l.IsClaimed);
         }).OrderBy(i => i.AthleteName).ToList();
+
+        auditLogs = await db.AuditLogs.AsNoTracking()
+            .OrderByDescending(a => a.Timestamp)
+            .Take(50)
+            .ToListAsync();
     }
 
     private Task MakeEmployee(string userId, string email) => ChangeRole(userId, email, "Employee");
@@ -312,6 +385,7 @@ else
             }
         }
 
+        await AuditService.LogAsync(adminUserId, adminEmail, "RoleChanged", $"Changed {email} to {newRole}");
         SetStatus($"{email} is now a {newRole}.", false);
         await LoadData();
     }
@@ -349,6 +423,7 @@ else
             existing.CanViewNotes = editPerm.CanViewNotes;
             await db.SaveChangesAsync();
         }
+        await AuditService.LogAsync(adminUserId, adminEmail, "PermissionsSaved", $"Saved permissions for {editingPermEmail}");
         SetStatus($"Permissions saved for {editingPermEmail}.", false);
         editingPermUserId = null;
     }
@@ -381,7 +456,10 @@ else
         var token = await UserManager.GeneratePasswordResetTokenAsync(user);
         var result = await UserManager.ResetPasswordAsync(user, token, resetPassword);
         if (result.Succeeded)
+        {
+            await AuditService.LogAsync(adminUserId, adminEmail, "PasswordReset", $"Reset password for {user.Email}");
             SetStatus($"Password for {user.Email} reset to: {resetPassword}", false);
+        }
         else
             SetStatus(string.Join(" ", result.Errors.Select(e => e.Description)), true);
 

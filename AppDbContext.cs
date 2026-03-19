@@ -58,6 +58,7 @@ namespace GymBudgetApp
         public DbSet<Payment> Payments { get; set; }
         public DbSet<Gymnast> Gymnasts { get; set; }
         public DbSet<EmployeePermission> EmployeePermissions { get; set; }
+        public DbSet<AuditLog> AuditLogs { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {

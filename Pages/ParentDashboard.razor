@@ -389,6 +389,7 @@ else
     private bool stripeEnabled;
     private Dictionary<int, decimal> customAmounts = new();
     private List<ParentLink> parentLinksData = new();
+    private Dictionary<int, DateTime> lastPaymentAttempt = new();
 
     private void ToggleAthlete(int athleteId)
     {
@@ -588,7 +589,16 @@ else
     private async Task EnableAutoPay(Athlete athlete, decimal monthlyAmount)
     {
         paymentError = null;
+
+        if (lastPaymentAttempt.TryGetValue(athlete.Id, out var lastAttempt)
+            && (DateTime.UtcNow - lastAttempt).TotalSeconds < 30)
+        {
+            paymentError = "Please wait before trying again.";
+            return;
+        }
+
         isProcessing = true;
+        lastPaymentAttempt[athlete.Id] = DateTime.UtcNow;
 
         try
         {
@@ -737,7 +747,16 @@ else
     private async Task StartPayment(Athlete athlete, decimal amount)
     {
         paymentError = null;
+
+        if (lastPaymentAttempt.TryGetValue(athlete.Id, out var lastAttempt)
+            && (DateTime.UtcNow - lastAttempt).TotalSeconds < 30)
+        {
+            paymentError = "Please wait before trying again.";
+            return;
+        }
+
         isProcessing = true;
+        lastPaymentAttempt[athlete.Id] = DateTime.UtcNow;
 
         try
         {

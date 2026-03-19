@@ -13,6 +13,7 @@ builder.Services.AddServerSideBlazor();
 builder.Services.AddScoped<GymBudgetApp.Services.NotesPanelState>();
 builder.Services.AddScoped<GymBudgetApp.Services.PermissionService>();
 builder.Services.AddScoped<GymBudgetApp.Services.NotificationService>();
+builder.Services.AddScoped<GymBudgetApp.Services.AuditService>();
 builder.Services.AddSingleton<GymBudgetApp.Services.BackupService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GymBudgetApp.Services.BackupService>());
 
