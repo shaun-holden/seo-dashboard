@@ -61,7 +61,7 @@ namespace GymBudgetApp.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to send email to {Email}", email);
-                throw;
+                // Don't throw — log the error but don't crash the app
             }
         }
     }
