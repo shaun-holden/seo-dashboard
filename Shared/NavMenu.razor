@@ -24,9 +24,43 @@
             </NavLink>
         </div>
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="announcements">
-                <span class="oi oi-bullhorn" aria-hidden="true"></span> Announcements
-            </NavLink>
+            <div class="nav-link d-flex justify-content-between align-items-center" style="cursor: pointer;" @onclick="ToggleAnnouncementPanel">
+                <span>
+                    <span class="oi oi-bullhorn" aria-hidden="true"></span> Announcements
+                    @if (newAnnouncementCount > 0)
+                    {
+                        <span class="badge bg-danger ms-1">@newAnnouncementCount new</span>
+                    }
+                </span>
+                <span class="oi @(showAnnouncementPanel ? "oi-chevron-bottom" : "oi-chevron-right")" style="font-size: 0.6rem;"></span>
+            </div>
+            @if (showAnnouncementPanel)
+            {
+                <div style="padding: 0 0.5rem 0.5rem; max-height: 250px; overflow-y: auto;">
+                    @if (recentAnnouncements.Any())
+                    {
+                        @foreach (var a in recentAnnouncements)
+                        {
+                            <div style="padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem;">
+                                <div class="d-flex justify-content-between">
+                                    <strong style="color: rgba(255,255,255,0.9);">@a.Title</strong>
+                                    @if (a.IsPinned)
+                                    {
+                                        <span class="oi oi-pin" style="color: #ffc107; font-size: 0.6rem;"></span>
+                                    }
+                                </div>
+                                <div style="color: rgba(255,255,255,0.6); font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@a.Content</div>
+                                <small style="color: rgba(255,255,255,0.4);">@a.CreatedAt.ToLocalTime().ToString("MMM dd")</small>
+                            </div>
+                        }
+                        <a href="announcements" class="d-block text-center py-1" style="color: rgba(255,255,255,0.6); font-size: 0.75rem; text-decoration: none;">View All</a>
+                    }
+                    else
+                    {
+                        <div class="text-center py-2" style="color: rgba(255,255,255,0.5); font-size: 0.8rem;">No announcements</div>
+                    }
+                </div>
+            }
         </div>
         @if (PermissionService.CanViewMeets)
         {
@@ -174,6 +208,9 @@
     private ProjectLabels labels = ProjectLabels.Default;
     private bool isAdmin;
     private int unreadMessageCount;
+    private int newAnnouncementCount;
+    private bool showAnnouncementPanel;
+    private List<Announcement> recentAnnouncements = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -191,11 +228,34 @@
             unreadMessageCount = await Db.Messages
                 .Where(m => m.RecipientUserId == userId && !m.IsRead)
                 .CountAsync();
+
+            // Load recent announcements
+            var activeSeason2 = await Db.Seasons.Where(s => s.IsActive).FirstOrDefaultAsync();
+            if (activeSeason2 != null)
+            {
+                recentAnnouncements = await Db.Announcements
+                    .Where(a => a.SeasonId == activeSeason2.Id)
+                    .OrderByDescending(a => a.IsPinned)
+                    .ThenByDescending(a => a.CreatedAt)
+                    .Take(5)
+                    .ToListAsync();
+
+                var readIds = await Db.AnnouncementReadReceipts
+                    .Where(r => r.UserId == userId)
+                    .Select(r => r.AnnouncementId)
+                    .ToListAsync();
+                newAnnouncementCount = recentAnnouncements.Count(a => !readIds.Contains(a.Id));
+            }
         }
     }
 
     private void ToggleNavMenu()
     {
         collapseNavMenu = !collapseNavMenu;
+    }
+
+    private void ToggleAnnouncementPanel()
+    {
+        showAnnouncementPanel = !showAnnouncementPanel;
     }
 }
