@@ -2,6 +2,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IDbContextFactory<AppDbContext> DbFactory
+@inject GymBudgetApp.Services.ChatService ChatService
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -43,6 +44,15 @@
             </NavLink>
         </div>
         <div class="nav-item px-3">
+            <NavLink class="nav-link" href="parent/chat">
+                <span class="oi oi-chat" aria-hidden="true"></span> Chat
+                @if (unreadChatCount > 0)
+                {
+                    <span class="badge bg-danger ms-1">@unreadChatCount</span>
+                }
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
             <NavLink class="nav-link" href="parent/gallery">
                 <span class="oi oi-image" aria-hidden="true"></span> Gallery
             </NavLink>
@@ -68,6 +78,7 @@
     private bool collapseNavMenu = true;
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
     private int unreadMessageCount;
+    private int unreadChatCount;
 
     protected override async Task OnInitializedAsync()
     {
@@ -79,6 +90,7 @@
             unreadMessageCount = await db.Messages
                 .Where(m => m.RecipientUserId == userId && !m.IsRead)
                 .CountAsync();
+            unreadChatCount = await ChatService.GetUnreadCount(userId);
         }
     }
 

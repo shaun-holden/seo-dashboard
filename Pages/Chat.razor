@@ -1,0 +1,221 @@
+@page "/chat"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ChatService ChatService
+@implements IDisposable
+
+<h3 class="mb-3">Chat</h3>
+
+<div class="chat-container @(selectedRoom != null ? "room-selected" : "")">
+    <div class="chat-rooms">
+        @foreach (var room in rooms)
+        {
+            var lastMsg = room.Messages.OrderByDescending(m => m.CreatedAt).FirstOrDefault();
+            var unread = roomUnreadCounts.ContainsKey(room.Id) ? roomUnreadCounts[room.Id] : 0;
+            <div class="chat-room-item @(selectedRoom?.Id == room.Id ? "active" : "")" @onclick="() => SelectRoom(room)">
+                <div class="d-flex justify-content-between align-items-center">
+                    <strong>@room.Name</strong>
+                    @if (unread > 0)
+                    {
+                        <span class="badge bg-danger">@unread</span>
+                    }
+                </div>
+                @if (lastMsg != null)
+                {
+                    <div class="text-muted small text-truncate" style="max-width: 220px;">@lastMsg.SenderName: @lastMsg.Content</div>
+                    <div class="text-muted" style="font-size: 0.7rem;">@lastMsg.CreatedAt.ToLocalTime().ToString("MMM d, h:mm tt")</div>
+                }
+            </div>
+        }
+        @if (!rooms.Any())
+        {
+            <div class="p-3 text-muted">No chat rooms available.</div>
+        }
+    </div>
+
+    <div class="chat-messages-area">
+        @if (selectedRoom != null)
+        {
+            <div class="chat-messages-header d-flex align-items-center">
+                <button class="btn btn-sm btn-outline-secondary me-2 d-md-none" @onclick="BackToRooms">
+                    <span class="oi oi-arrow-left"></span>
+                </button>
+                @selectedRoom.Name
+            </div>
+            <div class="chat-messages-list">
+                @if (hasMoreMessages)
+                {
+                    <div class="text-center mb-2">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="LoadMoreMessages">Load More</button>
+                    </div>
+                }
+                @foreach (var msg in messages)
+                {
+                    var isMine = msg.SenderUserId == currentUserId;
+                    <div class="chat-bubble @(isMine ? "mine" : "other")">
+                        @if (!isMine)
+                        {
+                            <div class="sender">@msg.SenderName</div>
+                        }
+                        <div>@msg.Content</div>
+                        @if (!string.IsNullOrEmpty(msg.ImageData))
+                        {
+                            <div class="mt-1">
+                                <img src="@msg.ImageData" alt="Image" style="max-width: 200px; border-radius: 8px;" />
+                            </div>
+                        }
+                        <div class="time">@msg.CreatedAt.ToLocalTime().ToString("MMM d, h:mm tt")</div>
+                    </div>
+                }
+            </div>
+            <div class="chat-input-bar">
+                <input class="form-control" placeholder="Type a message..." @bind="newMessage" @onkeydown="HandleKeyDown" />
+                <button class="btn btn-primary" @onclick="SendMessage" disabled="@string.IsNullOrWhiteSpace(newMessage)">Send</button>
+            </div>
+        }
+        else
+        {
+            <div class="d-flex align-items-center justify-content-center h-100 text-muted">
+                Select a chat room to start messaging
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<ChatRoom> rooms = new();
+    private ChatRoom? selectedRoom;
+    private List<ChatMessage> messages = new();
+    private Dictionary<int, int> roomUnreadCounts = new();
+    private string currentUserId = string.Empty;
+    private string currentUserName = string.Empty;
+    private string newMessage = string.Empty;
+    private int messageSkip = 0;
+    private bool hasMoreMessages;
+    private System.Threading.Timer? refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        currentUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        currentUserName = authState.User.FindFirst(ClaimTypes.Email)?.Value ?? "Unknown";
+
+        // Ensure rooms exist for active season
+        using var db = await DbFactory.CreateDbContextAsync();
+        var activeSeason = await db.Seasons.Include(s => s.TeamLevels).FirstOrDefaultAsync(s => s.IsActive);
+        if (activeSeason != null)
+        {
+            await ChatService.EnsureRoomsExist(activeSeason.Id, activeSeason.TeamLevels.ToList());
+        }
+
+        await LoadRooms();
+
+        // Start auto-refresh timer
+        refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await RefreshMessages();
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    private async Task LoadRooms()
+    {
+        rooms = await ChatService.GetRoomsForUser(currentUserId, true);
+        await LoadUnreadCounts();
+    }
+
+    private async Task LoadUnreadCounts()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var memberRecords = await db.ChatRoomMembers
+            .Where(m => m.UserId == currentUserId)
+            .ToDictionaryAsync(m => m.ChatRoomId, m => m.LastReadAt);
+
+        roomUnreadCounts.Clear();
+        foreach (var room in rooms)
+        {
+            DateTime? lastRead = memberRecords.ContainsKey(room.Id) ? memberRecords[room.Id] : null;
+            var query = db.ChatMessages
+                .Where(m => m.ChatRoomId == room.Id && m.SenderUserId != currentUserId);
+            if (lastRead.HasValue)
+            {
+                query = query.Where(m => m.CreatedAt > lastRead.Value);
+            }
+            var count = await query.CountAsync();
+            if (count > 0)
+            {
+                roomUnreadCounts[room.Id] = count;
+            }
+        }
+    }
+
+    private async Task SelectRoom(ChatRoom room)
+    {
+        selectedRoom = room;
+        messageSkip = 0;
+        messages = await ChatService.GetMessages(room.Id, 50, 0);
+        hasMoreMessages = messages.Count >= 50;
+        await ChatService.MarkAsRead(room.Id, currentUserId);
+        roomUnreadCounts.Remove(room.Id);
+    }
+
+    private async Task LoadMoreMessages()
+    {
+        if (selectedRoom == null) return;
+        messageSkip += 50;
+        var older = await ChatService.GetMessages(selectedRoom.Id, 50, messageSkip);
+        hasMoreMessages = older.Count >= 50;
+        messages.InsertRange(0, older);
+    }
+
+    private async Task SendMessage()
+    {
+        if (selectedRoom == null || string.IsNullOrWhiteSpace(newMessage)) return;
+        await ChatService.SendMessage(selectedRoom.Id, currentUserId, currentUserName, newMessage.Trim());
+        newMessage = string.Empty;
+        messages = await ChatService.GetMessages(selectedRoom.Id, 50, 0);
+        messageSkip = 0;
+        await ChatService.MarkAsRead(selectedRoom.Id, currentUserId);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SendMessage();
+        }
+    }
+
+    private void BackToRooms()
+    {
+        selectedRoom = null;
+    }
+
+    private async Task RefreshMessages()
+    {
+        try
+        {
+            if (selectedRoom != null)
+            {
+                messages = await ChatService.GetMessages(selectedRoom.Id, 50, 0);
+                messageSkip = 0;
+            }
+            rooms = await ChatService.GetRoomsForUser(currentUserId, true);
+            await LoadUnreadCounts();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Silently ignore refresh errors (e.g., component disposed)
+        }
+    }
+
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+    }
+}

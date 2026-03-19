@@ -7,6 +7,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IConfiguration Configuration
 @inject GymBudgetApp.Services.PermissionService PermissionService
+@inject GymBudgetApp.Services.ChatService ChatService
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -148,6 +149,15 @@
             </NavLink>
         </div>
         <div class="nav-item px-3">
+            <NavLink class="nav-link" href="chat">
+                <span class="oi oi-chat" aria-hidden="true"></span> Chat
+                @if (unreadChatCount > 0)
+                {
+                    <span class="badge bg-danger ms-1">@unreadChatCount</span>
+                }
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
             <NavLink class="nav-link" href="gallery">
                 <span class="oi oi-image" aria-hidden="true"></span> Gallery
             </NavLink>
@@ -178,6 +188,7 @@
     private ProjectLabels labels = ProjectLabels.Default;
     private bool isAdmin;
     private int unreadMessageCount;
+    private int unreadChatCount;
     private int newAnnouncementCount;
 
     protected override async Task OnInitializedAsync()
@@ -196,6 +207,8 @@
             unreadMessageCount = await Db.Messages
                 .Where(m => m.RecipientUserId == userId && !m.IsRead)
                 .CountAsync();
+
+            unreadChatCount = await ChatService.GetUnreadCount(userId);
 
             // Count unread announcements
             var activeSeason2 = await Db.Seasons.Where(s => s.IsActive).FirstOrDefaultAsync();

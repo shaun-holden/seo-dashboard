@@ -67,6 +67,9 @@ namespace GymBudgetApp
         public DbSet<Message> Messages { get; set; }
         public DbSet<PhotoAlbum> PhotoAlbums { get; set; }
         public DbSet<Photo> Photos { get; set; }
+        public DbSet<ChatRoom> ChatRooms { get; set; }
+        public DbSet<ChatMessage> ChatMessages { get; set; }
+        public DbSet<ChatRoomMember> ChatRoomMembers { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
