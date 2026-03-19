@@ -69,7 +69,47 @@ else
                         </select>
                     </div>
                 </div>
-                <button class="btn btn-success me-2" @onclick="SavePractice">Save</button>
+                @if (editingPractice == null)
+                {
+                    <div class="card bg-light p-3 mb-3">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" @bind="isRecurring" />
+                            <label class="form-check-label fw-bold">Recurring Practice</label>
+                        </div>
+                        @if (isRecurring)
+                        {
+                            <div class="row">
+                                <div class="col-md-4 mb-2">
+                                    <label>Repeat on</label>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        @foreach (var day in new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday })
+                                        {
+                                            var d = day;
+                                            <button type="button" class="btn btn-sm @(recurringDays.Contains(d) ? "btn-primary" : "btn-outline-secondary")"
+                                                    @onclick="() => ToggleDay(d)">
+                                                @d.ToString().Substring(0, 3)
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="col-md-3 mb-2">
+                                    <label>Start Date</label>
+                                    <input type="date" class="form-control" @bind="recurringStartDate" />
+                                </div>
+                                <div class="col-md-3 mb-2">
+                                    <label>End Date</label>
+                                    <input type="date" class="form-control" @bind="recurringEndDate" />
+                                </div>
+                            </div>
+                            @if (recurringDays.Any())
+                            {
+                                var previewCount = CountRecurringDates();
+                                <small class="text-muted mt-1 d-block">This will create <strong>@previewCount</strong> practices.</small>
+                            }
+                        }
+                    </div>
+                }
+                <button class="btn btn-success me-2" @onclick="SavePractice">@(isRecurring && editingPractice == null ? "Create All" : "Save")</button>
                 <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
             </div>
         }
@@ -213,6 +253,10 @@ else
     private string formEndTime = "";
     private string formLocation = "";
     private int formTeamLevelId;
+    private bool isRecurring;
+    private HashSet<DayOfWeek> recurringDays = new();
+    private DateTime recurringStartDate = DateTime.Today;
+    private DateTime recurringEndDate = DateTime.Today.AddMonths(3);
 
     protected override async Task OnInitializedAsync()
     {
@@ -268,7 +312,35 @@ else
         formEndTime = "";
         formLocation = "";
         formTeamLevelId = 0;
+        isRecurring = false;
+        recurringDays.Clear();
+        recurringStartDate = DateTime.Today;
+        recurringEndDate = DateTime.Today.AddMonths(3);
         showForm = true;
+    }
+
+    private void ToggleDay(DayOfWeek day)
+    {
+        if (!recurringDays.Remove(day))
+            recurringDays.Add(day);
+    }
+
+    private int CountRecurringDates()
+    {
+        return GetRecurringDates().Count;
+    }
+
+    private List<DateTime> GetRecurringDates()
+    {
+        var dates = new List<DateTime>();
+        var current = recurringStartDate;
+        while (current <= recurringEndDate)
+        {
+            if (recurringDays.Contains(current.DayOfWeek))
+                dates.Add(current);
+            current = current.AddDays(1);
+        }
+        return dates;
     }
 
     private void CancelForm() { showForm = false; }
@@ -290,17 +362,36 @@ else
         using var db = await DbFactory.CreateDbContextAsync();
         if (editingPractice == null)
         {
-            var practice = new Practice
+            if (isRecurring && recurringDays.Any())
             {
-                Name = formName,
-                Date = formDate,
-                StartTime = formStartTime,
-                EndTime = formEndTime,
-                Location = string.IsNullOrWhiteSpace(formLocation) ? null : formLocation,
-                SeasonId = selectedSeasonId,
-                TeamLevelId = formTeamLevelId > 0 ? formTeamLevelId : null
-            };
-            db.Practices.Add(practice);
+                var dates = GetRecurringDates();
+                foreach (var date in dates)
+                {
+                    db.Practices.Add(new Practice
+                    {
+                        Name = formName,
+                        Date = date,
+                        StartTime = formStartTime,
+                        EndTime = formEndTime,
+                        Location = string.IsNullOrWhiteSpace(formLocation) ? null : formLocation,
+                        SeasonId = selectedSeasonId,
+                        TeamLevelId = formTeamLevelId > 0 ? formTeamLevelId : null
+                    });
+                }
+            }
+            else
+            {
+                db.Practices.Add(new Practice
+                {
+                    Name = formName,
+                    Date = formDate,
+                    StartTime = formStartTime,
+                    EndTime = formEndTime,
+                    Location = string.IsNullOrWhiteSpace(formLocation) ? null : formLocation,
+                    SeasonId = selectedSeasonId,
+                    TeamLevelId = formTeamLevelId > 0 ? formTeamLevelId : null
+                });
+            }
         }
         else
         {
