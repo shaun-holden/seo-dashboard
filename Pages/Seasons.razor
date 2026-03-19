@@ -335,6 +335,14 @@ else
 
     private async Task SaveSeason()
     {
+        // Deactivate all other seasons when setting one as active
+        if (formIsActive)
+        {
+            var activeSeasons = Db.Seasons.Where(s => s.IsActive);
+            foreach (var s in activeSeasons)
+                s.IsActive = false;
+        }
+
         if (editingSeason == null)
         {
             var newSeason = new Season
