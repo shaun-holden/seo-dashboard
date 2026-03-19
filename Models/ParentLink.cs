@@ -22,6 +22,9 @@ namespace GymBudgetApp.Models
         public string? StripeCustomerId { get; set; }
         public string? StripeSubscriptionId { get; set; }
 
+        // External billing (iClassPro)
+        public bool UseExternalBilling { get; set; }
+
         public static string GenerateCode()
         {
             const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
