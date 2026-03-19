@@ -17,6 +17,15 @@
 }
 else
 {
+    @if (statusMessage != null)
+    {
+        <div class="alert @(statusIsError ? "alert-danger" : "alert-success") alert-dismissible mb-3">
+            @statusMessage
+            <button type="button" class="btn-close" @onclick="() => statusMessage = null"></button>
+        </div>
+    }
+
+    <!-- Reset Password -->
     <div class="card mb-4">
         <div class="card-header"><strong>Reset User Password</strong></div>
         <div class="card-body">
@@ -45,35 +54,60 @@ else
             <div class="mt-2">
                 <small class="text-muted">Default: <code>TntGym2026!</code></small>
             </div>
-
-            @if (resetSuccess != null)
-            {
-                <div class="alert alert-success mt-3 py-2">@resetSuccess</div>
-            }
-            @if (resetError != null)
-            {
-                <div class="alert alert-danger mt-3 py-2">@resetError</div>
-            }
         </div>
     </div>
 
+    <!-- User Management -->
     <div class="card mb-4">
-        <div class="card-header"><strong>All Users</strong></div>
+        <div class="card-header"><strong>User Management</strong></div>
         <div class="card-body p-0">
             <table class="table table-sm table-hover mb-0">
                 <thead class="table-light">
-                    <tr><th>Email</th><th>Role</th><th class="text-end">Actions</th></tr>
+                    <tr>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th class="text-center">Actions</th>
+                    </tr>
                 </thead>
                 <tbody>
                     @foreach (var u in userInfos)
                     {
+                        var isCurrentAdmin = string.Equals(u.Email, adminEmail, StringComparison.OrdinalIgnoreCase);
                         <tr>
                             <td>@u.Email</td>
-                            <td><span class="badge bg-@(u.Role == "Employee" ? "primary" : u.Role == "Parent" ? "success" : "secondary")">@u.Role</span></td>
-                            <td class="text-end">
-                                <button class="btn btn-sm btn-outline-warning" @onclick="() => QuickReset(u.Email)">
-                                    Reset PW
-                                </button>
+                            <td>
+                                <span class="badge bg-@(u.Role == "Employee" ? "primary" : u.Role == "Parent" ? "success" : "secondary")">@u.Role</span>
+                                @if (isCurrentAdmin)
+                                {
+                                    <span class="badge bg-dark ms-1">Admin</span>
+                                }
+                            </td>
+                            <td class="text-center">
+                                @if (!isCurrentAdmin)
+                                {
+                                    @if (u.Role == "Parent")
+                                    {
+                                        var uid = u.UserId;
+                                        var uemail = u.Email;
+                                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => MakeEmployee(uid, uemail)">
+                                            Make Employee
+                                        </button>
+                                    }
+                                    else if (u.Role == "Employee")
+                                    {
+                                        var uid2 = u.UserId;
+                                        var uemail2 = u.Email;
+                                        <button class="btn btn-sm btn-outline-success me-1" @onclick="() => MakeParent(uid2, uemail2)">
+                                            Make Parent
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-info me-1" @onclick="() => ShowPermissions(u.UserId, u.Email)">
+                                            Permissions
+                                        </button>
+                                    }
+                                    <button class="btn btn-sm btn-outline-warning" @onclick="() => QuickReset(u.Email)">
+                                        Reset PW
+                                    </button>
+                                }
                             </td>
                         </tr>
                     }
@@ -82,6 +116,69 @@ else
         </div>
     </div>
 
+    <!-- Permissions Editor -->
+    @if (editingPermUserId != null)
+    {
+        <div class="card mb-4 border-info">
+            <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                <strong>Permissions for @editingPermEmail</strong>
+                <button class="btn btn-sm btn-light" @onclick="() => editingPermUserId = null">Close</button>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>View Access</h6>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" @bind="editPerm.CanViewBudget" />
+                            <label class="form-check-label">Budget</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" @bind="editPerm.CanViewAthletes" />
+                            <label class="form-check-label">Athletes</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" @bind="editPerm.CanViewCoaches" />
+                            <label class="form-check-label">Coaches</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" @bind="editPerm.CanViewMeets" />
+                            <label class="form-check-label">Meets</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" @bind="editPerm.CanViewReports" />
+                            <label class="form-check-label">Reports</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" @bind="editPerm.CanViewPayments" />
+                            <label class="form-check-label">Payments</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" @bind="editPerm.CanViewNotes" />
+                            <label class="form-check-label">Notes</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Edit Access</h6>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" @bind="editPerm.CanEditBudget" />
+                            <label class="form-check-label">Edit Budget</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" @bind="editPerm.CanEditAthletes" />
+                            <label class="form-check-label">Edit Athletes</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" @bind="editPerm.CanManageRoster" />
+                            <label class="form-check-label">Manage Roster</label>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-primary mt-3" @onclick="SavePermissions">Save Permissions</button>
+            </div>
+        </div>
+    }
+
+    <!-- Invite Codes -->
     <div class="card">
         <div class="card-header"><strong>Parent Invite Codes</strong></div>
         <div class="card-body p-0">
@@ -110,7 +207,7 @@ else
                     }
                     @if (!inviteInfos.Any())
                     {
-                        <tr><td colspan="4" class="text-center text-muted py-3">No invite codes generated yet. Go to Athletes page to create them.</td></tr>
+                        <tr><td colspan="4" class="text-center text-muted py-3">No invite codes generated yet.</td></tr>
                     }
                 </tbody>
             </table>
@@ -120,16 +217,22 @@ else
 
 @code {
     private bool isAdmin;
+    private string adminEmail = "";
     private string resetEmail = "";
     private string resetPassword = "TntGym2026!";
     private bool isResetting;
-    private string? resetSuccess;
-    private string? resetError;
+    private string? statusMessage;
+    private bool statusIsError;
     private List<IdentityUser> allUsers = new();
     private List<UserInfo> userInfos = new();
     private List<InviteInfo> inviteInfos = new();
 
-    private record UserInfo(string Email, string Role);
+    // Permissions editor
+    private string? editingPermUserId;
+    private string? editingPermEmail;
+    private EmployeePermission editPerm = new();
+
+    private record UserInfo(string UserId, string Email, string Role);
     private record InviteInfo(string AthleteName, string LevelName, string Code, bool IsClaimed);
 
     protected override async Task OnInitializedAsync()
@@ -137,36 +240,101 @@ else
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var email = authState.User.FindFirst(ClaimTypes.Email)?.Value
                     ?? authState.User.FindFirst("email")?.Value;
-        var adminEmail = Configuration["AdminEmail"] ?? "deshaun@tntgym.org";
+        adminEmail = Configuration["AdminEmail"] ?? "deshaun@tntgym.org";
         isAdmin = string.Equals(email, adminEmail, StringComparison.OrdinalIgnoreCase);
 
         if (isAdmin)
+            await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        allUsers = UserManager.Users.OrderBy(u => u.Email).ToList();
+        userInfos = new();
+        foreach (var u in allUsers)
         {
-            allUsers = UserManager.Users.OrderBy(u => u.Email).ToList();
-            foreach (var u in allUsers)
-            {
-                var roles = await UserManager.GetRolesAsync(u);
-                userInfos.Add(new UserInfo(u.Email ?? "", roles.FirstOrDefault() ?? "None"));
-            }
-
-            using var db = await DbFactory.CreateDbContextAsync();
-            var links = await db.ParentLinks.AsNoTracking().ToListAsync();
-            var athleteIds = links.Select(l => l.AthleteId).ToList();
-            var athletes = await db.Athletes.AsNoTracking().Where(a => athleteIds.Contains(a.Id)).ToListAsync();
-            var levelIds = athletes.Select(a => a.TeamLevelId).Distinct().ToList();
-            var levels = await db.TeamLevels.AsNoTracking().Where(t => levelIds.Contains(t.Id)).ToListAsync();
-
-            inviteInfos = links.Select(l =>
-            {
-                var athlete = athletes.FirstOrDefault(a => a.Id == l.AthleteId);
-                var level = athlete != null ? levels.FirstOrDefault(t => t.Id == athlete.TeamLevelId) : null;
-                return new InviteInfo(
-                    athlete?.Name ?? "Unknown",
-                    level?.Name ?? "",
-                    l.InviteCode,
-                    l.IsClaimed);
-            }).OrderBy(i => i.AthleteName).ToList();
+            var roles = await UserManager.GetRolesAsync(u);
+            userInfos.Add(new UserInfo(u.Id, u.Email ?? "", roles.FirstOrDefault() ?? "None"));
         }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var links = await db.ParentLinks.AsNoTracking().ToListAsync();
+        var athleteIds = links.Select(l => l.AthleteId).ToList();
+        var athletes = await db.Athletes.AsNoTracking().Where(a => athleteIds.Contains(a.Id)).ToListAsync();
+        var levelIds = athletes.Select(a => a.TeamLevelId).Distinct().ToList();
+        var levels = await db.TeamLevels.AsNoTracking().Where(t => levelIds.Contains(t.Id)).ToListAsync();
+
+        inviteInfos = links.Select(l =>
+        {
+            var athlete = athletes.FirstOrDefault(a => a.Id == l.AthleteId);
+            var level = athlete != null ? levels.FirstOrDefault(t => t.Id == athlete.TeamLevelId) : null;
+            return new InviteInfo(athlete?.Name ?? "Unknown", level?.Name ?? "", l.InviteCode, l.IsClaimed);
+        }).OrderBy(i => i.AthleteName).ToList();
+    }
+
+    private Task MakeEmployee(string userId, string email) => ChangeRole(userId, email, "Employee");
+    private Task MakeParent(string userId, string email) => ChangeRole(userId, email, "Parent");
+
+    private async Task ChangeRole(string userId, string email, string newRole)
+    {
+        var user = await UserManager.FindByIdAsync(userId);
+        if (user == null) return;
+
+        var currentRoles = await UserManager.GetRolesAsync(user);
+        if (currentRoles.Any())
+            await UserManager.RemoveFromRolesAsync(user, currentRoles);
+        await UserManager.AddToRoleAsync(user, newRole);
+
+        // Create default permissions when making employee
+        if (newRole == "Employee")
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            if (!await db.EmployeePermissions.AnyAsync(p => p.UserId == userId))
+            {
+                db.EmployeePermissions.Add(new EmployeePermission { UserId = userId });
+                await db.SaveChangesAsync();
+            }
+        }
+
+        SetStatus($"{email} is now a {newRole}.", false);
+        await LoadData();
+    }
+
+    private async Task ShowPermissions(string userId, string email)
+    {
+        editingPermUserId = userId;
+        editingPermEmail = email;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var perm = await db.EmployeePermissions.FirstOrDefaultAsync(p => p.UserId == userId);
+        if (perm == null)
+        {
+            perm = new EmployeePermission { UserId = userId };
+            db.EmployeePermissions.Add(perm);
+            await db.SaveChangesAsync();
+        }
+        editPerm = perm;
+    }
+
+    private async Task SavePermissions()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.EmployeePermissions.FirstOrDefaultAsync(p => p.UserId == editingPermUserId);
+        if (existing != null)
+        {
+            existing.CanViewBudget = editPerm.CanViewBudget;
+            existing.CanEditBudget = editPerm.CanEditBudget;
+            existing.CanViewAthletes = editPerm.CanViewAthletes;
+            existing.CanEditAthletes = editPerm.CanEditAthletes;
+            existing.CanViewCoaches = editPerm.CanViewCoaches;
+            existing.CanViewMeets = editPerm.CanViewMeets;
+            existing.CanViewReports = editPerm.CanViewReports;
+            existing.CanViewPayments = editPerm.CanViewPayments;
+            existing.CanManageRoster = editPerm.CanManageRoster;
+            existing.CanViewNotes = editPerm.CanViewNotes;
+            await db.SaveChangesAsync();
+        }
+        SetStatus($"Permissions saved for {editingPermEmail}.", false);
+        editingPermUserId = null;
     }
 
     private async Task QuickReset(string email)
@@ -178,13 +346,10 @@ else
 
     private async Task ResetPassword()
     {
-        resetSuccess = null;
-        resetError = null;
         isResetting = true;
-
         if (string.IsNullOrWhiteSpace(resetEmail) || string.IsNullOrWhiteSpace(resetPassword))
         {
-            resetError = "Please enter both email and new password.";
+            SetStatus("Please enter both email and new password.", true);
             isResetting = false;
             return;
         }
@@ -192,23 +357,24 @@ else
         var user = await UserManager.FindByEmailAsync(resetEmail.Trim());
         if (user == null)
         {
-            resetError = $"No user found with email '{resetEmail}'.";
+            SetStatus($"No user found with email '{resetEmail}'.", true);
             isResetting = false;
             return;
         }
 
         var token = await UserManager.GeneratePasswordResetTokenAsync(user);
         var result = await UserManager.ResetPasswordAsync(user, token, resetPassword);
-
         if (result.Succeeded)
-        {
-            resetSuccess = $"Password for {user.Email} reset to: {resetPassword}";
-        }
+            SetStatus($"Password for {user.Email} reset to: {resetPassword}", false);
         else
-        {
-            resetError = string.Join(" ", result.Errors.Select(e => e.Description));
-        }
+            SetStatus(string.Join(" ", result.Errors.Select(e => e.Description)), true);
 
         isResetting = false;
+    }
+
+    private void SetStatus(string msg, bool isError)
+    {
+        statusMessage = msg;
+        statusIsError = isError;
     }
 }
