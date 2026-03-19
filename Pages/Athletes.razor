@@ -35,6 +35,8 @@ else
     {
         <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
             <button class="btn btn-primary" @onclick="ShowAddForm">+ Add Athlete</button>
+            <input type="text" class="form-control" style="max-width: 200px;" placeholder="Search athlete..."
+                   @bind="searchText" @bind:event="oninput" />
             @if (teamLevels.Count > 1)
             {
                 <select class="form-select" style="max-width: 200px;" value="@filterLevelId"
@@ -267,6 +269,7 @@ else
     private int formTeamLevelId;
 
     private int filterLevelId = 0;
+    private string searchText = "";
     private HashSet<int> expandedLevels = new();
     private List<Gymnast> rosterGymnasts = new();
 
@@ -284,13 +287,30 @@ else
             expandedLevels.Add(levelId);
     }
 
-    private List<TeamLevel> filteredTeamLevels => filterLevelId > 0
-        ? teamLevels.Where(t => t.Id == filterLevelId).ToList()
-        : teamLevels;
+    private List<TeamLevel> filteredTeamLevels
+    {
+        get
+        {
+            var list = filterLevelId > 0 ? teamLevels.Where(t => t.Id == filterLevelId) : teamLevels;
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                var matchingLevelIds = filteredAthletes.Select(a => a.TeamLevelId).ToHashSet();
+                list = list.Where(t => matchingLevelIds.Contains(t.Id));
+            }
+            return list.ToList();
+        }
+    }
 
-    private List<Athlete> filteredAthletes => filterLevelId > 0
-        ? athletes.Where(a => a.TeamLevelId == filterLevelId).ToList()
-        : athletes;
+    private List<Athlete> filteredAthletes
+    {
+        get
+        {
+            var list = filterLevelId > 0 ? athletes.Where(a => a.TeamLevelId == filterLevelId) : athletes;
+            if (!string.IsNullOrWhiteSpace(searchText))
+                list = list.Where(a => a.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase));
+            return list.ToList();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
