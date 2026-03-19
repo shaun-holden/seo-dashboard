@@ -1,0 +1,321 @@
+@page "/parent/messages"
+@attribute [Authorize]
+@layout GymBudgetApp.Shared.ParentLayout
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IConfiguration Configuration
+
+<h3>Messages</h3>
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <a class="nav-link @(activeTab == "inbox" ? "active" : "")" href="javascript:void(0)" @onclick='() => activeTab = "inbox"'>
+            Inbox
+            @if (unreadCount > 0)
+            {
+                <span class="badge bg-danger ms-1">@unreadCount</span>
+            }
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link @(activeTab == "compose" ? "active" : "")" href="javascript:void(0)" @onclick='() => activeTab = "compose"'>
+            Compose
+        </a>
+    </li>
+</ul>
+
+@if (successMessage != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @successMessage
+        <button type="button" class="btn-close" @onclick="() => successMessage = null"></button>
+    </div>
+}
+
+@if (errorMessage != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        @errorMessage
+        <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+    </div>
+}
+
+@if (activeTab == "inbox")
+{
+    @if (!inboxMessages.Any())
+    {
+        <div class="text-center text-muted py-5">No messages in your inbox.</div>
+    }
+    else
+    {
+        @foreach (var msg in inboxMessages)
+        {
+            var isExpanded = expandedMessageId == msg.Id;
+            <div class="card mb-2 @(!msg.IsRead ? "border-primary" : "")">
+                <div class="card-body py-2 px-3" style="cursor: pointer;" @onclick="() => ExpandMessage(msg)">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            @if (!msg.IsRead)
+                            {
+                                <span class="badge bg-primary me-1">Unread</span>
+                            }
+                            @if (msg.TeamLevelId.HasValue)
+                            {
+                                var levelName = teamLevelNames.GetValueOrDefault(msg.TeamLevelId.Value, "Team");
+                                <span class="badge bg-info me-1">@levelName</span>
+                            }
+                            <strong>@msg.Subject</strong>
+                        </div>
+                        <small class="text-muted text-nowrap ms-2">@msg.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy h:mm tt")</small>
+                    </div>
+                    <small class="text-muted">From: @msg.SenderEmail</small>
+                </div>
+                @if (isExpanded)
+                {
+                    <div class="card-footer bg-light">
+                        <p style="white-space: pre-wrap; word-break: break-word;">@msg.Content</p>
+
+                        @if (replyingToId == msg.Id)
+                        {
+                            <div class="mt-2 border-top pt-2">
+                                <div class="mb-2">
+                                    <label class="form-label">Reply</label>
+                                    <textarea class="form-control" rows="3" @bind="replyContent"></textarea>
+                                </div>
+                                <button class="btn btn-sm btn-success me-1" @onclick="() => SendReply(msg)" disabled="@isSending">
+                                    @if (isSending)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1"></span>
+                                    }
+                                    Send Reply
+                                </button>
+                                <button class="btn btn-sm btn-secondary" @onclick="() => replyingToId = null">Cancel</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => StartReply(msg)">
+                                <span class="oi oi-reply me-1"></span>Reply
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    }
+}
+else if (activeTab == "compose")
+{
+    <div class="card">
+        <div class="card-body">
+            <h5>Message Admin</h5>
+            <div class="mb-2">
+                <label class="form-label">Subject</label>
+                <input type="text" class="form-control" @bind="composeSubject" maxlength="200" />
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Content</label>
+                <textarea class="form-control" rows="5" @bind="composeContent"></textarea>
+            </div>
+            <button class="btn btn-success" @onclick="SendToAdmin" disabled="@isSending">
+                @if (isSending)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Send
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private string activeTab = "inbox";
+    private string? userId;
+    private string? userEmail;
+    private List<Message> inboxMessages = new();
+    private Dictionary<int, string> teamLevelNames = new();
+    private int? expandedMessageId;
+    private int? replyingToId;
+    private string replyContent = "";
+    private bool isSending;
+    private string? successMessage;
+    private string? errorMessage;
+    private int unreadCount;
+
+    // Compose fields
+    private string composeSubject = "";
+    private string composeContent = "";
+
+    // Admin info
+    private string adminUserId = "";
+    private string adminEmail = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? authState.User.FindFirst("email")?.Value
+                    ?? authState.User.Identity?.Name;
+
+        // Resolve admin
+        adminEmail = Configuration["AdminEmail"] ?? "deshaun@tntgym.org";
+        using var db = await DbFactory.CreateDbContextAsync();
+        var adminUser = await db.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == adminEmail.ToLower());
+        if (adminUser != null)
+        {
+            adminUserId = adminUser.Id;
+        }
+
+        await LoadInbox();
+    }
+
+    private async Task LoadInbox()
+    {
+        if (userId == null) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        inboxMessages = await db.Messages.AsNoTracking()
+            .Where(m => m.RecipientUserId == userId)
+            .OrderByDescending(m => m.CreatedAt)
+            .ToListAsync();
+
+        unreadCount = inboxMessages.Count(m => !m.IsRead);
+
+        var levelIds = inboxMessages
+            .Where(m => m.TeamLevelId.HasValue)
+            .Select(m => m.TeamLevelId!.Value)
+            .Distinct()
+            .ToList();
+        if (levelIds.Any())
+        {
+            teamLevelNames = await db.TeamLevels.AsNoTracking()
+                .Where(t => levelIds.Contains(t.Id))
+                .ToDictionaryAsync(t => t.Id, t => t.Name);
+        }
+    }
+
+    private async Task ExpandMessage(Message msg)
+    {
+        if (expandedMessageId == msg.Id)
+        {
+            expandedMessageId = null;
+            replyingToId = null;
+            return;
+        }
+
+        expandedMessageId = msg.Id;
+        replyingToId = null;
+
+        if (!msg.IsRead)
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            var entity = await db.Messages.FindAsync(msg.Id);
+            if (entity != null)
+            {
+                entity.IsRead = true;
+                await db.SaveChangesAsync();
+            }
+            msg.IsRead = true;
+            unreadCount = inboxMessages.Count(m => !m.IsRead);
+        }
+    }
+
+    private void StartReply(Message msg)
+    {
+        replyingToId = msg.Id;
+        replyContent = "";
+    }
+
+    private async Task SendReply(Message original)
+    {
+        if (string.IsNullOrWhiteSpace(replyContent)) return;
+        isSending = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            var reply = new Message
+            {
+                SenderUserId = userId!,
+                SenderEmail = userEmail ?? "",
+                RecipientUserId = original.SenderUserId,
+                RecipientEmail = original.SenderEmail,
+                Subject = original.Subject.StartsWith("Re: ") ? original.Subject : $"Re: {original.Subject}",
+                Content = replyContent.Trim(),
+                ParentMessageId = original.ParentMessageId ?? original.Id,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.Messages.Add(reply);
+            await db.SaveChangesAsync();
+
+            replyingToId = null;
+            replyContent = "";
+            successMessage = "Reply sent.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error sending reply: {ex.Message}";
+        }
+        finally
+        {
+            isSending = false;
+        }
+    }
+
+    private async Task SendToAdmin()
+    {
+        if (string.IsNullOrWhiteSpace(composeSubject) || string.IsNullOrWhiteSpace(composeContent))
+        {
+            errorMessage = "Subject and content are required.";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(adminUserId))
+        {
+            errorMessage = "Admin user not found. Cannot send message.";
+            return;
+        }
+
+        isSending = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            var msg = new Message
+            {
+                SenderUserId = userId!,
+                SenderEmail = userEmail ?? "",
+                RecipientUserId = adminUserId,
+                RecipientEmail = adminEmail,
+                Subject = composeSubject.Trim(),
+                Content = composeContent.Trim(),
+                CreatedAt = DateTime.UtcNow
+            };
+            db.Messages.Add(msg);
+            await db.SaveChangesAsync();
+
+            successMessage = "Message sent to admin.";
+            composeSubject = "";
+            composeContent = "";
+            activeTab = "inbox";
+            await LoadInbox();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error sending message: {ex.Message}";
+        }
+        finally
+        {
+            isSending = false;
+        }
+    }
+}

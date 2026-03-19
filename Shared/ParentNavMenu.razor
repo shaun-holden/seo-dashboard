@@ -1,5 +1,7 @@
 @using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IDbContextFactory<AppDbContext> DbFactory
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -32,6 +34,15 @@
             </NavLink>
         </div>
         <div class="nav-item px-3">
+            <NavLink class="nav-link" href="parent/messages">
+                <span class="oi oi-envelope-closed" aria-hidden="true"></span> Messages
+                @if (unreadMessageCount > 0)
+                {
+                    <span class="badge bg-danger ms-1">@unreadMessageCount</span>
+                }
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
             <NavLink class="nav-link" href="claim">
                 <span class="oi oi-link-intact" aria-hidden="true"></span> Link Athlete
             </NavLink>
@@ -51,6 +62,20 @@
 @code {
     private bool collapseNavMenu = true;
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+    private int unreadMessageCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId != null)
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            unreadMessageCount = await db.Messages
+                .Where(m => m.RecipientUserId == userId && !m.IsRead)
+                .CountAsync();
+        }
+    }
 
     private void ToggleNavMenu()
     {

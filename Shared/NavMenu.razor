@@ -131,6 +131,15 @@
                 <span class="oi oi-bullhorn" aria-hidden="true"></span> Announcements
             </NavLink>
         </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="messages">
+                <span class="oi oi-envelope-closed" aria-hidden="true"></span> Messages
+                @if (unreadMessageCount > 0)
+                {
+                    <span class="badge bg-danger ms-1">@unreadMessageCount</span>
+                }
+            </NavLink>
+        </div>
         @if (isAdmin)
         {
             <div class="nav-item px-3">
@@ -156,6 +165,7 @@
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
     private ProjectLabels labels = ProjectLabels.Default;
     private bool isAdmin;
+    private int unreadMessageCount;
 
     protected override async Task OnInitializedAsync()
     {
@@ -170,6 +180,9 @@
         {
             var activeSeason = await Db.Seasons.Where(s => s.IsActive).FirstOrDefaultAsync();
             labels = new ProjectLabels(activeSeason);
+            unreadMessageCount = await Db.Messages
+                .Where(m => m.RecipientUserId == userId && !m.IsRead)
+                .CountAsync();
         }
     }
 
