@@ -65,9 +65,13 @@ else
                             var eventsForDay = GetEventsForDay(day);
                             <td class="@cssClass" @onclick="() => SelectDay(day)">
                                 <div class="calendar-day-num">@day.Day</div>
-                                @foreach (var evt in eventsForDay)
+                                @foreach (var evt in eventsForDay.Take(3))
                                 {
                                     <span class="calendar-event @evt.CssClass" title="@evt.Name">@evt.Name</span>
+                                }
+                                @if (eventsForDay.Count > 3)
+                                {
+                                    <span class="calendar-event" style="background: #e9ecef; color: #495057;">+@(eventsForDay.Count - 3) more</span>
                                 }
                             </td>
                         }
