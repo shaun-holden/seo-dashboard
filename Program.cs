@@ -85,8 +85,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapBlazorHub();
 
-// Stripe webhook endpoint
-app.MapPost("/api/stripe-webhook", async (HttpContext context, AppDbContext db) =>
+// Stripe webhook handler
+async Task<IResult> HandleStripeWebhook(HttpContext context, AppDbContext db)
 {
     var webhookSecret = Environment.GetEnvironmentVariable("STRIPE_WEBHOOK_SECRET")
         ?? app.Configuration["Stripe:WebhookSecret"] ?? "";
@@ -119,43 +119,10 @@ app.MapPost("/api/stripe-webhook", async (HttpContext context, AppDbContext db) 
     {
         return Results.BadRequest();
     }
-}).AllowAnonymous();
+}
 
-// Alias: also accept /stripe-webhook (matches Stripe dashboard config)
-app.MapPost("/stripe-webhook", async (HttpContext context, AppDbContext db) =>
-{
-    var webhookSecret = Environment.GetEnvironmentVariable("STRIPE_WEBHOOK_SECRET")
-        ?? app.Configuration["Stripe:WebhookSecret"] ?? "";
-    var json = await new StreamReader(context.Request.Body).ReadToEndAsync();
-
-    try
-    {
-        var stripeEvent = Stripe.EventUtility.ConstructEvent(json,
-            context.Request.Headers["Stripe-Signature"], webhookSecret);
-
-        if (stripeEvent.Type == "checkout.session.completed")
-        {
-            var session = stripeEvent.Data.Object as Stripe.Checkout.Session;
-            if (session != null)
-            {
-                var payment = db.Set<GymBudgetApp.Models.Payment>()
-                    .FirstOrDefault(p => p.StripeSessionId == session.Id);
-                if (payment != null)
-                {
-                    payment.Status = GymBudgetApp.Models.PaymentStatus.Paid;
-                    payment.StripePaymentIntentId = session.PaymentIntentId;
-                    payment.PaidAt = DateTime.UtcNow;
-                    await db.SaveChangesAsync();
-                }
-            }
-        }
-        return Results.Ok();
-    }
-    catch
-    {
-        return Results.BadRequest();
-    }
-}).AllowAnonymous();
+app.MapPost("/api/stripe-webhook", HandleStripeWebhook).AllowAnonymous();
+app.MapPost("/stripe-webhook", HandleStripeWebhook).AllowAnonymous();
 
 app.MapFallbackToPage("/_Host");
 
