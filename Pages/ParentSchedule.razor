@@ -36,6 +36,35 @@ else
                         </div>
                         <span class="badge bg-@(meet.TravelType == TravelType.Fly ? "info" : "secondary")">@meet.TravelType</span>
                     </div>
+                    @if (!string.IsNullOrEmpty(meet.Address))
+                    {
+                        <div class="mt-2">
+                            <small class="text-muted d-block">@meet.Address</small>
+                            <a href="https://www.google.com/maps/search/?api=1&query=@(Uri.EscapeDataString(meet.Address))" target="_blank" class="btn btn-sm btn-outline-primary mt-1">
+                                <span class="oi oi-map-marker me-1"></span> Directions
+                            </a>
+                        </div>
+                    }
+                    @if (meet.EntryCost.HasValue || meet.ParkingCost.HasValue)
+                    {
+                        <div class="d-flex gap-2 mt-1">
+                            @if (meet.EntryCost.HasValue)
+                            {
+                                <small class="badge bg-info">Entry: $@meet.EntryCost.Value.ToString("N2")</small>
+                            }
+                            @if (meet.ParkingCost.HasValue)
+                            {
+                                <small class="badge bg-secondary">Parking: $@meet.ParkingCost.Value.ToString("N2")</small>
+                            }
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(meet.CompetitionSchedule))
+                    {
+                        <div class="mt-1">
+                            <small class="fw-bold">Schedule:</small>
+                            <pre class="bg-light p-2 rounded mt-1 mb-0" style="white-space: pre-wrap; font-size: 0.85rem;">@meet.CompetitionSchedule</pre>
+                        </div>
+                    }
                     <div class="mt-2 d-flex gap-2 flex-wrap align-items-center">
                         <span class="text-muted me-2">RSVP:</span>
                         @foreach (var athleteId in athleteIds)

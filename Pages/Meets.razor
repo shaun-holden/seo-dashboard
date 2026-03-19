@@ -78,6 +78,32 @@ else
                         <input type="number" step="0.01" class="form-control" @bind="formBudgetAmount" placeholder="0.00" />
                     </div>
                 </div>
+                <div class="row mt-2">
+                    <div class="col-md-6 mb-2">
+                        <label>Venue Address</label>
+                        <input class="form-control" @bind="formAddress" placeholder="e.g. 123 Main St, Atlanta, GA 30301" />
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label>Entry Cost</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" step="0.01" class="form-control" @bind="formEntryCost" placeholder="0.00" />
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label>Parking Cost</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" step="0.01" class="form-control" @bind="formParkingCost" placeholder="0.00" />
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12 mb-2">
+                        <label>Competition Schedule</label>
+                        <textarea class="form-control" rows="3" @bind="formSchedule" placeholder="e.g. Level 3: 9:00 AM, Level 4: 11:00 AM..."></textarea>
+                    </div>
+                </div>
                 @if (seasonGroups.Any())
                 {
                     <div class="mt-2 mb-2 p-2 bg-light rounded">
@@ -129,6 +155,10 @@ else
     private DateTime formDate = DateTime.Today;
     private TravelType formTravelType = TravelType.Drive;
     private decimal formBudgetAmount = 0;
+    private string formAddress = "";
+    private decimal formEntryCost = 0;
+    private decimal formParkingCost = 0;
+    private string formSchedule = "";
     private HashSet<int> formGroupIds = new();
     private string? userId;
     private ProjectLabels labels = ProjectLabels.Default;
@@ -192,6 +222,36 @@ else
             @if (isExpanded)
             {
                 <div class="card-body">
+                    @if (!string.IsNullOrEmpty(meet.Address))
+                    {
+                        <div class="mb-3">
+                            <h6>Venue</h6>
+                            <p class="mb-1">@meet.Address</p>
+                            <a href="https://www.google.com/maps/search/?api=1&query=@(Uri.EscapeDataString(meet.Address))" target="_blank" class="btn btn-sm btn-outline-primary">
+                                <span class="oi oi-map-marker me-1"></span> Open in Google Maps
+                            </a>
+                        </div>
+                    }
+                    @if (meet.EntryCost.HasValue || meet.ParkingCost.HasValue)
+                    {
+                        <div class="d-flex gap-3 mb-3">
+                            @if (meet.EntryCost.HasValue)
+                            {
+                                <span class="badge bg-info p-2">Entry: $@meet.EntryCost.Value.ToString("N2")</span>
+                            }
+                            @if (meet.ParkingCost.HasValue)
+                            {
+                                <span class="badge bg-secondary p-2">Parking: $@meet.ParkingCost.Value.ToString("N2")</span>
+                            }
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(meet.CompetitionSchedule))
+                    {
+                        <div class="mb-3">
+                            <h6>Competition Schedule</h6>
+                            <pre class="bg-light p-2 rounded" style="white-space: pre-wrap; font-size: 0.9rem;">@meet.CompetitionSchedule</pre>
+                        </div>
+                    }
                     <h6>Assigned Groups</h6>
                     @if (assignedGroups.Any())
                     {
@@ -416,12 +476,13 @@ else
         else formGroupIds.Remove(groupId);
     }
 
-    private void ShowForm() { editingMeet = null; formName = ""; formDate = DateTime.Today; formTravelType = TravelType.Drive; formBudgetAmount = 0; formGroupIds.Clear(); showForm = true; }
+    private void ShowForm() { editingMeet = null; formName = ""; formDate = DateTime.Today; formTravelType = TravelType.Drive; formBudgetAmount = 0; formAddress = ""; formEntryCost = 0; formParkingCost = 0; formSchedule = ""; formGroupIds.Clear(); showForm = true; }
     private void CancelForm() { showForm = false; }
 
     private void EditMeet(Meet meet)
     {
         editingMeet = meet; formName = meet.Name; formDate = meet.Date; formTravelType = meet.TravelType; formBudgetAmount = meet.BudgetAmount;
+        formAddress = meet.Address ?? ""; formEntryCost = meet.EntryCost ?? 0; formParkingCost = meet.ParkingCost ?? 0; formSchedule = meet.CompetitionSchedule ?? "";
         formGroupIds = groupAssignments.Where(a => a.MeetId == meet.Id).Select(a => a.SeasonGroupId).ToHashSet();
         showForm = true;
     }
@@ -432,7 +493,7 @@ else
         Meet meet;
         if (editingMeet == null)
         {
-            meet = new Meet { Name = formName, Date = formDate, TravelType = formTravelType, BudgetAmount = formBudgetAmount, SeasonId = selectedSeasonId, SeasonGroupId = formGroupIds.Any() ? formGroupIds.First() : null };
+            meet = new Meet { Name = formName, Date = formDate, TravelType = formTravelType, BudgetAmount = formBudgetAmount, SeasonId = selectedSeasonId, SeasonGroupId = formGroupIds.Any() ? formGroupIds.First() : null, Address = string.IsNullOrWhiteSpace(formAddress) ? null : formAddress.Trim(), EntryCost = formEntryCost > 0 ? formEntryCost : null, ParkingCost = formParkingCost > 0 ? formParkingCost : null, CompetitionSchedule = string.IsNullOrWhiteSpace(formSchedule) ? null : formSchedule.Trim() };
             db.Meets.Add(meet);
             await db.SaveChangesAsync();
         }
@@ -440,6 +501,7 @@ else
         {
             meet = await db.Meets.FindAsync(editingMeet.Id) ?? editingMeet;
             meet.Name = formName; meet.Date = formDate; meet.TravelType = formTravelType; meet.BudgetAmount = formBudgetAmount; meet.SeasonGroupId = formGroupIds.Any() ? formGroupIds.First() : null;
+            meet.Address = string.IsNullOrWhiteSpace(formAddress) ? null : formAddress.Trim(); meet.EntryCost = formEntryCost > 0 ? formEntryCost : null; meet.ParkingCost = formParkingCost > 0 ? formParkingCost : null; meet.CompetitionSchedule = string.IsNullOrWhiteSpace(formSchedule) ? null : formSchedule.Trim();
             var existing = db.MeetGroupAssignments.Where(a => a.MeetId == meet.Id).ToList();
             db.MeetGroupAssignments.RemoveRange(existing);
             await db.SaveChangesAsync();

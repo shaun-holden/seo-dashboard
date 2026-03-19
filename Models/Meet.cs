@@ -22,6 +22,19 @@ namespace GymBudgetApp.Models
         public int? SeasonGroupId { get; set; }
         public SeasonGroup? SeasonGroup { get; set; }
 
+        // Venue details
+        [StringLength(500)]
+        public string? Address { get; set; }
+
+        [Range(0, 100000)]
+        public decimal? EntryCost { get; set; }
+
+        [Range(0, 100000)]
+        public decimal? ParkingCost { get; set; }
+
+        [StringLength(2000)]
+        public string? CompetitionSchedule { get; set; }
+
         // Audit timestamps
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime ModifiedAt { get; set; } = DateTime.UtcNow;
