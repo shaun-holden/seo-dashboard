@@ -199,7 +199,8 @@ else
                                             }
                                             else
                                             {
-                                                <button class="btn btn-sm btn-outline-info me-1" @onclick="() => ShowInviteForm(athlete.Id)">Invite</button>
+                                                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => GenerateCodeOnly(athlete.Id)">Code</button>
+                                                <button class="btn btn-sm btn-outline-info me-1" @onclick="() => ShowInviteForm(athlete.Id)">Email Invite</button>
                                             }
                                             @if (showInviteForm && inviteAthleteId == athlete.Id)
                                             {
@@ -413,6 +414,23 @@ else
         showInviteForm = false;
         inviteAthleteId = 0;
         inviteEmail = "";
+    }
+
+    private async Task GenerateCodeOnly(int athleteId)
+    {
+        inviteMessage = null;
+        inviteError = null;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.ParentLinks.FirstOrDefaultAsync(pl => pl.AthleteId == athleteId);
+        if (existing != null) return; // already has a code
+
+        var code = ParentLink.GenerateCode();
+        db.ParentLinks.Add(new ParentLink { AthleteId = athleteId, InviteCode = code });
+        await db.SaveChangesAsync();
+
+        var athlete = await db.Athletes.FindAsync(athleteId);
+        inviteMessage = $"Code generated for {athlete?.Name ?? "athlete"}: {code}";
+        await LoadData();
     }
 
     private async Task SendInviteEmail(Athlete athlete)
