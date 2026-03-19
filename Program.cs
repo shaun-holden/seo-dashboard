@@ -11,6 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddScoped<GymBudgetApp.Services.NotesPanelState>();
+builder.Services.AddScoped<GymBudgetApp.Services.PermissionService>();
 
 var dbFolder = Environment.GetEnvironmentVariable("DB_PATH")
     ?? Directory.GetCurrentDirectory();
