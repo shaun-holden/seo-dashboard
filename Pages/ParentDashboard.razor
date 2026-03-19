@@ -171,7 +171,9 @@ else
                 </div>
 
                 @{
-                    var monthlyAmount = Math.Round(balance / 8, 2);
+                    var athleteLevel = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId);
+                    var planMonths = athleteLevel?.PaymentPlanMonths > 0 ? athleteLevel.PaymentPlanMonths : 8;
+                    var monthlyAmount = Math.Round(balance / planMonths, 2);
                     var scheduleStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 15);
                     if (DateTime.Today.Day > 15) scheduleStart = scheduleStart.AddMonths(1);
                 }
@@ -182,14 +184,14 @@ else
                     <div class="card bg-light mb-3">
                         <div class="card-body">
                             <h6 class="card-title">Payment Plan</h6>
-                            <p class="text-muted mb-2">8 monthly payments of <strong>$@monthlyAmount.ToString("N2")</strong>, due on the 15th</p>
+                            <p class="text-muted mb-2">@planMonths monthly payments of <strong>$@monthlyAmount.ToString("N2")</strong>, due on the 15th</p>
                             <div class="table-responsive">
                                 <table class="table table-sm mb-0">
                                     <thead class="table-light">
                                         <tr><th>#</th><th>Due Date</th><th class="text-end">Amount</th><th>Status</th></tr>
                                     </thead>
                                     <tbody>
-                                        @for (int i = 0; i < 8; i++)
+                                        @for (int i = 0; i < planMonths; i++)
                                         {
                                             var dueDate = scheduleStart.AddMonths(i);
                                             var installmentNum = i + 1;
@@ -640,6 +642,11 @@ else
                 SubscriptionData = new Stripe.Checkout.SessionSubscriptionDataOptions
                 {
                     BillingCycleAnchor = GetNext15th(),
+                    Metadata = new Dictionary<string, string>
+                    {
+                        { "cancel_after_months", GetPlanMonths(athlete.TeamLevelId).ToString() },
+                        { "athlete_id", athlete.Id.ToString() }
+                    },
                 },
             };
 
@@ -647,8 +654,25 @@ else
             var session = await service.CreateAsync(options);
 
             link.AutoPayEnabled = true;
-            link.StripeSubscriptionId = session.SubscriptionId ?? session.Id;
+            var subscriptionId = session.SubscriptionId ?? session.Id;
+            link.StripeSubscriptionId = subscriptionId;
             await db.SaveChangesAsync();
+
+            // Set auto-cancel date on subscription
+            if (!string.IsNullOrEmpty(session.SubscriptionId))
+            {
+                try
+                {
+                    var subService = new Stripe.SubscriptionService();
+                    var planMonths = GetPlanMonths(athlete.TeamLevelId);
+                    var cancelAt = GetNext15th().AddMonths(planMonths);
+                    await subService.UpdateAsync(session.SubscriptionId, new Stripe.SubscriptionUpdateOptions
+                    {
+                        CancelAt = cancelAt,
+                    });
+                }
+                catch { /* Non-critical, subscription still works */ }
+            }
 
             _ = NotificationService.NotifyAutoPayEnabled(athlete.Name, userEmail ?? "", monthlyAmount);
 
@@ -691,6 +715,12 @@ else
             paymentError = $"Error disabling auto-pay: {ex.Message}";
         }
         isProcessing = false;
+    }
+
+    private int GetPlanMonths(int teamLevelId)
+    {
+        var level = teamLevels.FirstOrDefault(t => t.Id == teamLevelId);
+        return level?.PaymentPlanMonths > 0 ? level.PaymentPlanMonths : 8;
     }
 
     private DateTime GetNext15th()
