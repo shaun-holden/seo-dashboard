@@ -255,6 +255,51 @@ else
         </div>
     </div>
 
+    <!-- Emergency Contacts -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center" @onclick="() => showEmergencyContacts = !showEmergencyContacts" style="cursor: pointer;">
+            <strong>Emergency Contacts</strong>
+            <span class="oi @(showEmergencyContacts ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+        </div>
+        @if (showEmergencyContacts)
+        {
+        <div class="card-body p-0">
+            @if (!emergencyContactInfos.Any())
+            {
+                <div class="p-3 text-muted text-center">No athletes found.</div>
+            }
+            else
+            {
+                <div style="overflow-x: auto;">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Athlete Name</th>
+                            <th>Level</th>
+                            <th>Emergency Contact</th>
+                            <th>Phone</th>
+                            <th>Medical Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var info in emergencyContactInfos)
+                        {
+                            <tr>
+                                <td><strong>@info.AthleteName</strong></td>
+                                <td>@info.LevelName</td>
+                                <td>@(info.EmergencyName ?? "—") @(!string.IsNullOrEmpty(info.Relationship) ? $"({info.Relationship})" : "")</td>
+                                <td>@(info.EmergencyPhone ?? "—")</td>
+                                <td>@(info.MedicalNotes ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                </div>
+            }
+        </div>
+        }
+    </div>
+
     <!-- Audit Log -->
     <div class="card">
         <div class="card-header"><strong>Audit Log</strong></div>
@@ -308,8 +353,12 @@ else
     private string? editingPermEmail;
     private EmployeePermission editPerm = new();
 
+    private bool showEmergencyContacts;
+    private List<EmergencyContactInfo> emergencyContactInfos = new();
+
     private record UserInfo(string UserId, string Email, string Role);
     private record InviteInfo(string AthleteName, string LevelName, string Code, bool IsClaimed);
+    private record EmergencyContactInfo(string AthleteName, string LevelName, string? EmergencyName, string? EmergencyPhone, string? Relationship, string? MedicalNotes);
 
     protected override async Task OnInitializedAsync()
     {
@@ -359,6 +408,17 @@ else
             .OrderByDescending(a => a.Timestamp)
             .Take(50)
             .ToListAsync();
+
+        // Load emergency contacts
+        var allAthletes = await db.Athletes.AsNoTracking().Include(a => a.TeamLevel).OrderBy(a => a.Name).ToListAsync();
+        emergencyContactInfos = allAthletes.Select(a => new EmergencyContactInfo(
+            a.Name,
+            a.TeamLevel?.Name ?? "",
+            a.EmergencyContactName,
+            a.EmergencyContactPhone,
+            a.EmergencyContactRelationship,
+            a.MedicalNotes
+        )).ToList();
     }
 
     private Task MakeEmployee(string userId, string email) => ChangeRole(userId, email, "Employee");

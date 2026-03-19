@@ -476,6 +476,85 @@ else
                         }
                     </div>
                 }
+
+                <!-- Profile & Emergency Info -->
+                <div class="mt-3">
+                    <button class="btn btn-sm btn-outline-secondary w-100" @onclick="() => ToggleProfileSection(athlete.Id)">
+                        <span class="oi @(expandedProfiles.Contains(athlete.Id) ? "oi-chevron-top" : "oi-chevron-bottom") me-1"></span>
+                        Profile &amp; Emergency Info
+                    </button>
+                    @if (expandedProfiles.Contains(athlete.Id))
+                    {
+                        var profId = athlete.Id;
+                        var fDob = "dob";
+                        var fPhone = "parentPhone";
+                        var fAddr = "address";
+                        var fEName = "emergencyName";
+                        var fEPhone = "emergencyPhone";
+                        var fERel = "emergencyRelationship";
+                        var fMed = "medicalNotes";
+                        <div class="card mt-2 border-secondary">
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label fw-bold">Date of Birth</label>
+                                        <input type="date" class="form-control"
+                                               value="@(GetProfileValue(profId, fDob))"
+                                               @onchange="(e) => SetProfileValue(profId, fDob, e.Value?.ToString())" />
+                                        @if (athlete.DateOfBirth.HasValue)
+                                        {
+                                            <small class="text-muted">Age: @((DateTime.Today - athlete.DateOfBirth.Value).Days / 365)</small>
+                                        }
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label fw-bold">Parent Phone</label>
+                                        <input type="tel" class="form-control"
+                                               value="@(GetProfileValue(profId, fPhone))"
+                                               @onchange="(e) => SetProfileValue(profId, fPhone, e.Value?.ToString())" />
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label fw-bold">Address</label>
+                                        <input type="text" class="form-control"
+                                               value="@(GetProfileValue(profId, fAddr))"
+                                               @onchange="(e) => SetProfileValue(profId, fAddr, e.Value?.ToString())" />
+                                    </div>
+                                </div>
+                                <h6 class="mt-2">Emergency Contact</h6>
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">Contact Name</label>
+                                        <input type="text" class="form-control"
+                                               value="@(GetProfileValue(profId, fEName))"
+                                               @onchange="(e) => SetProfileValue(profId, fEName, e.Value?.ToString())" />
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">Contact Phone</label>
+                                        <input type="tel" class="form-control"
+                                               value="@(GetProfileValue(profId, fEPhone))"
+                                               @onchange="(e) => SetProfileValue(profId, fEPhone, e.Value?.ToString())" />
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">Relationship</label>
+                                        <input type="text" class="form-control"
+                                               value="@(GetProfileValue(profId, fERel))"
+                                               @onchange="(e) => SetProfileValue(profId, fERel, e.Value?.ToString())" />
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Medical Notes</label>
+                                    <textarea class="form-control" rows="3"
+                                              value="@(GetProfileValue(profId, fMed))"
+                                              @onchange="(e) => SetProfileValue(profId, fMed, e.Value?.ToString())"></textarea>
+                                </div>
+                                <button class="btn btn-success" @onclick="() => SaveParentProfile(profId)">Save Profile</button>
+                                @if (profileSaveMessages.ContainsKey(profId))
+                                {
+                                    <span class="text-success ms-2">@profileSaveMessages[profId]</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
             </div>
             }
         </div>
@@ -510,6 +589,11 @@ else
     private List<Practice> upcomingPractices = new();
     private List<PracticeRsvp> practiceRsvpList = new();
     private Dictionary<string, string> rsvpNotes = new();
+
+    // Profile state
+    private HashSet<int> expandedProfiles = new();
+    private Dictionary<int, Dictionary<string, string?>> profileEdits = new();
+    private Dictionary<int, string> profileSaveMessages = new();
 
     private List<Announcement> displayedAnnouncements =>
         announcements
@@ -773,6 +857,70 @@ else
             _ = NotificationService.NotifyItemChange(athlete.Name, item.Name, item.Cost, isChecked, balance);
             return;
         }
+        await LoadData();
+    }
+
+    private void ToggleProfileSection(int athleteId)
+    {
+        if (!expandedProfiles.Remove(athleteId))
+        {
+            expandedProfiles.Add(athleteId);
+            // Initialize profile edits from athlete data
+            var athlete = athletes.FirstOrDefault(a => a.Id == athleteId);
+            if (athlete != null && !profileEdits.ContainsKey(athleteId))
+            {
+                profileEdits[athleteId] = new Dictionary<string, string?>
+                {
+                    ["dob"] = athlete.DateOfBirth?.ToString("yyyy-MM-dd"),
+                    ["parentPhone"] = athlete.ParentPhone,
+                    ["address"] = athlete.Address,
+                    ["emergencyName"] = athlete.EmergencyContactName,
+                    ["emergencyPhone"] = athlete.EmergencyContactPhone,
+                    ["emergencyRelationship"] = athlete.EmergencyContactRelationship,
+                    ["medicalNotes"] = athlete.MedicalNotes
+                };
+            }
+        }
+    }
+
+    private string GetProfileValue(int athleteId, string field)
+    {
+        if (profileEdits.TryGetValue(athleteId, out var edits) && edits.TryGetValue(field, out var val))
+            return val ?? "";
+        return "";
+    }
+
+    private void SetProfileValue(int athleteId, string field, string? value)
+    {
+        if (!profileEdits.ContainsKey(athleteId))
+            profileEdits[athleteId] = new Dictionary<string, string?>();
+        profileEdits[athleteId][field] = value;
+    }
+
+    private async Task SaveParentProfile(int athleteId)
+    {
+        profileSaveMessages.Remove(athleteId);
+        if (!profileEdits.TryGetValue(athleteId, out var edits)) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Athletes.FindAsync(athleteId);
+        if (entity == null) return;
+
+        if (edits.TryGetValue("dob", out var dobStr) && DateTime.TryParse(dobStr, out var dob))
+            entity.DateOfBirth = dob;
+        else if (string.IsNullOrEmpty(dobStr))
+            entity.DateOfBirth = null;
+
+        entity.ParentPhone = edits.GetValueOrDefault("parentPhone");
+        entity.Address = edits.GetValueOrDefault("address");
+        entity.EmergencyContactName = edits.GetValueOrDefault("emergencyName");
+        entity.EmergencyContactPhone = edits.GetValueOrDefault("emergencyPhone");
+        entity.EmergencyContactRelationship = edits.GetValueOrDefault("emergencyRelationship");
+        entity.MedicalNotes = edits.GetValueOrDefault("medicalNotes");
+        entity.ModifiedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        profileSaveMessages[athleteId] = "Profile saved!";
         await LoadData();
     }
 

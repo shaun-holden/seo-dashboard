@@ -16,6 +16,28 @@ namespace GymBudgetApp.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime ModifiedAt { get; set; } = DateTime.UtcNow;
 
+        public DateTime? DateOfBirth { get; set; }
+
+        [StringLength(200)]
+        public string? ParentPhone { get; set; }
+
+        [StringLength(500)]
+        public string? Address { get; set; }
+
+        // Emergency Contact
+        [StringLength(100)]
+        public string? EmergencyContactName { get; set; }
+
+        [StringLength(50)]
+        public string? EmergencyContactPhone { get; set; }
+
+        [StringLength(100)]
+        public string? EmergencyContactRelationship { get; set; }
+
+        // Medical Info
+        [StringLength(1000)]
+        public string? MedicalNotes { get; set; } // Allergies, conditions, medications
+
         public ICollection<AthleteItemSelection> ItemSelections { get; set; } = new List<AthleteItemSelection>();
     }
 
