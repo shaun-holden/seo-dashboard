@@ -1,6 +1,6 @@
-# GymBudgetApp
+# GymHub
 
-A budget tracking application for gymnastics programs and other project types. Track revenue, expenses, payroll, and financial metrics across seasons.
+A complete team management platform for gymnastics programs. Budget tracking, parent portal with payments, team communication, scheduling, RSVP, athlete profiles, and more.
 
 ## Features
 

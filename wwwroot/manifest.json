@@ -1,6 +1,6 @@
 {
-    "name": "Top Notch Training",
-    "short_name": "TNT Gym",
+    "name": "GymHub",
+    "short_name": "GymHub",
     "start_url": "/parent",
     "display": "standalone",
     "background_color": "#1a6b3c",
