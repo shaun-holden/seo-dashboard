@@ -17,6 +17,22 @@
 }
 else
 {
+    <!-- Database Backup -->
+    <div class="card mb-4">
+        <div class="card-header"><strong>Database Backup</strong></div>
+        <div class="card-body">
+            <p class="text-muted mb-2">Auto-backup runs daily. Last 7 days are kept.</p>
+            <div class="d-flex gap-2">
+                <a href="/api/backup/download" class="btn btn-primary">
+                    <span class="oi oi-data-transfer-download me-1"></span> Download Backup
+                </a>
+                <button class="btn btn-outline-secondary" @onclick="TriggerBackup">
+                    <span class="oi oi-reload me-1"></span> Create Backup Now
+                </button>
+            </div>
+        </div>
+    </div>
+
     @if (statusMessage != null)
     {
         <div class="alert @(statusIsError ? "alert-danger" : "alert-success") alert-dismissible mb-3">
@@ -370,6 +386,21 @@ else
             SetStatus(string.Join(" ", result.Errors.Select(e => e.Description)), true);
 
         isResetting = false;
+    }
+
+    [Inject] private GymBudgetApp.Services.BackupService BackupService { get; set; } = null!;
+
+    private void TriggerBackup()
+    {
+        try
+        {
+            BackupService.CreateBackup();
+            SetStatus("Backup created successfully.", false);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Backup failed: {ex.Message}", true);
+        }
     }
 
     private void SetStatus(string msg, bool isError)

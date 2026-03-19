@@ -13,6 +13,8 @@ builder.Services.AddServerSideBlazor();
 builder.Services.AddScoped<GymBudgetApp.Services.NotesPanelState>();
 builder.Services.AddScoped<GymBudgetApp.Services.PermissionService>();
 builder.Services.AddScoped<GymBudgetApp.Services.NotificationService>();
+builder.Services.AddSingleton<GymBudgetApp.Services.BackupService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<GymBudgetApp.Services.BackupService>());
 
 var dbFolder = Environment.GetEnvironmentVariable("DB_PATH")
     ?? Directory.GetCurrentDirectory();
@@ -162,6 +164,38 @@ async Task<IResult> HandleStripeWebhook(HttpContext context, AppDbContext db)
 
 app.MapPost("/api/stripe-webhook", HandleStripeWebhook).AllowAnonymous();
 app.MapPost("/stripe-webhook", HandleStripeWebhook).AllowAnonymous();
+
+// Admin backup download
+app.MapGet("/api/backup/download", async (HttpContext context) =>
+{
+    var adminEmail = app.Configuration["AdminEmail"] ?? "deshaun@tntgym.org";
+    var user = context.User;
+    var email = user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
+                ?? user.FindFirst("email")?.Value;
+    if (!string.Equals(email, adminEmail, StringComparison.OrdinalIgnoreCase))
+        return Results.Forbid();
+
+    var backupService = app.Services.GetRequiredService<GymBudgetApp.Services.BackupService>();
+    var dbPath = backupService.GetDbPath();
+    if (!File.Exists(dbPath)) return Results.NotFound();
+
+    var bytes = await File.ReadAllBytesAsync(dbPath);
+    return Results.File(bytes, "application/octet-stream", $"gymbudget-backup-{DateTime.UtcNow:yyyy-MM-dd}.db");
+}).RequireAuthorization();
+
+// Admin trigger manual backup
+app.MapPost("/api/backup/create", (HttpContext context) =>
+{
+    var adminEmail = app.Configuration["AdminEmail"] ?? "deshaun@tntgym.org";
+    var email = context.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
+                ?? context.User.FindFirst("email")?.Value;
+    if (!string.Equals(email, adminEmail, StringComparison.OrdinalIgnoreCase))
+        return Results.Forbid();
+
+    var backupService = app.Services.GetRequiredService<GymBudgetApp.Services.BackupService>();
+    backupService.CreateBackup();
+    return Results.Ok("Backup created");
+}).RequireAuthorization();
 
 app.MapFallbackToPage("/_Host");
 
