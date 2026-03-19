@@ -10,6 +10,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IConfiguration Configuration
 @inject NavigationManager Navigation
+@inject GymBudgetApp.Services.NotificationService NotificationService
 
 <h3>My Athletes</h3>
 
@@ -254,6 +255,32 @@ else
                         </div>
                     </div>
                 }
+                    <!-- Auto-Pay -->
+                    @{
+                        var athleteLink = parentLinksData.FirstOrDefault(pl => pl.AthleteId == athlete.Id);
+                    }
+                    @if (athleteLink != null && balance > 0)
+                    {
+                        <div class="mt-2">
+                            @if (athleteLink.AutoPayEnabled)
+                            {
+                                <div class="alert alert-success py-2 mb-0 d-flex justify-content-between align-items-center">
+                                    <span>Auto-Pay is <strong>enabled</strong> — $@monthlyAmount.ToString("N2") on the 15th monthly</span>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DisableAutoPay(athlete.Id)" disabled="@isProcessing">
+                                        Disable Auto-Pay
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <button class="btn btn-outline-primary w-100" @onclick="() => EnableAutoPay(athlete, monthlyAmount)" disabled="@isProcessing">
+                                    @if (isProcessing) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                    Enable Auto-Pay ($@monthlyAmount.ToString("N2")/month on the 15th)
+                                </button>
+                            }
+                        </div>
+                    }
+                }
                 else if (balance > 0 && !stripeEnabled)
                 {
                     <div class="alert alert-info mb-0">
@@ -358,6 +385,7 @@ else
     private string? paymentError;
     private bool stripeEnabled;
     private Dictionary<int, decimal> customAmounts = new();
+    private List<ParentLink> parentLinksData = new();
 
     private void ToggleAthlete(int athleteId)
     {
@@ -371,6 +399,8 @@ else
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? authState.User.FindFirst("email")?.Value;
 
         var stripeKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY")
             ?? Configuration["Stripe:SecretKey"] ?? "";
@@ -406,11 +436,16 @@ else
             try
             {
                 var session = await sessionService.GetAsync(payment.StripeSessionId);
-                if (session.PaymentStatus == "paid")
+                if (session.PaymentStatus == "paid" && payment.Status != PaymentStatus.Paid)
                 {
                     payment.Status = PaymentStatus.Paid;
                     payment.PaidAt = DateTime.UtcNow;
                     payment.StripePaymentIntentId = session.PaymentIntentId;
+
+                    // Notify on payment
+                    var athlete = athletes.FirstOrDefault(a => a.Id == payment.AthleteId);
+                    if (athlete != null)
+                        _ = NotificationService.NotifyPayment(athlete.Name, payment.Amount, 0);
                 }
             }
             catch
@@ -460,6 +495,7 @@ else
         athleteItems = await db.AthleteItems.AsNoTracking().Where(i => levelIds.Contains(i.TeamLevelId)).ToListAsync();
         selections = await db.AthleteItemSelections.AsNoTracking().Where(s => athleteIds.Contains(s.AthleteId)).ToListAsync();
         payments = await db.Payments.AsNoTracking().Where(p => athleteIds.Contains(p.AthleteId)).ToListAsync();
+        parentLinksData = await db.ParentLinks.AsNoTracking().Where(pl => pl.ParentUserId == userId && pl.IsClaimed).ToListAsync();
 
         // Load seasons and shared fees
         var seasonIds = teamLevels.Select(t => t.SeasonId).Distinct().ToList();
@@ -498,6 +534,25 @@ else
             if (existing != null) db.AthleteItemSelections.Remove(existing);
         }
         await db.SaveChangesAsync();
+
+        // Send notification email
+        var athlete = await db.Athletes.FindAsync(athleteId);
+        var item = await db.AthleteItems.FindAsync(itemId);
+        if (athlete != null && item != null)
+        {
+            await LoadData();
+            var levelItems = athleteItems.Where(i => i.TeamLevelId == athlete.TeamLevelId).ToList();
+            var reqCost = levelItems.Where(i => i.IsRequired).Sum(i => i.Cost);
+            var selIds = selections.Where(s => s.AthleteId == athleteId).Select(s => s.AthleteItemId).ToHashSet();
+            var optCost = levelItems.Where(i => !i.IsRequired && selIds.Contains(i.Id)).Sum(i => i.Cost);
+            var sharedCost = GetSharedFeeCostPerAthlete(athlete.TeamLevelId);
+            var totalCost = reqCost + optCost + sharedCost;
+            var paid = payments.Where(p => p.AthleteId == athleteId && p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment).Sum(p => p.Amount);
+            var credits = payments.Where(p => p.AthleteId == athleteId && p.Type == PaymentType.Credit).Sum(p => p.Amount);
+            var balance = totalCost - paid - credits;
+            _ = NotificationService.NotifyItemChange(athlete.Name, item.Name, item.Cost, isChecked, balance);
+            return;
+        }
         await LoadData();
     }
 
@@ -526,6 +581,127 @@ else
         }
         return total;
     }
+
+    private async Task EnableAutoPay(Athlete athlete, decimal monthlyAmount)
+    {
+        paymentError = null;
+        isProcessing = true;
+
+        try
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            var link = await db.ParentLinks.FirstOrDefaultAsync(pl => pl.AthleteId == athlete.Id && pl.ParentUserId == userId);
+            if (link == null) { isProcessing = false; return; }
+
+            var levelName = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "Program";
+
+            // Create Stripe Customer if not exists
+            if (string.IsNullOrEmpty(link.StripeCustomerId))
+            {
+                var customerService = new Stripe.CustomerService();
+                var customer = await customerService.CreateAsync(new Stripe.CustomerCreateOptions
+                {
+                    Email = userEmail,
+                    Name = athlete.Name,
+                    Metadata = new Dictionary<string, string> { { "athleteId", athlete.Id.ToString() } }
+                });
+                link.StripeCustomerId = customer.Id;
+                await db.SaveChangesAsync();
+            }
+
+            // Create Stripe Checkout in subscription mode
+            var options = new Stripe.Checkout.SessionCreateOptions
+            {
+                Customer = link.StripeCustomerId,
+                PaymentMethodTypes = new List<string> { "card" },
+                LineItems = new List<Stripe.Checkout.SessionLineItemOptions>
+                {
+                    new()
+                    {
+                        PriceData = new Stripe.Checkout.SessionLineItemPriceDataOptions
+                        {
+                            UnitAmount = (long)(monthlyAmount * 100),
+                            Currency = "usd",
+                            Recurring = new Stripe.Checkout.SessionLineItemPriceDataRecurringOptions
+                            {
+                                Interval = "month",
+                            },
+                            ProductData = new Stripe.Checkout.SessionLineItemPriceDataProductDataOptions
+                            {
+                                Name = $"{athlete.Name} - {levelName} Monthly Auto-Pay",
+                            },
+                        },
+                        Quantity = 1,
+                    },
+                },
+                Mode = "subscription",
+                SuccessUrl = Navigation.BaseUri + "parent?autopay=enabled",
+                CancelUrl = Navigation.BaseUri + "parent?autopay=cancelled",
+                SubscriptionData = new Stripe.Checkout.SessionSubscriptionDataOptions
+                {
+                    BillingCycleAnchor = GetNext15th(),
+                },
+            };
+
+            var service = new Stripe.Checkout.SessionService();
+            var session = await service.CreateAsync(options);
+
+            link.AutoPayEnabled = true;
+            link.StripeSubscriptionId = session.SubscriptionId ?? session.Id;
+            await db.SaveChangesAsync();
+
+            _ = NotificationService.NotifyAutoPayEnabled(athlete.Name, userEmail ?? "", monthlyAmount);
+
+            Navigation.NavigateTo(session.Url, forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            paymentError = $"Auto-pay error: {ex.Message}";
+            isProcessing = false;
+        }
+    }
+
+    private async Task DisableAutoPay(int athleteId)
+    {
+        isProcessing = true;
+        try
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            var link = await db.ParentLinks.FirstOrDefaultAsync(pl => pl.AthleteId == athleteId && pl.ParentUserId == userId);
+            if (link == null) { isProcessing = false; return; }
+
+            // Cancel Stripe subscription
+            if (!string.IsNullOrEmpty(link.StripeSubscriptionId))
+            {
+                try
+                {
+                    var subService = new Stripe.SubscriptionService();
+                    await subService.CancelAsync(link.StripeSubscriptionId);
+                }
+                catch { /* Subscription may already be cancelled */ }
+            }
+
+            link.AutoPayEnabled = false;
+            link.StripeSubscriptionId = null;
+            await db.SaveChangesAsync();
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            paymentError = $"Error disabling auto-pay: {ex.Message}";
+        }
+        isProcessing = false;
+    }
+
+    private DateTime GetNext15th()
+    {
+        var now = DateTime.UtcNow;
+        var next15 = new DateTime(now.Year, now.Month, 15, 0, 0, 0, DateTimeKind.Utc);
+        if (now.Day >= 15) next15 = next15.AddMonths(1);
+        return next15;
+    }
+
+    private string? userEmail;
 
     private async Task StartPayment(Athlete athlete, decimal amount)
     {

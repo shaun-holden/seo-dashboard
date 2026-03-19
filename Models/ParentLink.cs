@@ -17,6 +17,11 @@ namespace GymBudgetApp.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? ClaimedAt { get; set; }
 
+        // Auto-pay
+        public bool AutoPayEnabled { get; set; }
+        public string? StripeCustomerId { get; set; }
+        public string? StripeSubscriptionId { get; set; }
+
         public static string GenerateCode()
         {
             const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

@@ -12,6 +12,7 @@ builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddScoped<GymBudgetApp.Services.NotesPanelState>();
 builder.Services.AddScoped<GymBudgetApp.Services.PermissionService>();
+builder.Services.AddScoped<GymBudgetApp.Services.NotificationService>();
 
 var dbFolder = Environment.GetEnvironmentVariable("DB_PATH")
     ?? Directory.GetCurrentDirectory();
@@ -104,12 +105,21 @@ async Task<IResult> HandleStripeWebhook(HttpContext context, AppDbContext db)
             {
                 var payment = db.Set<GymBudgetApp.Models.Payment>()
                     .FirstOrDefault(p => p.StripeSessionId == session.Id);
-                if (payment != null)
+                if (payment != null && payment.Status != GymBudgetApp.Models.PaymentStatus.Paid)
                 {
                     payment.Status = GymBudgetApp.Models.PaymentStatus.Paid;
                     payment.StripePaymentIntentId = session.PaymentIntentId;
                     payment.PaidAt = DateTime.UtcNow;
                     await db.SaveChangesAsync();
+
+                    // Send payment notification
+                    var athlete = await db.Athletes.FindAsync(payment.AthleteId);
+                    if (athlete != null)
+                    {
+                        using var scope = app.Services.CreateScope();
+                        var notifier = scope.ServiceProvider.GetRequiredService<GymBudgetApp.Services.NotificationService>();
+                        await notifier.NotifyPayment(athlete.Name, payment.Amount, 0);
+                    }
                 }
             }
         }
