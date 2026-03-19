@@ -1,0 +1,194 @@
+@page "/parent/schedule"
+@attribute [Authorize]
+@layout GymBudgetApp.Shared.ParentLayout
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h3>Schedule</h3>
+
+@if (loading)
+{
+    <p>Loading...</p>
+}
+else if (!upcomingMeets.Any() && !upcomingPractices.Any())
+{
+    <div class="text-center py-5 text-muted">No upcoming events.</div>
+}
+else
+{
+    @if (upcomingMeets.Any())
+    {
+        <h5>Upcoming Meets</h5>
+        @foreach (var meet in upcomingMeets)
+        {
+            var daysUntil = (meet.Date - DateTime.Today).Days;
+            var rsvp = meetRsvps.FirstOrDefault(r => r.MeetId == meet.Id);
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="mb-1">@meet.Name</h6>
+                            <small class="text-muted">@meet.Date.ToString("dddd, MMMM d, yyyy") — @daysUntil day(s) away</small>
+                        </div>
+                        <span class="badge bg-@(meet.TravelType == TravelType.Fly ? "info" : "secondary")">@meet.TravelType</span>
+                    </div>
+                    <div class="mt-2 d-flex gap-2 flex-wrap align-items-center">
+                        <span class="text-muted me-2">RSVP:</span>
+                        @foreach (var athleteId in athleteIds)
+                        {
+                            var aid = athleteId;
+                            var athleteRsvp = meetRsvps.FirstOrDefault(r => r.MeetId == meet.Id && r.AthleteId == aid);
+                            var currentStatus = athleteRsvp?.Status ?? RsvpStatus.NoResponse;
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn @(currentStatus == RsvpStatus.Going ? "btn-success" : "btn-outline-success")"
+                                        @onclick="() => SetMeetRsvp(meet.Id, aid, RsvpStatus.Going)">Going</button>
+                                <button class="btn @(currentStatus == RsvpStatus.Maybe ? "btn-warning" : "btn-outline-warning")"
+                                        @onclick="() => SetMeetRsvp(meet.Id, aid, RsvpStatus.Maybe)">Maybe</button>
+                                <button class="btn @(currentStatus == RsvpStatus.NotGoing ? "btn-danger" : "btn-outline-danger")"
+                                        @onclick="() => SetMeetRsvp(meet.Id, aid, RsvpStatus.NotGoing)">Not Going</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
+    @if (upcomingPractices.Any())
+    {
+        <h5 class="mt-4">Upcoming Practices</h5>
+        @foreach (var practice in upcomingPractices)
+        {
+            var daysUntil = (practice.Date - DateTime.Today).Days;
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="mb-1">@practice.Name</h6>
+                            <small class="text-muted">@practice.Date.ToString("dddd, MMMM d, yyyy")</small>
+                            @if (!string.IsNullOrEmpty(practice.StartTime))
+                            {
+                                <small class="text-muted"> — @practice.StartTime to @practice.EndTime</small>
+                            }
+                        </div>
+                        <small class="text-muted">@daysUntil day(s) away</small>
+                    </div>
+                    @if (!string.IsNullOrEmpty(practice.Location))
+                    {
+                        <small class="text-muted d-block">@practice.Location</small>
+                    }
+                    <div class="mt-2 d-flex gap-2 flex-wrap align-items-center">
+                        <span class="text-muted me-2">RSVP:</span>
+                        @foreach (var athleteId in athleteIds)
+                        {
+                            var aid = athleteId;
+                            var practiceRsvp = practiceRsvps.FirstOrDefault(r => r.PracticeId == practice.Id && r.AthleteId == aid);
+                            var currentStatus = practiceRsvp?.Status ?? RsvpStatus.NoResponse;
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn @(currentStatus == RsvpStatus.Going ? "btn-success" : "btn-outline-success")"
+                                        @onclick="() => SetPracticeRsvp(practice.Id, aid, RsvpStatus.Going)">Going</button>
+                                <button class="btn @(currentStatus == RsvpStatus.Maybe ? "btn-warning" : "btn-outline-warning")"
+                                        @onclick="() => SetPracticeRsvp(practice.Id, aid, RsvpStatus.Maybe)">Maybe</button>
+                                <button class="btn @(currentStatus == RsvpStatus.NotGoing ? "btn-danger" : "btn-outline-danger")"
+                                        @onclick="() => SetPracticeRsvp(practice.Id, aid, RsvpStatus.NotGoing)">Not Going</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    }
+}
+
+@code {
+    private bool loading = true;
+    private string? userId;
+    private List<int> athleteIds = new();
+    private List<Meet> upcomingMeets = new();
+    private List<Practice> upcomingPractices = new();
+    private List<EventRsvp> meetRsvps = new();
+    private List<PracticeRsvp> practiceRsvps = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        await LoadData();
+        loading = false;
+    }
+
+    private async Task LoadData()
+    {
+        if (userId == null) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var parentLinks = await db.ParentLinks.AsNoTracking()
+            .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
+            .ToListAsync();
+        athleteIds = parentLinks.Select(l => l.AthleteId).ToList();
+        var athletes = await db.Athletes.AsNoTracking().Where(a => athleteIds.Contains(a.Id)).ToListAsync();
+        var levelIds = athletes.Select(a => a.TeamLevelId).Distinct().ToList();
+        var teamLevels = await db.TeamLevels.AsNoTracking().Where(t => levelIds.Contains(t.Id)).ToListAsync();
+        var seasonIds = teamLevels.Select(t => t.SeasonId).Distinct().ToList();
+
+        // Meets
+        var meetLevelAssignments = await db.MeetTeamLevelAssignments.AsNoTracking()
+            .Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
+        var meetIds = meetLevelAssignments.Select(a => a.MeetId).Distinct().ToList();
+        upcomingMeets = await db.Meets.AsNoTracking()
+            .Where(m => meetIds.Contains(m.Id) && m.Date >= DateTime.Today)
+            .OrderBy(m => m.Date).ToListAsync();
+
+        meetRsvps = await db.EventRsvps.AsNoTracking()
+            .Where(r => athleteIds.Contains(r.AthleteId) && r.ParentUserId == userId)
+            .ToListAsync();
+
+        // Practices
+        upcomingPractices = await db.Practices.AsNoTracking()
+            .Where(p => seasonIds.Contains(p.SeasonId) && p.Date >= DateTime.Today
+                        && (p.TeamLevelId == null || levelIds.Contains(p.TeamLevelId.Value)))
+            .OrderBy(p => p.Date).ToListAsync();
+
+        practiceRsvps = await db.PracticeRsvps.AsNoTracking()
+            .Where(r => athleteIds.Contains(r.AthleteId) && r.ParentUserId == userId)
+            .ToListAsync();
+    }
+
+    private async Task SetMeetRsvp(int meetId, int athleteId, RsvpStatus status)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.EventRsvps.FirstOrDefaultAsync(r => r.MeetId == meetId && r.AthleteId == athleteId && r.ParentUserId == userId);
+        if (existing != null)
+        {
+            existing.Status = status;
+            existing.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            db.EventRsvps.Add(new EventRsvp { MeetId = meetId, AthleteId = athleteId, ParentUserId = userId!, Status = status });
+        }
+        await db.SaveChangesAsync();
+        await LoadData();
+    }
+
+    private async Task SetPracticeRsvp(int practiceId, int athleteId, RsvpStatus status)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.PracticeRsvps.FirstOrDefaultAsync(r => r.PracticeId == practiceId && r.AthleteId == athleteId && r.ParentUserId == userId);
+        if (existing != null)
+        {
+            existing.Status = status;
+            existing.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            db.PracticeRsvps.Add(new PracticeRsvp { PracticeId = practiceId, AthleteId = athleteId, ParentUserId = userId!, Status = status });
+        }
+        await db.SaveChangesAsync();
+        await LoadData();
+    }
+}

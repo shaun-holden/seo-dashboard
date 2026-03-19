@@ -1,0 +1,323 @@
+@page "/parent/calendar"
+@attribute [Authorize]
+@layout GymBudgetApp.Shared.ParentLayout
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h3>Calendar</h3>
+
+@if (loading)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <button class="btn btn-outline-secondary btn-sm" @onclick="PrevMonth">&laquo; Previous</button>
+        <h5 class="mb-0">@currentDate.ToString("MMMM yyyy")</h5>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="NextMonth">Next &raquo;</button>
+    </div>
+
+    <div class="mb-2">
+        <span class="badge bg-primary me-2">Meet</span>
+        <span class="badge bg-success me-2">Practice</span>
+        <span class="badge bg-warning text-dark me-2">Payment Due</span>
+        <span class="ms-3 text-muted small">RSVP:</span>
+        <span class="ms-1" style="color:green;" title="Going">&#9679;</span>
+        <span class="ms-1" style="color:orange;" title="Maybe">&#9679;</span>
+        <span class="ms-1" style="color:red;" title="Not Going">&#9679;</span>
+    </div>
+
+    <table class="calendar-grid">
+        <thead>
+            <tr>
+                <th>Sun</th>
+                <th>Mon</th>
+                <th>Tue</th>
+                <th>Wed</th>
+                <th>Thu</th>
+                <th>Fri</th>
+                <th>Sat</th>
+            </tr>
+        </thead>
+        <tbody>
+            @for (int week = 0; week < calendarWeeks.Count; week++)
+            {
+                var weekDays = calendarWeeks[week];
+                <tr>
+                    @for (int d = 0; d < 7; d++)
+                    {
+                        var day = weekDays[d];
+                        var isToday = day.Date == DateTime.Today;
+                        var isOtherMonth = day.Month != currentDate.Month;
+                        var isSelected = day == selectedDay;
+                        var cssClass = (isToday ? "today " : "") + (isOtherMonth ? "other-month " : "") + (isSelected ? "selected " : "");
+                        var eventsForDay = GetEventsForDay(day);
+                        <td class="@cssClass" @onclick="() => SelectDay(day)">
+                            <div class="calendar-day-num">@day.Day</div>
+                            @foreach (var evt in eventsForDay)
+                            {
+                                <span class="calendar-event @evt.CssClass" title="@evt.Name">
+                                    @evt.Name
+                                    @if (!string.IsNullOrEmpty(evt.RsvpDot))
+                                    {
+                                        <span style="color:@evt.RsvpDot;">&#9679;</span>
+                                    }
+                                </span>
+                            }
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    @if (selectedDay != default)
+    {
+        var selectedEvents = GetEventsForDay(selectedDay);
+        <div class="card mt-3">
+            <div class="card-header">
+                <strong>@selectedDay.ToString("dddd, MMMM d, yyyy")</strong>
+            </div>
+            <div class="card-body">
+                @if (!selectedEvents.Any())
+                {
+                    <p class="text-muted mb-0">No events on this day.</p>
+                }
+                else
+                {
+                    @foreach (var evt in selectedEvents)
+                    {
+                        <div class="mb-2">
+                            <span class="badge bg-@evt.BadgeColor me-2">@evt.Type</span>
+                            <strong>@evt.Name</strong>
+                            @if (!string.IsNullOrEmpty(evt.Detail))
+                            {
+                                <small class="text-muted ms-2">@evt.Detail</small>
+                            }
+                            @if (!string.IsNullOrEmpty(evt.RsvpLabel))
+                            {
+                                <span class="ms-2 small text-muted">RSVP: @evt.RsvpLabel</span>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool loading = true;
+    private string? userId;
+    private DateTime currentDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime selectedDay;
+    private List<int> athleteIds = new();
+    private List<int> levelIds = new();
+    private List<int> seasonIds = new();
+    private List<Meet> meets = new();
+    private List<Practice> practices = new();
+    private List<EventRsvp> meetRsvps = new();
+    private List<PracticeRsvp> practiceRsvps = new();
+    private List<List<DateTime>> calendarWeeks = new();
+    private List<CalendarEvent> allEvents = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        await LoadData();
+        BuildCalendar();
+        BuildEvents();
+        loading = false;
+    }
+
+    private async Task LoadData()
+    {
+        if (userId == null) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var parentLinks = await db.ParentLinks.AsNoTracking()
+            .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
+            .ToListAsync();
+        athleteIds = parentLinks.Select(l => l.AthleteId).ToList();
+        var athletes = await db.Athletes.AsNoTracking().Where(a => athleteIds.Contains(a.Id)).ToListAsync();
+        levelIds = athletes.Select(a => a.TeamLevelId).Distinct().ToList();
+        var teamLevels = await db.TeamLevels.AsNoTracking().Where(t => levelIds.Contains(t.Id)).ToListAsync();
+        seasonIds = teamLevels.Select(t => t.SeasonId).Distinct().ToList();
+
+        // Meets assigned to athlete's levels
+        var meetLevelAssignments = await db.MeetTeamLevelAssignments.AsNoTracking()
+            .Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
+        var meetIds = meetLevelAssignments.Select(a => a.MeetId).Distinct().ToList();
+        meets = await db.Meets.AsNoTracking()
+            .Where(m => meetIds.Contains(m.Id))
+            .ToListAsync();
+
+        meetRsvps = await db.EventRsvps.AsNoTracking()
+            .Where(r => athleteIds.Contains(r.AthleteId) && r.ParentUserId == userId)
+            .ToListAsync();
+
+        // Practices for athlete's levels/seasons
+        practices = await db.Practices.AsNoTracking()
+            .Where(p => seasonIds.Contains(p.SeasonId)
+                        && (p.TeamLevelId == null || levelIds.Contains(p.TeamLevelId.Value)))
+            .ToListAsync();
+
+        practiceRsvps = await db.PracticeRsvps.AsNoTracking()
+            .Where(r => athleteIds.Contains(r.AthleteId) && r.ParentUserId == userId)
+            .ToListAsync();
+    }
+
+    private void BuildCalendar()
+    {
+        calendarWeeks = new List<List<DateTime>>();
+        var firstDay = new DateTime(currentDate.Year, currentDate.Month, 1);
+        var startDate = firstDay.AddDays(-(int)firstDay.DayOfWeek);
+        var daysInMonth = DateTime.DaysInMonth(currentDate.Year, currentDate.Month);
+        var lastDay = new DateTime(currentDate.Year, currentDate.Month, daysInMonth);
+        var endDate = lastDay.AddDays(6 - (int)lastDay.DayOfWeek);
+
+        var date = startDate;
+        while (date <= endDate)
+        {
+            var week = new List<DateTime>();
+            for (int i = 0; i < 7; i++)
+            {
+                week.Add(date);
+                date = date.AddDays(1);
+            }
+            calendarWeeks.Add(week);
+        }
+    }
+
+    private void BuildEvents()
+    {
+        allEvents = new List<CalendarEvent>();
+        foreach (var meet in meets)
+        {
+            var rsvp = meetRsvps.FirstOrDefault(r => r.MeetId == meet.Id);
+            var rsvpStatus = rsvp?.Status ?? RsvpStatus.NoResponse;
+            allEvents.Add(new CalendarEvent
+            {
+                Date = meet.Date.Date,
+                Name = meet.Name,
+                Type = "Meet",
+                CssClass = "meet",
+                BadgeColor = "primary",
+                Detail = meet.TravelType.ToString(),
+                RsvpDot = GetRsvpDotColor(rsvpStatus),
+                RsvpLabel = GetRsvpLabel(rsvpStatus)
+            });
+        }
+        foreach (var practice in practices)
+        {
+            var rsvp = practiceRsvps.FirstOrDefault(r => r.PracticeId == practice.Id);
+            var rsvpStatus = rsvp?.Status ?? RsvpStatus.NoResponse;
+            var detail = "";
+            if (!string.IsNullOrEmpty(practice.StartTime))
+            {
+                detail = $"{practice.StartTime} - {practice.EndTime}";
+            }
+            allEvents.Add(new CalendarEvent
+            {
+                Date = practice.Date.Date,
+                Name = practice.Name,
+                Type = "Practice",
+                CssClass = "practice",
+                BadgeColor = "success",
+                Detail = detail,
+                RsvpDot = GetRsvpDotColor(rsvpStatus),
+                RsvpLabel = GetRsvpLabel(rsvpStatus)
+            });
+        }
+
+        // Payment due dates on the 15th
+        var monthsWithEvents = meets.Select(m => new DateTime(m.Date.Year, m.Date.Month, 1))
+            .Union(practices.Select(p => new DateTime(p.Date.Year, p.Date.Month, 1)))
+            .Distinct()
+            .ToList();
+
+        var displayMonth = new DateTime(currentDate.Year, currentDate.Month, 1);
+        if (!monthsWithEvents.Contains(displayMonth))
+        {
+            monthsWithEvents.Add(displayMonth);
+        }
+
+        foreach (var month in monthsWithEvents)
+        {
+            var paymentDate = new DateTime(month.Year, month.Month, 15);
+            allEvents.Add(new CalendarEvent
+            {
+                Date = paymentDate,
+                Name = "Payment Due",
+                Type = "Payment",
+                CssClass = "payment",
+                BadgeColor = "warning",
+                Detail = ""
+            });
+        }
+    }
+
+    private string GetRsvpDotColor(RsvpStatus status)
+    {
+        return status switch
+        {
+            RsvpStatus.Going => "green",
+            RsvpStatus.Maybe => "orange",
+            RsvpStatus.NotGoing => "red",
+            _ => ""
+        };
+    }
+
+    private string GetRsvpLabel(RsvpStatus status)
+    {
+        return status switch
+        {
+            RsvpStatus.Going => "Going",
+            RsvpStatus.Maybe => "Maybe",
+            RsvpStatus.NotGoing => "Not Going",
+            _ => ""
+        };
+    }
+
+    private List<CalendarEvent> GetEventsForDay(DateTime day)
+    {
+        return allEvents.Where(e => e.Date == day.Date).ToList();
+    }
+
+    private void SelectDay(DateTime day)
+    {
+        selectedDay = day;
+    }
+
+    private void PrevMonth()
+    {
+        currentDate = currentDate.AddMonths(-1);
+        BuildCalendar();
+        BuildEvents();
+    }
+
+    private void NextMonth()
+    {
+        currentDate = currentDate.AddMonths(1);
+        BuildCalendar();
+        BuildEvents();
+    }
+
+    private class CalendarEvent
+    {
+        public DateTime Date { get; set; }
+        public string Name { get; set; } = "";
+        public string Type { get; set; } = "";
+        public string CssClass { get; set; } = "";
+        public string BadgeColor { get; set; } = "";
+        public string Detail { get; set; } = "";
+        public string RsvpDot { get; set; } = "";
+        public string RsvpLabel { get; set; } = "";
+    }
+}

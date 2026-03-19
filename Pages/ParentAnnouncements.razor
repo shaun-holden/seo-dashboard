@@ -1,0 +1,115 @@
+@page "/parent/announcements"
+@attribute [Authorize]
+@layout GymBudgetApp.Shared.ParentLayout
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h3>Announcements</h3>
+
+@if (loading)
+{
+    <p>Loading...</p>
+}
+else if (!announcements.Any())
+{
+    <div class="text-center py-5 text-muted">No announcements yet.</div>
+}
+else
+{
+    @foreach (var a in announcements)
+    {
+        var isNew = !readIds.Contains(a.Id);
+        <div class="card mb-3 @(a.IsPinned ? "border-warning" : "")">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        @if (a.IsPinned)
+                        {
+                            <span class="oi oi-pin text-warning me-1"></span>
+                        }
+                        @if (isNew)
+                        {
+                            <span class="badge bg-danger me-1">New</span>
+                        }
+                        <h5 class="d-inline">@a.Title</h5>
+                    </div>
+                    <small class="text-muted">@a.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy h:mm tt")</small>
+                </div>
+                @if (a.TeamLevelId.HasValue)
+                {
+                    var lvl = teamLevels.FirstOrDefault(t => t.Id == a.TeamLevelId);
+                    <span class="badge bg-primary me-1">@(lvl?.Name ?? "")</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary me-1">All Athletes</span>
+                }
+                <small class="text-muted">— @a.AuthorEmail</small>
+                <p class="mt-2 mb-0" style="white-space: pre-wrap;">@a.Content</p>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool loading = true;
+    private string? userId;
+    private List<Announcement> announcements = new();
+    private List<TeamLevel> teamLevels = new();
+    private HashSet<int> readIds = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        await LoadData();
+        loading = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && userId != null && announcements.Any())
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            var unread = announcements.Where(a => !readIds.Contains(a.Id)).ToList();
+            foreach (var a in unread)
+            {
+                if (!await db.AnnouncementReadReceipts.AnyAsync(r => r.AnnouncementId == a.Id && r.UserId == userId))
+                {
+                    db.AnnouncementReadReceipts.Add(new AnnouncementReadReceipt { AnnouncementId = a.Id, UserId = userId });
+                }
+            }
+            await db.SaveChangesAsync();
+        }
+    }
+
+    private async Task LoadData()
+    {
+        if (userId == null) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var parentLinks = await db.ParentLinks.AsNoTracking()
+            .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
+            .ToListAsync();
+        var athleteIds = parentLinks.Select(l => l.AthleteId).ToList();
+        var athletes = await db.Athletes.AsNoTracking().Where(a => athleteIds.Contains(a.Id)).ToListAsync();
+        var levelIds = athletes.Select(a => a.TeamLevelId).Distinct().ToList();
+        teamLevels = await db.TeamLevels.AsNoTracking().Where(t => levelIds.Contains(t.Id)).ToListAsync();
+        var seasonIds = teamLevels.Select(t => t.SeasonId).Distinct().ToList();
+
+        announcements = await db.Announcements.AsNoTracking()
+            .Where(a => seasonIds.Contains(a.SeasonId) && (a.TeamLevelId == null || levelIds.Contains(a.TeamLevelId.Value)))
+            .OrderByDescending(a => a.IsPinned)
+            .ThenByDescending(a => a.CreatedAt)
+            .ToListAsync();
+
+        readIds = (await db.AnnouncementReadReceipts.AsNoTracking()
+            .Where(r => r.UserId == userId)
+            .Select(r => r.AnnouncementId)
+            .ToListAsync()).ToHashSet();
+    }
+}
