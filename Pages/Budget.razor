@@ -32,6 +32,14 @@ else
     @if (selectedSeasonId > 0)
     {
         <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" @onclick="ExpandAll">
+                    <span class="oi oi-fullscreen-enter me-1"></span> Expand All
+                </button>
+                <button class="btn btn-outline-secondary" @onclick="CollapseAll">
+                    <span class="oi oi-fullscreen-exit me-1"></span> Collapse All
+                </button>
+            </div>
             @if (teamLevels.Count > 1)
             {
                 <select class="form-select" style="max-width: 200px;" value="@filterLevelId"
@@ -233,6 +241,20 @@ else
     {
         if (!expandedLevels.Remove(levelId))
             expandedLevels.Add(levelId);
+    }
+
+    private void ExpandAll()
+    {
+        showBudgetSharedFees = true;
+        expandedGroups = seasonGroups.Select(g => g.Id).ToHashSet();
+        expandedLevels = teamLevels.Select(t => t.Id).ToHashSet();
+    }
+
+    private void CollapseAll()
+    {
+        showBudgetSharedFees = false;
+        expandedGroups.Clear();
+        expandedLevels.Clear();
     }
 
     private List<TeamLevel> filteredTeamLevels

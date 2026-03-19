@@ -326,6 +326,12 @@ else if (activeTab == "compose")
                 CreatedAt = DateTime.UtcNow
             };
             db.Messages.Add(reply);
+
+            // Mark original as read
+            var origMsg = await db.Messages.FindAsync(original.Id);
+            if (origMsg != null && !origMsg.IsRead)
+                origMsg.IsRead = true;
+
             await db.SaveChangesAsync();
 
             replyingToId = null;
