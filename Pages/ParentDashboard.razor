@@ -104,7 +104,7 @@ else
                  @onclick="() => ToggleAthlete(athlete.Id)" style="cursor: pointer;">
                 <div>
                     <h5 class="mb-0 d-inline">@athlete.Name</h5>
-                    <span class="badge bg-primary ms-2">@(teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "")</span>
+                    <span class="badge bg-primary ms-2">@(teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? parentGymnasts.FirstOrDefault(g => g.Id == athlete.Id)?.Level ?? "")</span>
                     @if (balance <= 0)
                     {
                         <span class="badge bg-success ms-1">Paid in Full</span>
@@ -856,23 +856,31 @@ else
             .ToListAsync();
         var athleteIds = parentLinks.Select(l => l.AthleteId).ToList();
 
-        athletes = await db.Athletes.AsNoTracking()
-            .Where(a => athleteIds.Contains(a.Id))
-            .OrderBy(a => a.Name)
+        // Load from Gymnasts table and map to Athlete objects for compatibility
+        var gymnastRecords = await db.Gymnasts.AsNoTracking()
+            .Where(g => athleteIds.Contains(g.Id))
+            .OrderBy(g => g.Name)
             .ToListAsync();
 
-        var levelIds = athletes.Select(a => a.TeamLevelId).Distinct().ToList();
-        teamLevels = await db.TeamLevels.AsNoTracking().Where(t => levelIds.Contains(t.Id)).ToListAsync();
+        // Get team levels to map gymnast Level string to TeamLevelId
+        var allTeamLevels = await db.TeamLevels.AsNoTracking().ToListAsync();
+        athletes = gymnastRecords.Select(g => new Athlete
+        {
+            Id = g.Id,
+            Name = g.Name,
+            TeamLevelId = allTeamLevels.FirstOrDefault(t => t.Name == g.Level)?.Id ?? 0
+        }).ToList();
 
-        // Filter to only published seasons
-        var levelSeasonIds = teamLevels.Select(t => t.SeasonId).Distinct().ToList();
+        var levelIds = athletes.Select(a => a.TeamLevelId).Where(id => id > 0).Distinct().ToList();
+        teamLevels = allTeamLevels.Where(t => levelIds.Contains(t.Id)).ToList();
+
+        // Check for published seasons
         var publishedSeasonIds = await db.Seasons.AsNoTracking()
-            .Where(s => levelSeasonIds.Contains(s.Id) && s.IsPublished)
+            .Where(s => s.IsPublished)
             .Select(s => s.Id)
             .ToListAsync();
-        teamLevels = teamLevels.Where(t => publishedSeasonIds.Contains(t.SeasonId)).ToList();
 
-        if (!teamLevels.Any() && athletes.Any())
+        if (!publishedSeasonIds.Any() && athletes.Any())
         {
             budgetNotReady = true;
             return;
