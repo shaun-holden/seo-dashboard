@@ -87,14 +87,11 @@ else
 
     @foreach (var athlete in athletes)
     {
-        var levelItems = athleteItems.Where(i => i.TeamLevelId == athlete.TeamLevelId).ToList();
-        var requiredItems = levelItems.Where(i => i.IsRequired).ToList();
-        var optionalItems = levelItems.Where(i => !i.IsRequired).ToList();
-        var athleteSelections = selections.Where(s => s.AthleteId == athlete.Id).Select(s => s.AthleteItemId).ToHashSet();
-        var requiredCost = requiredItems.Sum(i => i.Cost);
-        var optionalCost = optionalItems.Where(i => athleteSelections.Contains(i.Id)).Sum(i => i.Cost);
-        var sharedFeeCost = GetSharedFeeCostPerAthlete(athlete.TeamLevelId);
-        var totalCost = requiredCost + optionalCost + sharedFeeCost;
+        var athleteLevel = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "";
+        var sharedFeeCost = parentCostPerGymnast;
+        var apparelCost = GetParentApparelCost(athlete.Id, athleteLevel);
+        var compCost = GetParentCompCost(athlete.Id, athleteLevel);
+        var totalCost = sharedFeeCost + apparelCost + compCost;
         var athletePayments = payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment).ToList();
         var athleteCredits = payments.Where(p => p.AthleteId == athlete.Id && p.Type == PaymentType.Credit).ToList();
         var totalPaid = athletePayments.Sum(p => p.Amount);
@@ -130,76 +127,74 @@ else
                         <tr><th>Item</th><th>Type</th><th class="text-end">Cost</th></tr>
                     </thead>
                     <tbody>
+                        <!-- Shared Fees (from budget calculator) -->
                         @if (sharedFeeCost > 0)
                         {
                             <tr>
-                                <td>
-                                    <input type="checkbox" class="form-check-input me-2" checked disabled />
-                                    Shared Fees
-                                </td>
-                                <td><span class="badge bg-secondary">Shared Fee</span></td>
+                                <td><input type="checkbox" class="form-check-input me-2" checked disabled /> Shared Fees</td>
+                                <td><span class="badge bg-secondary">Required</span></td>
                                 <td class="text-end">$@sharedFeeCost.ToString("N2")</td>
                             </tr>
                         }
-                        @foreach (var item in requiredItems)
+
+                        <!-- Apparel Items -->
+                        @foreach (var col in parentApparelColumns)
                         {
-                            <tr>
-                                <td>
-                                    <input type="checkbox" class="form-check-input me-2" checked disabled />
-                                    @item.Name
-                                </td>
-                                <td><span class="badge bg-success">Required</span></td>
-                                <td class="text-end">$@item.Cost.ToString("N2")</td>
-                            </tr>
-                        }
-                        @foreach (var item in optionalItems)
-                        {
-                            var itemId = item.Id;
-                            var athleteId = athlete.Id;
-                            var isSelected = athleteSelections.Contains(itemId);
-                            <tr class="@(isSelected ? "" : "table-secondary")">
-                                <td>
-                                    <input type="checkbox" class="form-check-input me-2" checked="@isSelected"
-                                           @onchange="(e) => ToggleSelection(athleteId, itemId, (bool)e.Value!)" />
-                                    @item.Name
-                                </td>
-                                <td><span class="badge bg-info">Optional</span></td>
-                                <td class="text-end">@(isSelected ? $"${item.Cost:N2}" : "—")</td>
-                            </tr>
-                        }
-                        @if (parentCompetitionItems.Any())
-                        {
-                            <tr class="table-light"><td colspan="3"><strong>Competitions</strong></td></tr>
-                        }
-                        @foreach (var comp in parentCompetitionItems)
-                        {
-                            var compApplies = DoesCompApplyToLevel(comp.Name, athlete);
-                            if (!compApplies) continue;
-                            var compPrice = GetCompPrice(comp.Name, athlete);
-                            var compId = comp.Id;
-                            var athId = athlete.Id;
-                            var compSelected = IsParentCompSelected(athlete.Id, comp.Name);
-                            if (comp.IsRequired)
+                            var appApplies = DoesApparelApplyToLevel(col.Name, athleteLevel);
+                            if (!appApplies) continue;
+                            var appPrice = GetApparelPrice(col.Name, athleteLevel);
+                            var appSelected = IsParentApparelSelected(athlete.Id, col.Name);
+                            var appAthId = athlete.Id;
+                            var appName = col.Name;
+                            if (col.IsRequired)
                             {
                                 <tr>
-                                    <td>
-                                        <input type="checkbox" class="form-check-input me-2" checked disabled />
-                                        @comp.Name
-                                    </td>
-                                    <td><span class="badge bg-danger">Required</span></td>
-                                    <td class="text-end">$@compPrice.ToString("N2")</td>
+                                    <td><input type="checkbox" class="form-check-input me-2" checked disabled /> @col.Name</td>
+                                    <td><span class="badge bg-success">Required</span></td>
+                                    <td class="text-end">$@appPrice.ToString("N2")</td>
                                 </tr>
                             }
                             else
                             {
-                                <tr class="@(compSelected ? "" : "table-secondary")">
+                                <tr class="@(appSelected ? "" : "table-secondary")">
                                     <td>
-                                        <input type="checkbox" class="form-check-input me-2" checked="@compSelected"
-                                               @onchange="(e) => ToggleCompSelection(athId, comp.Name, (bool)e.Value!)" />
-                                        @comp.Name
+                                        <input type="checkbox" class="form-check-input me-2" checked="@appSelected"
+                                               @onchange="(e) => ToggleApparelSelection(appAthId, appName, (bool)e.Value!)" />
+                                        @col.Name
                                     </td>
                                     <td><span class="badge bg-info">Optional</span></td>
-                                    <td class="text-end">@(compSelected ? $"${compPrice:N2}" : "—")</td>
+                                    <td class="text-end">@(appSelected ? $"${appPrice:N2}" : "—")</td>
+                                </tr>
+                            }
+                        }
+
+                        <!-- Competition Items -->
+                        @foreach (var col in parentCompColumns)
+                        {
+                            var compApplies2 = DoesCompApplyToLevel2(col.Name, athleteLevel);
+                            if (!compApplies2) continue;
+                            var compPrice2 = GetCompPrice2(col.Name, athleteLevel);
+                            var compSelected2 = IsParentCompSelected(athlete.Id, col.Name);
+                            var compAthId = athlete.Id;
+                            var compName = col.Name;
+                            if (col.IsRequired)
+                            {
+                                <tr>
+                                    <td><input type="checkbox" class="form-check-input me-2" checked disabled /> @col.Name</td>
+                                    <td><span class="badge bg-danger">Required</span></td>
+                                    <td class="text-end">$@compPrice2.ToString("N2")</td>
+                                </tr>
+                            }
+                            else
+                            {
+                                <tr class="@(compSelected2 ? "" : "table-secondary")">
+                                    <td>
+                                        <input type="checkbox" class="form-check-input me-2" checked="@compSelected2"
+                                               @onchange="(e) => ToggleCompSelection(compAthId, compName, (bool)e.Value!)" />
+                                        @col.Name
+                                    </td>
+                                    <td><span class="badge bg-info">Optional</span></td>
+                                    <td class="text-end">@(compSelected2 ? $"${compPrice2:N2}" : "—")</td>
                                 </tr>
                             }
                         }
@@ -252,8 +247,8 @@ else
                 </div>
 
                 @{
-                    var athleteLevel = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId);
-                    var planMonths = athleteLevel?.PaymentPlanMonths > 0 ? athleteLevel.PaymentPlanMonths : 8;
+                    var athleteLevelObj = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId);
+                    var planMonths = athleteLevelObj?.PaymentPlanMonths > 0 ? athleteLevelObj.PaymentPlanMonths : 8;
                     var monthlyAmount = Math.Round(balance / planMonths, 2);
                     var scheduleStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 15);
                     if (DateTime.Today.Day > 15) scheduleStart = scheduleStart.AddMonths(1);
@@ -655,6 +650,13 @@ else
     private Dictionary<int, DateTime> lastPaymentAttempt = new();
     private List<CompetitionItem> parentCompetitionItems = new();
     private List<GymnastCompetitionSelection> parentCompSelections = new();
+    private List<ApparelItem> parentApparelItems = new();
+    private List<GymnastApparelSelection> parentApparelSelections = new();
+    private decimal parentCostPerGymnast;
+
+    private record ParentItemCol(string Name, bool IsRequired);
+    private List<ParentItemCol> parentApparelColumns = new();
+    private List<ParentItemCol> parentCompColumns = new();
     private List<Announcement> announcements = new();
     private HashSet<int> readAnnouncementIds = new();
     private int announcementDisplayCount = 10;
@@ -892,11 +894,36 @@ else
             .Where(r => r.ParentUserId == userId && athleteIds.Contains(r.AthleteId))
             .ToListAsync();
 
+        // Load budget calculator cost per gymnast
+        var calcTotal = await db.BudgetCalculatorEntries.AsNoTracking()
+            .Where(e => seasonIds.Contains(e.SeasonId))
+            .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
+        var activeSeason = seasons.FirstOrDefault();
+        var athleteCount = activeSeason?.AthleteCount > 0 ? activeSeason.AthleteCount : athletes.Count;
+        parentCostPerGymnast = athleteCount > 0 ? Math.Round(calcTotal / athleteCount, 2) : 0;
+
+        // Load apparel items
+        parentApparelItems = await db.ApparelItems.AsNoTracking()
+            .Where(a => seasonIds.Contains(a.SeasonId))
+            .OrderBy(a => a.IsRequired ? 0 : 1).ThenBy(a => a.Name)
+            .ToListAsync();
+        parentApparelColumns = parentApparelItems
+            .GroupBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ParentItemCol(g.Key, g.Any(a => a.IsRequired)))
+            .ToList();
+        parentApparelSelections = await db.GymnastApparelSelections
+            .Where(s => athleteIds.Contains(s.GymnastId))
+            .ToListAsync();
+
         // Load competition items
         parentCompetitionItems = await db.CompetitionItems.AsNoTracking()
             .Where(c => seasonIds.Contains(c.SeasonId))
             .OrderBy(c => c.IsRequired ? 0 : 1).ThenBy(c => c.Name)
             .ToListAsync();
+        parentCompColumns = parentCompetitionItems
+            .GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ParentItemCol(g.Key, g.Any(c => c.IsRequired)))
+            .ToList();
         parentCompSelections = await db.GymnastCompetitionSelections
             .Where(s => athleteIds.Contains(s.GymnastId))
             .ToListAsync();
@@ -924,7 +951,99 @@ else
         }
     }
 
-    // Competition item helpers for parent
+    // Level matching helper
+    private bool LevelMatchesKeywords(string level, string appliesTo)
+    {
+        return appliesTo.Split(',').Select(k => k.Trim()).Where(k => k.Length > 0)
+            .Any(k => level.Contains(k, StringComparison.OrdinalIgnoreCase) || k.Contains(level, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Apparel helpers
+    private bool DoesApparelApplyToLevel(string itemName, string level)
+    {
+        if (string.IsNullOrEmpty(level)) return true;
+        var items = parentApparelItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!items.Any()) return false;
+        if (items.Any(a => string.IsNullOrEmpty(a.AppliesTo))) return true;
+        return items.Any(a => !string.IsNullOrEmpty(a.AppliesTo) && LevelMatchesKeywords(level, a.AppliesTo));
+    }
+
+    private decimal GetApparelPrice(string itemName, string level)
+    {
+        var items = parentApparelItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!items.Any()) return 0;
+        if (!string.IsNullOrEmpty(level))
+        {
+            var match = items.FirstOrDefault(a => !string.IsNullOrEmpty(a.AppliesTo) && LevelMatchesKeywords(level, a.AppliesTo));
+            if (match != null) return match.Price;
+        }
+        return items.FirstOrDefault(a => string.IsNullOrEmpty(a.AppliesTo))?.Price ?? 0;
+    }
+
+    private bool IsParentApparelSelected(int athleteId, string itemName)
+    {
+        return parentApparelSelections.Any(s => s.GymnastId == athleteId && s.ItemName == itemName && s.IsSelected);
+    }
+
+    private decimal GetParentApparelCost(int athleteId, string level)
+    {
+        decimal cost = 0;
+        foreach (var col in parentApparelColumns)
+        {
+            if (!DoesApparelApplyToLevel(col.Name, level)) continue;
+            if (col.IsRequired || IsParentApparelSelected(athleteId, col.Name))
+                cost += GetApparelPrice(col.Name, level);
+        }
+        return cost;
+    }
+
+    private async Task ToggleApparelSelection(int athleteId, string itemName, bool isChecked)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.GymnastApparelSelections.FirstOrDefaultAsync(s => s.GymnastId == athleteId && s.ItemName == itemName);
+        if (existing != null) existing.IsSelected = isChecked;
+        else db.GymnastApparelSelections.Add(new GymnastApparelSelection { GymnastId = athleteId, ItemName = itemName, IsSelected = isChecked });
+        await db.SaveChangesAsync();
+        var local = parentApparelSelections.FirstOrDefault(s => s.GymnastId == athleteId && s.ItemName == itemName);
+        if (local != null) local.IsSelected = isChecked;
+        else parentApparelSelections.Add(new GymnastApparelSelection { GymnastId = athleteId, ItemName = itemName, IsSelected = isChecked });
+    }
+
+    // Competition helpers (deduplicated)
+    private bool DoesCompApplyToLevel2(string itemName, string level)
+    {
+        if (string.IsNullOrEmpty(level)) return true;
+        var items = parentCompetitionItems.Where(c => c.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!items.Any()) return false;
+        if (items.Any(c => string.IsNullOrEmpty(c.AppliesTo))) return true;
+        return items.Any(c => !string.IsNullOrEmpty(c.AppliesTo) && LevelMatchesKeywords(level, c.AppliesTo));
+    }
+
+    private decimal GetCompPrice2(string itemName, string level)
+    {
+        var items = parentCompetitionItems.Where(c => c.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!items.Any()) return 0;
+        if (!string.IsNullOrEmpty(level))
+        {
+            var match = items.FirstOrDefault(c => !string.IsNullOrEmpty(c.AppliesTo) && LevelMatchesKeywords(level, c.AppliesTo));
+            if (match != null) return match.Price;
+        }
+        return items.FirstOrDefault(c => string.IsNullOrEmpty(c.AppliesTo))?.Price ?? 0;
+    }
+
+    private decimal GetParentCompCost(int athleteId, string level)
+    {
+        decimal cost = 0;
+        foreach (var col in parentCompColumns)
+        {
+            if (!DoesCompApplyToLevel2(col.Name, level)) continue;
+            if (col.IsRequired || IsParentCompSelected(athleteId, col.Name))
+                cost += GetCompPrice2(col.Name, level);
+        }
+        return cost;
+    }
+
+    // Old competition helpers (keep for compatibility)
     private bool DoesCompApplyToLevel(string itemName, Athlete athlete)
     {
         var level = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name;
