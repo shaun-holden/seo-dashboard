@@ -99,9 +99,19 @@ else
                     </div>
                 </div>
                 <div class="row">
-                    <div class="col-12 mb-2">
+                    <div class="col-md-6 mb-2">
                         <label>Competition Schedule</label>
                         <textarea class="form-control" rows="3" @bind="formSchedule" placeholder="e.g. Level 3: 9:00 AM, Level 4: 11:00 AM..."></textarea>
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <label>Hotel Info</label>
+                        <input class="form-control" @bind="formHotelInfo" placeholder="e.g. Marriott, 123 Hotel Rd, $129/night" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12 mb-2">
+                        <label>Notes for Parents</label>
+                        <textarea class="form-control" rows="3" @bind="formParentNotes" placeholder="e.g. Arrive 30 min early. Bring water and snacks. Spectator fee is $10."></textarea>
                     </div>
                 </div>
                 @if (seasonGroups.Any())
@@ -159,6 +169,8 @@ else
     private decimal formEntryCost = 0;
     private decimal formParkingCost = 0;
     private string formSchedule = "";
+    private string formHotelInfo = "";
+    private string formParentNotes = "";
     private HashSet<int> formGroupIds = new();
     private string? userId;
     private ProjectLabels labels = ProjectLabels.Default;
@@ -250,6 +262,20 @@ else
                         <div class="mb-3">
                             <h6>Competition Schedule</h6>
                             <pre class="bg-light p-2 rounded" style="white-space: pre-wrap; font-size: 0.9rem;">@meet.CompetitionSchedule</pre>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(meet.HotelInfo))
+                    {
+                        <div class="mb-3">
+                            <h6>Hotel Info</h6>
+                            <p class="mb-0">@meet.HotelInfo</p>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(meet.ParentNotes))
+                    {
+                        <div class="mb-3">
+                            <h6>Notes for Parents</h6>
+                            <div class="alert alert-warning mb-0" style="white-space: pre-wrap;">@meet.ParentNotes</div>
                         </div>
                     }
                     <h6>Assigned Groups</h6>
@@ -476,13 +502,13 @@ else
         else formGroupIds.Remove(groupId);
     }
 
-    private void ShowForm() { editingMeet = null; formName = ""; formDate = DateTime.Today; formTravelType = TravelType.Drive; formBudgetAmount = 0; formAddress = ""; formEntryCost = 0; formParkingCost = 0; formSchedule = ""; formGroupIds.Clear(); showForm = true; }
+    private void ShowForm() { editingMeet = null; formName = ""; formDate = DateTime.Today; formTravelType = TravelType.Drive; formBudgetAmount = 0; formAddress = ""; formEntryCost = 0; formParkingCost = 0; formSchedule = ""; formHotelInfo = ""; formParentNotes = ""; formGroupIds.Clear(); showForm = true; }
     private void CancelForm() { showForm = false; }
 
     private void EditMeet(Meet meet)
     {
         editingMeet = meet; formName = meet.Name; formDate = meet.Date; formTravelType = meet.TravelType; formBudgetAmount = meet.BudgetAmount;
-        formAddress = meet.Address ?? ""; formEntryCost = meet.EntryCost ?? 0; formParkingCost = meet.ParkingCost ?? 0; formSchedule = meet.CompetitionSchedule ?? "";
+        formAddress = meet.Address ?? ""; formEntryCost = meet.EntryCost ?? 0; formParkingCost = meet.ParkingCost ?? 0; formSchedule = meet.CompetitionSchedule ?? ""; formHotelInfo = meet.HotelInfo ?? ""; formParentNotes = meet.ParentNotes ?? "";
         formGroupIds = groupAssignments.Where(a => a.MeetId == meet.Id).Select(a => a.SeasonGroupId).ToHashSet();
         showForm = true;
     }
@@ -493,7 +519,7 @@ else
         Meet meet;
         if (editingMeet == null)
         {
-            meet = new Meet { Name = formName, Date = formDate, TravelType = formTravelType, BudgetAmount = formBudgetAmount, SeasonId = selectedSeasonId, SeasonGroupId = formGroupIds.Any() ? formGroupIds.First() : null, Address = string.IsNullOrWhiteSpace(formAddress) ? null : formAddress.Trim(), EntryCost = formEntryCost > 0 ? formEntryCost : null, ParkingCost = formParkingCost > 0 ? formParkingCost : null, CompetitionSchedule = string.IsNullOrWhiteSpace(formSchedule) ? null : formSchedule.Trim() };
+            meet = new Meet { Name = formName, Date = formDate, TravelType = formTravelType, BudgetAmount = formBudgetAmount, SeasonId = selectedSeasonId, SeasonGroupId = formGroupIds.Any() ? formGroupIds.First() : null, Address = string.IsNullOrWhiteSpace(formAddress) ? null : formAddress.Trim(), EntryCost = formEntryCost > 0 ? formEntryCost : null, ParkingCost = formParkingCost > 0 ? formParkingCost : null, CompetitionSchedule = string.IsNullOrWhiteSpace(formSchedule) ? null : formSchedule.Trim(), HotelInfo = string.IsNullOrWhiteSpace(formHotelInfo) ? null : formHotelInfo.Trim(), ParentNotes = string.IsNullOrWhiteSpace(formParentNotes) ? null : formParentNotes.Trim() };
             db.Meets.Add(meet);
             await db.SaveChangesAsync();
         }
@@ -501,7 +527,7 @@ else
         {
             meet = await db.Meets.FindAsync(editingMeet.Id) ?? editingMeet;
             meet.Name = formName; meet.Date = formDate; meet.TravelType = formTravelType; meet.BudgetAmount = formBudgetAmount; meet.SeasonGroupId = formGroupIds.Any() ? formGroupIds.First() : null;
-            meet.Address = string.IsNullOrWhiteSpace(formAddress) ? null : formAddress.Trim(); meet.EntryCost = formEntryCost > 0 ? formEntryCost : null; meet.ParkingCost = formParkingCost > 0 ? formParkingCost : null; meet.CompetitionSchedule = string.IsNullOrWhiteSpace(formSchedule) ? null : formSchedule.Trim();
+            meet.Address = string.IsNullOrWhiteSpace(formAddress) ? null : formAddress.Trim(); meet.EntryCost = formEntryCost > 0 ? formEntryCost : null; meet.ParkingCost = formParkingCost > 0 ? formParkingCost : null; meet.CompetitionSchedule = string.IsNullOrWhiteSpace(formSchedule) ? null : formSchedule.Trim(); meet.HotelInfo = string.IsNullOrWhiteSpace(formHotelInfo) ? null : formHotelInfo.Trim(); meet.ParentNotes = string.IsNullOrWhiteSpace(formParentNotes) ? null : formParentNotes.Trim();
             var existing = db.MeetGroupAssignments.Where(a => a.MeetId == meet.Id).ToList();
             db.MeetGroupAssignments.RemoveRange(existing);
             await db.SaveChangesAsync();

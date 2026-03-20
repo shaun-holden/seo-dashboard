@@ -35,6 +35,12 @@ namespace GymBudgetApp.Models
         [StringLength(2000)]
         public string? CompetitionSchedule { get; set; }
 
+        [StringLength(500)]
+        public string? HotelInfo { get; set; }
+
+        [StringLength(2000)]
+        public string? ParentNotes { get; set; }
+
         // Audit timestamps
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime ModifiedAt { get; set; } = DateTime.UtcNow;

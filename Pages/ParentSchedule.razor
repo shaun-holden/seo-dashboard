@@ -65,6 +65,19 @@ else
                             <pre class="bg-light p-2 rounded mt-1 mb-0" style="white-space: pre-wrap; font-size: 0.85rem;">@meet.CompetitionSchedule</pre>
                         </div>
                     }
+                    @if (!string.IsNullOrEmpty(meet.HotelInfo))
+                    {
+                        <div class="mt-1">
+                            <small class="fw-bold">Hotel:</small>
+                            <small class="d-block text-muted">@meet.HotelInfo</small>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(meet.ParentNotes))
+                    {
+                        <div class="mt-1">
+                            <div class="alert alert-warning py-1 px-2 mb-0" style="font-size: 0.85rem; white-space: pre-wrap;">@meet.ParentNotes</div>
+                        </div>
+                    }
                     <div class="mt-2 d-flex gap-2 flex-wrap align-items-center">
                         <span class="text-muted me-2">RSVP:</span>
                         @foreach (var athleteId in athleteIds)
