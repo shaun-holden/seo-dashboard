@@ -51,7 +51,15 @@
 
 <h3>My Athletes</h3>
 
-@if (loading)
+@if (maintenanceMode)
+{
+    <div class="text-center py-5">
+        <div style="font-size: 3rem;">🔧</div>
+        <h4 class="mt-3">We're Updating GymHub</h4>
+        <p class="text-muted">We're making improvements to give you a better experience.<br/>Please check back shortly.</p>
+    </div>
+}
+else if (loading)
 {
     <p>Loading...</p>
 }
@@ -732,6 +740,7 @@ else
     }
 
     private bool budgetNotReady;
+    private bool maintenanceMode;
     private int parentLinkCount;
     private int gymnastCount;
     private bool needsCommitment;
@@ -742,6 +751,9 @@ else
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
                     ?? authState.User.FindFirst("email")?.Value;
+
+        maintenanceMode = Configuration.GetValue<bool>("MaintenanceMode");
+        if (maintenanceMode) { loading = false; return; }
 
         var stripeKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY")
             ?? Configuration["Stripe:SecretKey"] ?? "";
