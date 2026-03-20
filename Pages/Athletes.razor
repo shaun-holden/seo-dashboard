@@ -21,6 +21,21 @@ else
 {
     <p class="text-muted">Manage gymnasts on the <a href="/roster">Roster page</a>.</p>
 
+    @if (gymnasts.Any(g => !parentLinks.Any(pl => pl.AthleteId == g.Id)))
+    {
+        <button class="btn btn-success mb-3" @onclick="GenerateAllCodes">
+            <span class="oi oi-key me-1"></span> Generate All Missing Codes
+        </button>
+    }
+
+    @if (bulkMessage != null)
+    {
+        <div class="alert alert-success alert-dismissible mb-3">
+            @bulkMessage
+            <button type="button" class="btn-close" @onclick="() => bulkMessage = null"></button>
+        </div>
+    }
+
     <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
         <input type="text" class="form-control" style="max-width: 200px;" placeholder="Search athlete..."
                @bind="searchText" @bind:event="oninput" />
@@ -266,6 +281,25 @@ else
         showInviteForm = false;
         inviteGymnastId = 0;
         inviteEmail = "";
+    }
+
+    private string? bulkMessage;
+
+    private async Task GenerateAllCodes()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var count = 0;
+        foreach (var g in gymnasts)
+        {
+            if (!await db.ParentLinks.AnyAsync(pl => pl.AthleteId == g.Id))
+            {
+                db.ParentLinks.Add(new ParentLink { AthleteId = g.Id, InviteCode = ParentLink.GenerateCode() });
+                count++;
+            }
+        }
+        await db.SaveChangesAsync();
+        bulkMessage = $"Generated {count} invite codes.";
+        await LoadData();
     }
 
     private async Task GenerateCodeOnly(int gymnastId)
