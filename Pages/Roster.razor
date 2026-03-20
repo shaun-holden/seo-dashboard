@@ -38,9 +38,21 @@
                 <label>Name</label>
                 <input class="form-control" @bind="formName" placeholder="Gymnast name" />
             </div>
-            <div class="col-md-2 mb-2">
+            <div class="col-md-3 mb-2">
                 <label>Level</label>
-                <input class="form-control" @bind="formLevel" placeholder="e.g. Level 4" />
+                <div class="input-group">
+                    <select class="form-select" @bind="formLevel">
+                        <option value="">-- Select or type below --</option>
+                        @foreach (var lvl in allLevels)
+                        {
+                            <option value="@lvl">@lvl</option>
+                        }
+                    </select>
+                </div>
+                <div class="input-group input-group-sm mt-1">
+                    <input class="form-control" @bind="newLevelName" placeholder="New level name" />
+                    <button class="btn btn-outline-primary" type="button" @onclick="AddNewLevel">Add</button>
+                </div>
             </div>
             <div class="col-md-7 mb-2">
                 <label>Items</label>
@@ -193,6 +205,8 @@
     private bool formTeamBag;
     private bool formJacket;
     private bool formTeamCamp = true;
+    private string newLevelName = "";
+    private List<string> customLevels = new();
     private string? filterLevel;
     private string? successMessage;
 
@@ -202,6 +216,22 @@
         .Distinct()
         .OrderBy(l => l)
         .ToList();
+
+    private List<string> allLevels => levels
+        .Concat(customLevels)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(l => l)
+        .ToList();
+
+    private void AddNewLevel()
+    {
+        if (!string.IsNullOrWhiteSpace(newLevelName) && !allLevels.Contains(newLevelName.Trim(), StringComparer.OrdinalIgnoreCase))
+        {
+            customLevels.Add(newLevelName.Trim());
+        }
+        formLevel = newLevelName.Trim();
+        newLevelName = "";
+    }
 
     private List<Gymnast> filteredGymnasts => string.IsNullOrEmpty(filterLevel)
         ? gymnasts
