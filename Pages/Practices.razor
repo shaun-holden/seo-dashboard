@@ -143,10 +143,6 @@ else
                         var levelName = practice.TeamLevelId.HasValue
                             ? (teamLevels.FirstOrDefault(t => t.Id == practice.TeamLevelId)?.Name ?? "Unknown")
                             : "All Levels";
-                        var practiceAthletes = GetPracticeAthletes(practice);
-                        var pRsvps = practiceRsvps.Where(r => r.PracticeId == practice.Id).ToList();
-                        var pGoing = pRsvps.Count(r => r.Status == RsvpStatus.Going);
-                        var isRsvpExpanded = rsvpExpandedPractices.Contains(practice.Id);
                         <div class="card mb-2">
                             <div class="card-body py-2 px-3">
                                 <div class="d-flex justify-content-between align-items-center">
@@ -158,46 +154,12 @@ else
                                             <span class="text-muted ms-2">| @practice.Location</span>
                                         }
                                         <span class="badge bg-primary ms-2">@levelName</span>
-                                        <span class="badge bg-success ms-1">@pGoing / @practiceAthletes.Count Going</span>
                                     </div>
                                     <div>
-                                        <button class="btn btn-sm btn-outline-info me-1" @onclick="() => ToggleRsvpExpand(practice.Id)">
-                                            @(isRsvpExpanded ? "Hide RSVPs" : "View RSVPs")
-                                        </button>
                                         <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditPractice(practice)">Edit</button>
                                         <button class="btn btn-sm btn-outline-danger" @onclick="() => DeletePractice(practice)">Delete</button>
                                     </div>
                                 </div>
-                                @if (isRsvpExpanded)
-                                {
-                                    <table class="table table-sm table-bordered mt-2 mb-0">
-                                        <thead>
-                                            <tr>
-                                                <th>Athlete</th>
-                                                <th>Level</th>
-                                                <th>Status</th>
-                                                <th>Note</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var athlete in practiceAthletes.OrderBy(a => a.Name))
-                                            {
-                                                var rsvp = pRsvps.FirstOrDefault(r => r.AthleteId == athlete.Id);
-                                                var status = rsvp?.Status ?? RsvpStatus.NoResponse;
-                                                var badgeClass = status == RsvpStatus.Going ? "bg-success"
-                                                    : status == RsvpStatus.Maybe ? "bg-warning text-dark"
-                                                    : status == RsvpStatus.NotGoing ? "bg-danger"
-                                                    : "bg-secondary";
-                                                <tr>
-                                                    <td>@athlete.Name</td>
-                                                    <td>@(teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "—")</td>
-                                                    <td><span class="badge @badgeClass">@status</span></td>
-                                                    <td>@(rsvp?.Note ?? "—")</td>
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                }
                             </div>
                         </div>
                     }
@@ -212,9 +174,6 @@ else
                     var levelName = practice.TeamLevelId.HasValue
                         ? (teamLevels.FirstOrDefault(t => t.Id == practice.TeamLevelId)?.Name ?? "Unknown")
                         : "All Levels";
-                    var pRsvps = practiceRsvps.Where(r => r.PracticeId == practice.Id).ToList();
-                    var pGoing = pRsvps.Count(r => r.Status == RsvpStatus.Going);
-                    var practiceAthletes = GetPracticeAthletes(practice);
                     <div class="card mb-2">
                         <div class="card-body py-2 px-3">
                             <div class="d-flex justify-content-between align-items-center">
@@ -223,9 +182,9 @@ else
                                     <span class="text-muted ms-2">@practice.Date.ToString("MM/dd/yyyy")</span>
                                     <span class="text-muted ms-2">@practice.StartTime - @practice.EndTime</span>
                                     <span class="badge bg-primary ms-2">@levelName</span>
-                                    <span class="badge bg-success ms-1">@pGoing / @practiceAthletes.Count Going</span>
                                 </div>
                                 <div>
+                                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditPractice(practice)">Edit</button>
                                     <button class="btn btn-sm btn-outline-danger" @onclick="() => DeletePractice(practice)">Delete</button>
                                 </div>
                             </div>
