@@ -95,6 +95,27 @@ using (var scope = app.Services.CreateScope())
             await userManager.AddToRoleAsync(user, isAdmin ? "Employee" : "Parent");
         }
     }
+
+    // Migrate Athletes to Gymnasts (one-time data migration)
+    if (!db.Gymnasts.Any() && db.Athletes.Any())
+    {
+        var athletes = db.Athletes.Include(a => a.TeamLevel).ToList();
+        foreach (var a in athletes)
+        {
+            db.Gymnasts.Add(new GymBudgetApp.Models.Gymnast
+            {
+                Id = a.Id,
+                Name = a.Name,
+                Level = a.TeamLevel?.Name,
+                UserId = "migrated",
+                ParentEmail = a.ParentPhone
+            });
+        }
+        await db.SaveChangesAsync();
+
+        // Also update ParentLinks to reference gymnast IDs (they already match since we kept the same IDs)
+        // ParentLinks.AthleteId already points to the right ID
+    }
 }
 
 if (!app.Environment.IsDevelopment())
