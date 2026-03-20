@@ -160,8 +160,8 @@
         var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var email = authState.User.FindFirst(ClaimTypes.Email)?.Value
                     ?? authState.User.FindFirst("email")?.Value;
-        var adminEmail = Configuration["AdminEmail"] ?? "deshaun@tntgym.org";
-        var isAdmin = string.Equals(email, adminEmail, StringComparison.OrdinalIgnoreCase)
+        var adminEmails = Configuration.GetSection("AdminEmails").Get<List<string>>() ?? new() { Configuration["AdminEmail"] ?? "deshaun@tntgym.org" };
+        var isAdmin = adminEmails.Any(ae => string.Equals(email, ae, StringComparison.OrdinalIgnoreCase))
                       || authState.User.IsInRole("Employee");
         var isParent = authState.User.IsInRole("Parent");
 

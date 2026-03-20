@@ -73,6 +73,7 @@ namespace GymBudgetApp
         public DbSet<CommitmentForm> CommitmentForms { get; set; }
         public DbSet<CommitmentSignature> CommitmentSignatures { get; set; }
         public DbSet<Resource> Resources { get; set; }
+        public DbSet<BudgetCalculatorEntry> BudgetCalculatorEntries { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
