@@ -108,12 +108,15 @@
             <tbody>
                 @foreach (var g in filteredGymnasts)
                 {
+                    var itemsCost = GetGymnastItemsCost(g);
+                    var gymnastTotal = costPerGymnast + itemsCost;
                     <tr>
                         <td><strong>@g.Name</strong></td>
                         <td>@(g.Level ?? "—")</td>
                         <td class="text-center">
                             <input type="checkbox" class="form-check-input" checked="@g.Leotard"
                                    @onchange="(e) => ToggleItem(g.Id, nameof(Gymnast.Leotard), (bool)e.Value!)" />
+                            @if (g.Leotard) { <small class="d-block text-muted">$@GetItemPrice("Leotard", g.Level).ToString("N0")</small> }
                         </td>
                         <td class="text-center">
                             <input type="checkbox" class="form-check-input" checked="@g.Leggings"
@@ -129,7 +132,7 @@
                         </td>
                         <td class="text-center"><input type="checkbox" class="form-check-input" checked disabled /></td>
                         <td class="text-end fw-bold text-primary">$@costPerGymnast.ToString("N2")</td>
-                        <td class="text-end fw-bold">$@costPerGymnast.ToString("N2")</td>
+                        <td class="text-end fw-bold">$@gymnastTotal.ToString("N2")</td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditGymnast(g)">Edit</button>
                             <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteGymnast(g)">Delete</button>
@@ -152,8 +155,8 @@
                         <td class="text-center">@filteredGymnasts.Count(g => g.TeamBag)</td>
                         <td class="text-center">@filteredGymnasts.Count(g => g.Jacket)</td>
                         <td class="text-center">@filteredGymnasts.Count</td>
-                        <td class="text-end text-primary">$@costPerGymnast.ToString("N2")/ea</td>
-                        <td class="text-end">$@((costPerGymnast * filteredGymnasts.Count).ToString("N2"))</td>
+                        <td class="text-end text-primary">$@((costPerGymnast * filteredGymnasts.Count).ToString("N2"))</td>
+                        <td class="text-end">$@GetGrandTotal().ToString("N2")</td>
                         <td></td>
                     </tr>
                 </tfoot>
@@ -218,6 +221,11 @@
                 .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
             var athleteCount = activeSeason.AthleteCount > 0 ? activeSeason.AthleteCount : gymnasts.Count;
             costPerGymnast = athleteCount > 0 ? Math.Round(calcTotal / athleteCount, 2) : 0;
+
+            // Load apparel items
+            apparelItems = await db.ApparelItems.AsNoTracking()
+                .Where(a => a.SeasonId == activeSeason.Id)
+                .ToListAsync();
         }
     }
 
@@ -292,6 +300,43 @@
         showForm = false;
         editingGymnast = null;
         await LoadData();
+    }
+
+    private List<ApparelItem> apparelItems = new();
+
+    private decimal GetItemPrice(string itemName, string? level)
+    {
+        // Find matching apparel item - check level-specific first, then general
+        var items = apparelItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!items.Any()) return 0;
+
+        // Check for level-specific pricing
+        if (!string.IsNullOrEmpty(level))
+        {
+            var levelItem = items.FirstOrDefault(a => !string.IsNullOrEmpty(a.AppliesTo) &&
+                a.AppliesTo.Split(',').Any(l => level.Contains(l.Trim(), StringComparison.OrdinalIgnoreCase)));
+            if (levelItem != null) return levelItem.Price;
+        }
+
+        // Fall back to general (no AppliesTo specified)
+        return items.FirstOrDefault(a => string.IsNullOrEmpty(a.AppliesTo))?.Price ?? items.First().Price;
+    }
+
+    private decimal GetGymnastItemsCost(Gymnast g)
+    {
+        decimal cost = 0;
+        if (g.Leotard) cost += GetItemPrice("Leotard", g.Level);
+        if (g.Leggings) cost += GetItemPrice("Leggings", g.Level);
+        if (g.TeamBag) cost += GetItemPrice("Team Bag", g.Level);
+        if (g.Jacket) cost += GetItemPrice("Jacket", g.Level);
+        // Team Camp is required but priced separately if in apparel
+        cost += GetItemPrice("Team Camp", g.Level);
+        return cost;
+    }
+
+    private decimal GetGrandTotal()
+    {
+        return filteredGymnasts.Sum(g => costPerGymnast + GetGymnastItemsCost(g));
     }
 
     private async Task ToggleItem(int gymnastId, string field, bool value)
