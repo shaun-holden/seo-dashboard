@@ -364,6 +364,19 @@
     private record ApparelColumn(string Name, bool IsRequired);
     private List<ApparelColumn> apparelColumns = new();
 
+    private bool LevelMatchesAppliesTo(string level, string appliesTo)
+    {
+        var keywords = appliesTo.Split(',').Select(k => k.Trim()).Where(k => k.Length > 0);
+        foreach (var keyword in keywords)
+        {
+            // Check both directions: level contains keyword OR keyword contains level
+            if (level.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                keyword.Contains(level, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
     private decimal GetItemPrice(string itemName, string? level)
     {
         var items = apparelItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -373,7 +386,7 @@
         if (!string.IsNullOrEmpty(level))
         {
             var levelItem = items.FirstOrDefault(a => !string.IsNullOrEmpty(a.AppliesTo) &&
-                a.AppliesTo.Split(',').Any(l => level.Contains(l.Trim(), StringComparison.OrdinalIgnoreCase)));
+                LevelMatchesAppliesTo(level, a.AppliesTo));
             if (levelItem != null) return levelItem.Price;
         }
 
