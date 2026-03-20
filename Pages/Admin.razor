@@ -18,9 +18,27 @@
 }
 else
 {
+    <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+        <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary" @onclick="ExpandAllSections">
+                <span class="oi oi-fullscreen-enter me-1"></span> Expand All
+            </button>
+            <button class="btn btn-outline-secondary" @onclick="CollapseAllSections">
+                <span class="oi oi-fullscreen-exit me-1"></span> Collapse All
+            </button>
+        </div>
+        <input type="text" class="form-control" style="max-width: 250px;" placeholder="Search users..."
+               @bind="adminSearchText" @bind:event="oninput" />
+    </div>
+
     <!-- Database Backup -->
     <div class="card mb-4">
-        <div class="card-header"><strong>Database Backup</strong></div>
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @onclick="() => ToggleSection(0)">
+            <strong>Database Backup</strong>
+            <span class="oi @(expandedSections.Contains(0) ? "oi-chevron-top" : "oi-chevron-bottom")" style="font-size: 0.7rem;"></span>
+        </div>
+        @if (expandedSections.Contains(0))
+        {
         <div class="card-body">
             <p class="text-muted mb-2">Auto-backup runs daily. Last 7 days are kept.</p>
             <div class="d-flex gap-2">
@@ -32,11 +50,17 @@ else
                 </button>
             </div>
         </div>
+        }
     </div>
 
     <!-- Two-Factor Authentication -->
     <div class="card mb-4">
-        <div class="card-header"><strong>Two-Factor Authentication</strong></div>
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @onclick="() => ToggleSection(1)">
+            <strong>Two-Factor Authentication</strong>
+            <span class="oi @(expandedSections.Contains(1) ? "oi-chevron-top" : "oi-chevron-bottom")" style="font-size: 0.7rem;"></span>
+        </div>
+        @if (expandedSections.Contains(1))
+        {
         <div class="card-body">
             @if (is2faEnabled)
             {
@@ -56,6 +80,7 @@ else
                 @(is2faEnabled ? "Manage 2FA" : "Setup 2FA")
             </a>
         </div>
+        }
     </div>
 
     @if (statusMessage != null)
@@ -68,7 +93,12 @@ else
 
     <!-- Reset Password -->
     <div class="card mb-4">
-        <div class="card-header"><strong>Reset User Password</strong></div>
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @onclick="() => ToggleSection(2)">
+            <strong>Reset User Password</strong>
+            <span class="oi @(expandedSections.Contains(2) ? "oi-chevron-top" : "oi-chevron-bottom")" style="font-size: 0.7rem;"></span>
+        </div>
+        @if (expandedSections.Contains(2))
+        {
         <div class="card-body">
             <div class="row g-3 align-items-end">
                 <div class="col-md-4">
@@ -96,11 +126,17 @@ else
                 <small class="text-muted">Default: <code>TntGym2026!</code></small>
             </div>
         </div>
+        }
     </div>
 
     <!-- User Management -->
     <div class="card mb-4">
-        <div class="card-header"><strong>User Management</strong></div>
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @onclick="() => ToggleSection(3)">
+            <strong>User Management</strong>
+            <span class="oi @(expandedSections.Contains(3) ? "oi-chevron-top" : "oi-chevron-bottom")" style="font-size: 0.7rem;"></span>
+        </div>
+        @if (expandedSections.Contains(3))
+        {
         <div class="card-body p-0">
             <table class="table table-sm table-hover mb-0">
                 <thead class="table-light">
@@ -111,7 +147,7 @@ else
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var u in userInfos)
+                    @foreach (var u in userInfos.Where(u => string.IsNullOrWhiteSpace(adminSearchText) || u.Email.Contains(adminSearchText, StringComparison.OrdinalIgnoreCase)))
                     {
                         var isCurrentAdmin = string.Equals(u.Email, adminEmail, StringComparison.OrdinalIgnoreCase);
                         <tr>
@@ -155,6 +191,7 @@ else
                 </tbody>
             </table>
         </div>
+        }
     </div>
 
     <!-- Permissions Editor -->
@@ -221,7 +258,12 @@ else
 
     <!-- Invite Codes -->
     <div class="card mb-4">
-        <div class="card-header"><strong>Parent Invite Codes</strong></div>
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @onclick="() => ToggleSection(5)">
+            <strong>Parent Invite Codes</strong>
+            <span class="oi @(expandedSections.Contains(5) ? "oi-chevron-top" : "oi-chevron-bottom")" style="font-size: 0.7rem;"></span>
+        </div>
+        @if (expandedSections.Contains(5))
+        {
         <div class="card-body p-0">
             <table class="table table-sm mb-0">
                 <thead class="table-light">
@@ -253,15 +295,16 @@ else
                 </tbody>
             </table>
         </div>
+        }
     </div>
 
     <!-- Emergency Contacts -->
     <div class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center" @onclick="() => showEmergencyContacts = !showEmergencyContacts" style="cursor: pointer;">
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @onclick="() => ToggleSection(7)">
             <strong>Emergency Contacts</strong>
-            <span class="oi @(showEmergencyContacts ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+            <span class="oi @(expandedSections.Contains(7) ? "oi-chevron-top" : "oi-chevron-bottom")" style="font-size: 0.7rem;"></span>
         </div>
-        @if (showEmergencyContacts)
+        @if (expandedSections.Contains(7))
         {
         <div class="card-body p-0">
             @if (!emergencyContactInfos.Any())
@@ -302,11 +345,11 @@ else
 
     <!-- Commitment Form Status -->
     <div class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center" @onclick="() => showCommitmentStatus = !showCommitmentStatus" style="cursor: pointer;">
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @onclick="() => ToggleSection(6)">
             <strong>Commitment Form Status</strong>
-            <span class="oi @(showCommitmentStatus ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+            <span class="oi @(expandedSections.Contains(6) ? "oi-chevron-top" : "oi-chevron-bottom")" style="font-size: 0.7rem;"></span>
         </div>
-        @if (showCommitmentStatus)
+        @if (expandedSections.Contains(6))
         {
             <div class="card-body">
                 @if (commitmentFormTitle == null)
@@ -367,7 +410,12 @@ else
 
     <!-- Audit Log -->
     <div class="card">
-        <div class="card-header"><strong>Audit Log</strong></div>
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @onclick="() => ToggleSection(8)">
+            <strong>Audit Log</strong>
+            <span class="oi @(expandedSections.Contains(8) ? "oi-chevron-top" : "oi-chevron-bottom")" style="font-size: 0.7rem;"></span>
+        </div>
+        @if (expandedSections.Contains(8))
+        {
         <div class="card-body p-0">
             <table class="table table-sm table-hover mb-0">
                 <thead class="table-light">
@@ -395,11 +443,14 @@ else
                 </tbody>
             </table>
         </div>
+        }
     </div>
 }
 
 @code {
     private bool isAdmin;
+    private string adminSearchText = "";
+    private HashSet<int> expandedSections = new() { 0, 1, 2, 3, 5, 8 };
     private string adminEmail = "";
     private string adminUserId = "";
     private bool is2faEnabled;
@@ -418,11 +469,9 @@ else
     private string? editingPermEmail;
     private EmployeePermission editPerm = new();
 
-    private bool showEmergencyContacts;
     private List<EmergencyContactInfo> emergencyContactInfos = new();
 
     // Commitment form status
-    private bool showCommitmentStatus;
     private string? commitmentFormTitle;
     private int commitmentTotalAthletes;
     private int commitmentSignedCount;
@@ -657,5 +706,21 @@ else
     {
         statusMessage = msg;
         statusIsError = isError;
+    }
+
+    private void ToggleSection(int section)
+    {
+        if (!expandedSections.Remove(section))
+            expandedSections.Add(section);
+    }
+
+    private void ExpandAllSections()
+    {
+        expandedSections = new HashSet<int> { 0, 1, 2, 3, 5, 6, 7, 8 };
+    }
+
+    private void CollapseAllSections()
+    {
+        expandedSections.Clear();
     }
 }

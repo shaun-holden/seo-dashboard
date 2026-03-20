@@ -153,6 +153,8 @@ else
         @* Per-level budget breakdown *@
         @if (seasonGroups.Any())
         {
+            var allGroupedLevelIds = levelGroupAssignments.Select(a => a.TeamLevelId).ToHashSet();
+
             @foreach (var group in seasonGroups)
             {
                 var groupLevelIds = levelGroupAssignments.Where(a => a.SeasonGroupId == group.Id).Select(a => a.TeamLevelId).ToHashSet();
