@@ -136,21 +136,27 @@
                         {
                             var isChecked = IsGymnastItemChecked(g, col.Name);
                             var itemPrice = GetItemPrice(col.Name, g.Level);
+                            var appliesToGymnast = DoesItemApplyToLevel(col.Name, g.Level);
                             var colName = col.Name;
                             var gymnastId = g.Id;
                             <td class="text-center">
-                                @if (col.IsRequired)
+                                @if (!appliesToGymnast)
+                                {
+                                    <span class="text-muted" title="Not applicable to this level">—</span>
+                                }
+                                else if (col.IsRequired)
                                 {
                                     <input type="checkbox" class="form-check-input" checked disabled />
+                                    <small class="d-block text-muted">$@itemPrice.ToString("N0")</small>
                                 }
                                 else
                                 {
                                     <input type="checkbox" class="form-check-input" checked="@isChecked"
                                            @onchange="(e) => ToggleApparelItem(gymnastId, colName, (bool)e.Value!)" />
-                                }
-                                @if ((isChecked || col.IsRequired) && itemPrice > 0)
-                                {
-                                    <small class="d-block text-muted">$@itemPrice.ToString("N0")</small>
+                                    @if (isChecked && itemPrice > 0)
+                                    {
+                                        <small class="d-block text-muted">$@itemPrice.ToString("N0")</small>
+                                    }
                                 }
                             </td>
                         }
@@ -396,6 +402,19 @@
         return false;
     }
 
+    private bool DoesItemApplyToLevel(string itemName, string? level)
+    {
+        if (string.IsNullOrEmpty(level)) return true;
+        var items = apparelItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!items.Any()) return false;
+
+        // If any item has no AppliesTo (general), it applies to all
+        if (items.Any(a => string.IsNullOrEmpty(a.AppliesTo))) return true;
+
+        // Check if any item's AppliesTo matches this level
+        return items.Any(a => !string.IsNullOrEmpty(a.AppliesTo) && LevelMatchesAppliesTo(level, a.AppliesTo));
+    }
+
     private decimal GetItemPrice(string itemName, string? level)
     {
         var items = apparelItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -423,11 +442,12 @@
     private decimal GetGymnastApparelCost(Gymnast g)
     {
         decimal cost = 0;
-        foreach (var item in apparelItems)
+        foreach (var col in apparelColumns)
         {
-            if (item.IsRequired || IsGymnastItemChecked(g, item.Name))
+            if (!DoesItemApplyToLevel(col.Name, g.Level)) continue;
+            if (col.IsRequired || IsGymnastItemChecked(g, col.Name))
             {
-                cost += GetItemPrice(item.Name, g.Level);
+                cost += GetItemPrice(col.Name, g.Level);
             }
         }
         return cost;
