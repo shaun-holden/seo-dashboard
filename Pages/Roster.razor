@@ -331,6 +331,7 @@
         var items = apparelItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
         if (!items.Any()) return 0;
 
+        // Check for level-specific pricing
         if (!string.IsNullOrEmpty(level))
         {
             var levelItem = items.FirstOrDefault(a => !string.IsNullOrEmpty(a.AppliesTo) &&
@@ -338,7 +339,9 @@
             if (levelItem != null) return levelItem.Price;
         }
 
-        return items.FirstOrDefault(a => string.IsNullOrEmpty(a.AppliesTo))?.Price ?? items.First().Price;
+        // Only use general pricing (no AppliesTo) — if all items have AppliesTo and none match, return 0
+        var generalItem = items.FirstOrDefault(a => string.IsNullOrEmpty(a.AppliesTo));
+        return generalItem?.Price ?? 0;
     }
 
     private bool IsGymnastItemChecked(Gymnast g, string itemName)
