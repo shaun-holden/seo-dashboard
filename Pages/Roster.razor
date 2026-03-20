@@ -118,8 +118,19 @@
                             }
                         </th>
                     }
+                    @foreach (var col in competitionColumns)
+                    {
+                        <th class="text-center" style="min-width: 80px;">
+                            @col.Name
+                            @if (col.IsRequired)
+                            {
+                                <br/><span class="badge bg-danger" style="font-size: 0.6rem;">Required</span>
+                            }
+                        </th>
+                    }
                     <th class="text-end">Shared Fees</th>
                     <th class="text-end">Apparel</th>
+                    <th class="text-end">Competitions</th>
                     <th class="text-end">Total Cost</th>
                     <th class="text-end">Actions</th>
                 </tr>
@@ -160,9 +171,42 @@
                                 }
                             </td>
                         }
+                        @foreach (var col in competitionColumns)
+                        {
+                            var compApplies = DoesCompItemApplyToLevel(col.Name, g.Level);
+                            var compChecked = IsCompItemChecked(g, col.Name);
+                            var compPrice = GetCompItemPrice(col.Name, g.Level);
+                            var compColName = col.Name;
+                            var compGymnastId = g.Id;
+                            <td class="text-center">
+                                @if (!compApplies)
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                                else if (col.IsRequired)
+                                {
+                                    <input type="checkbox" class="form-check-input" checked disabled />
+                                    <small class="d-block text-muted">$@compPrice.ToString("N0")</small>
+                                }
+                                else
+                                {
+                                    <input type="checkbox" class="form-check-input" checked="@compChecked"
+                                           @onchange="(e) => ToggleCompetitionItem(compGymnastId, compColName, (bool)e.Value!)" />
+                                    @if (compChecked && compPrice > 0)
+                                    {
+                                        <small class="d-block text-muted">$@compPrice.ToString("N0")</small>
+                                    }
+                                }
+                            </td>
+                        }
+                        @{
+                            var compCost = GetGymnastCompetitionCost(g);
+                            var fullTotal = costPerGymnast + apparelCost + compCost;
+                        }
                         <td class="text-end fw-bold text-primary">$@costPerGymnast.ToString("N2")</td>
                         <td class="text-end">$@apparelCost.ToString("N2")</td>
-                        <td class="text-end fw-bold">$@gymnastTotal.ToString("N2")</td>
+                        <td class="text-end">$@compCost.ToString("N2")</td>
+                        <td class="text-end fw-bold">$@fullTotal.ToString("N2")</td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditGymnast(g)">Edit</button>
                             <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteGymnast(g)">Delete</button>
@@ -171,7 +215,7 @@
                 }
                 @if (!filteredGymnasts.Any())
                 {
-                    <tr><td colspan="@(apparelColumns.Count + 6)" class="text-center text-muted py-3">No gymnasts yet. Click "+ Add Gymnast" to get started.</td></tr>
+                    <tr><td colspan="@(apparelColumns.Count + competitionColumns.Count + 7)" class="text-center text-muted py-3">No gymnasts yet. Click "+ Add Gymnast" to get started.</td></tr>
                 }
             </tbody>
             @if (filteredGymnasts.Any())
@@ -185,8 +229,14 @@
                             var count = filteredGymnasts.Count(g => col.IsRequired || IsGymnastItemChecked(g, col.Name));
                             <td class="text-center">@count</td>
                         }
+                        @foreach (var col in competitionColumns)
+                        {
+                            var count = filteredGymnasts.Count(g => col.IsRequired || IsCompItemChecked(g, col.Name));
+                            <td class="text-center">@count</td>
+                        }
                         <td class="text-end text-primary">$@((costPerGymnast * filteredGymnasts.Count).ToString("N2"))</td>
                         <td class="text-end">$@filteredGymnasts.Sum(g => GetGymnastApparelCost(g)).ToString("N2")</td>
+                        <td class="text-end">$@filteredGymnasts.Sum(g => GetGymnastCompetitionCost(g)).ToString("N2")</td>
                         <td class="text-end">$@GetGrandTotal().ToString("N2")</td>
                         <td></td>
                     </tr>
@@ -281,11 +331,25 @@
             // Deduplicate apparel into one column per unique name
             apparelColumns = apparelItems
                 .GroupBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(g => new ApparelColumn(g.Key, g.Any(a => a.IsRequired)))
+                .Select(g => new ItemColumn(g.Key, g.Any(a => a.IsRequired), "apparel"))
+                .ToList();
+
+            // Load competition items
+            competitionItems = await db.CompetitionItems.AsNoTracking()
+                .Where(a => a.SeasonId == activeSeason.Id)
+                .OrderBy(a => a.IsRequired ? 0 : 1).ThenBy(a => a.Name)
+                .ToListAsync();
+
+            competitionColumns = competitionItems
+                .GroupBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(g => new ItemColumn(g.Key, g.Any(a => a.IsRequired), "competition"))
                 .ToList();
 
             var gymnastIds = gymnasts.Select(g => g.Id).ToList();
             apparelSelections = await db.GymnastApparelSelections
+                .Where(s => gymnastIds.Contains(s.GymnastId))
+                .ToListAsync();
+            competitionSelections = await db.GymnastCompetitionSelections
                 .Where(s => gymnastIds.Contains(s.GymnastId))
                 .ToListAsync();
         }
@@ -366,9 +430,12 @@
 
     private List<ApparelItem> apparelItems = new();
     private List<GymnastApparelSelection> apparelSelections = new();
+    private List<CompetitionItem> competitionItems = new();
+    private List<GymnastCompetitionSelection> competitionSelections = new();
 
-    private record ApparelColumn(string Name, bool IsRequired);
-    private List<ApparelColumn> apparelColumns = new();
+    private record ItemColumn(string Name, bool IsRequired, string Type); // Type: "apparel" or "competition"
+    private List<ItemColumn> apparelColumns = new();
+    private List<ItemColumn> competitionColumns = new();
 
     private bool LevelMatchesAppliesTo(string level, string appliesTo)
     {
@@ -455,7 +522,64 @@
 
     private decimal GetGrandTotal()
     {
-        return filteredGymnasts.Sum(g => costPerGymnast + GetGymnastApparelCost(g));
+        return filteredGymnasts.Sum(g => costPerGymnast + GetGymnastApparelCost(g) + GetGymnastCompetitionCost(g));
+    }
+
+    // Competition methods
+    private bool DoesCompItemApplyToLevel(string itemName, string? level)
+    {
+        if (string.IsNullOrEmpty(level)) return true;
+        var items = competitionItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!items.Any()) return false;
+        if (items.Any(a => string.IsNullOrEmpty(a.AppliesTo))) return true;
+        return items.Any(a => !string.IsNullOrEmpty(a.AppliesTo) && LevelMatchesAppliesTo(level, a.AppliesTo));
+    }
+
+    private decimal GetCompItemPrice(string itemName, string? level)
+    {
+        var items = competitionItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!items.Any()) return 0;
+        if (!string.IsNullOrEmpty(level))
+        {
+            var levelItem = items.FirstOrDefault(a => !string.IsNullOrEmpty(a.AppliesTo) && LevelMatchesAppliesTo(level, a.AppliesTo));
+            if (levelItem != null) return levelItem.Price;
+        }
+        var generalItem = items.FirstOrDefault(a => string.IsNullOrEmpty(a.AppliesTo));
+        return generalItem?.Price ?? 0;
+    }
+
+    private bool IsCompItemChecked(Gymnast g, string itemName)
+    {
+        var sel = competitionSelections.FirstOrDefault(s => s.GymnastId == g.Id && s.ItemName == itemName);
+        return sel?.IsSelected ?? false;
+    }
+
+    private decimal GetGymnastCompetitionCost(Gymnast g)
+    {
+        decimal cost = 0;
+        foreach (var col in competitionColumns)
+        {
+            if (!DoesCompItemApplyToLevel(col.Name, g.Level)) continue;
+            if (col.IsRequired || IsCompItemChecked(g, col.Name))
+                cost += GetCompItemPrice(col.Name, g.Level);
+        }
+        return cost;
+    }
+
+    private async Task ToggleCompetitionItem(int gymnastId, string itemName, bool isChecked)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.GymnastCompetitionSelections
+            .FirstOrDefaultAsync(s => s.GymnastId == gymnastId && s.ItemName == itemName);
+        if (existing != null)
+            existing.IsSelected = isChecked;
+        else
+            db.GymnastCompetitionSelections.Add(new GymnastCompetitionSelection { GymnastId = gymnastId, ItemName = itemName, IsSelected = isChecked });
+        await db.SaveChangesAsync();
+
+        var localSel = competitionSelections.FirstOrDefault(s => s.GymnastId == gymnastId && s.ItemName == itemName);
+        if (localSel != null) localSel.IsSelected = isChecked;
+        else competitionSelections.Add(new GymnastCompetitionSelection { GymnastId = gymnastId, ItemName = itemName, IsSelected = isChecked });
     }
 
     private async Task ToggleApparelItem(int gymnastId, string itemName, bool isChecked)

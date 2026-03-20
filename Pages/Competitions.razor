@@ -1,0 +1,218 @@
+@page "/competitions"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+<h3>Competitions</h3>
+<p class="text-muted">Set competition fees and entries. These populate the Gymnast Roster automatically.</p>
+
+@if (seasons == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="mb-3">
+        <label>Select Season</label>
+        <select class="form-select w-auto d-inline-block ms-2" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @foreach (var s in seasons)
+            {
+                <option value="@s.Id">@s.Name</option>
+            }
+        </select>
+    </div>
+
+    @if (selectedSeasonId > 0)
+    {
+        <button class="btn btn-primary mb-3" @onclick="ShowForm">+ Add Competition Item</button>
+
+        @if (showForm)
+        {
+            <div class="card mb-4 p-3" style="max-width: 600px;">
+                <h5>@(editingItem == null ? "Add Competition Item" : "Edit Competition Item")</h5>
+                <div class="row">
+                    <div class="col-md-5 mb-2">
+                        <label>Item Name</label>
+                        <input class="form-control" @bind="formName" placeholder="e.g. State Meet Entry, Regionals, Camp" />
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label>Price</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" step="0.01" @bind="formPrice" />
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <label>Required?</label>
+                        <select class="form-select" @bind="formIsRequired">
+                            <option value="false">Optional</option>
+                            <option value="true">Required</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label>Applies To (leave blank for all levels)</label>
+                    <input class="form-control" @bind="formAppliesTo" placeholder="e.g. NGA 6, 7, 8, USA Level 9, 10 (comma-separated)" />
+                    <small class="text-muted">Comma-separated level names. Blank = all levels.</small>
+                </div>
+                <div>
+                    <button class="btn btn-success me-2" @onclick="SaveItem">Save</button>
+                    <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                </div>
+            </div>
+        }
+
+        @if (items.Any())
+        {
+            <div class="card">
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Item</th>
+                                <th class="text-end">Price</th>
+                                <th>Type</th>
+                                <th>Applies To</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in items)
+                            {
+                                <tr>
+                                    <td><strong>@item.Name</strong></td>
+                                    <td class="text-end">$@item.Price.ToString("N2")</td>
+                                    <td>
+                                        @if (item.IsRequired)
+                                        {
+                                            <span class="badge bg-danger">Required</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-info">Optional</span>
+                                        }
+                                    </td>
+                                    <td><small class="text-muted">@(string.IsNullOrEmpty(item.AppliesTo) ? "All Levels" : item.AppliesTo)</small></td>
+                                    <td class="text-end">
+                                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditItem(item)">Edit</button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteItem(item)">Delete</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-info">No competition items yet. Add meet entries, registration fees, and other competition costs.</div>
+        }
+    }
+}
+
+@code {
+    private List<Season>? seasons;
+    private int selectedSeasonId;
+    private List<CompetitionItem> items = new();
+    private bool showForm;
+    private CompetitionItem? editingItem;
+    private string formName = "";
+    private decimal formPrice;
+    private string formIsRequired = "false";
+    private string formAppliesTo = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        items = await db.CompetitionItems.AsNoTracking()
+            .Where(a => a.SeasonId == selectedSeasonId)
+            .OrderBy(a => a.Name)
+            .ToListAsync();
+    }
+
+    private void ShowForm()
+    {
+        editingItem = null;
+        formName = "";
+        formPrice = 0;
+        formIsRequired = "false";
+        formAppliesTo = "";
+        showForm = true;
+    }
+
+    private void EditItem(CompetitionItem item)
+    {
+        editingItem = item;
+        formName = item.Name;
+        formPrice = item.Price;
+        formIsRequired = item.IsRequired.ToString().ToLower();
+        formAppliesTo = item.AppliesTo ?? "";
+        showForm = true;
+    }
+
+    private void CancelForm() { showForm = false; editingItem = null; }
+
+    private async Task SaveItem()
+    {
+        if (string.IsNullOrWhiteSpace(formName)) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var isReq = formIsRequired == "true";
+
+        if (editingItem != null)
+        {
+            var entity = await db.CompetitionItems.FindAsync(editingItem.Id);
+            if (entity != null)
+            {
+                entity.Name = formName.Trim();
+                entity.Price = formPrice;
+                entity.IsRequired = isReq;
+                entity.AppliesTo = string.IsNullOrWhiteSpace(formAppliesTo) ? null : formAppliesTo.Trim();
+                await db.SaveChangesAsync();
+            }
+        }
+        else
+        {
+            db.CompetitionItems.Add(new CompetitionItem
+            {
+                Name = formName.Trim(),
+                Price = formPrice,
+                IsRequired = isReq,
+                AppliesTo = string.IsNullOrWhiteSpace(formAppliesTo) ? null : formAppliesTo.Trim(),
+                SeasonId = selectedSeasonId
+            });
+            await db.SaveChangesAsync();
+        }
+
+        showForm = false;
+        editingItem = null;
+        await LoadData();
+    }
+
+    private async Task DeleteItem(CompetitionItem item)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.CompetitionItems.FindAsync(item.Id);
+        if (entity != null)
+        {
+            db.CompetitionItems.Remove(entity);
+            await db.SaveChangesAsync();
+        }
+        await LoadData();
+    }
+}
