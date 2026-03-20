@@ -34,17 +34,43 @@
     <div class="card mb-4 p-3">
         <h5>@(editingGymnast == null ? "Add Gymnast" : "Edit Gymnast")</h5>
         <div class="row">
-            <div class="col-md-4 mb-2">
+            <div class="col-md-3 mb-2">
                 <label>Name</label>
                 <input class="form-control" @bind="formName" placeholder="Gymnast name" />
             </div>
-            <div class="col-md-3 mb-2">
+            <div class="col-md-2 mb-2">
                 <label>Level</label>
-                <input class="form-control" @bind="formLevel" placeholder="e.g. Level 4, Xcel Gold" />
+                <input class="form-control" @bind="formLevel" placeholder="e.g. Level 4" />
             </div>
-            <div class="col-md-3 mb-2">
-                <label>Parent Email (optional)</label>
-                <input class="form-control" @bind="formParentEmail" placeholder="parent@email.com" />
+            <div class="col-md-7 mb-2">
+                <label>Items</label>
+                <div class="d-flex flex-wrap gap-3 mt-1">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" @bind="formLeotard" />
+                        <label class="form-check-label">Leotard</label>
+                        <small class="text-muted d-block">Optional</small>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" @bind="formLeggings" />
+                        <label class="form-check-label">Leggings</label>
+                        <small class="text-muted d-block">Optional</small>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" @bind="formTeamBag" />
+                        <label class="form-check-label">Team Bag</label>
+                        <small class="text-muted d-block">Optional</small>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" @bind="formJacket" />
+                        <label class="form-check-label">Jacket</label>
+                        <small class="text-muted d-block">Optional</small>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" @bind="formTeamCamp" disabled />
+                        <label class="form-check-label fw-bold">Team Camp</label>
+                        <small class="text-danger d-block">Required</small>
+                    </div>
+                </div>
             </div>
         </div>
         <div>
@@ -69,7 +95,11 @@
                 <tr>
                     <th>Name</th>
                     <th>Level</th>
-                    <th>Parent Email</th>
+                    <th class="text-center">Leotard</th>
+                    <th class="text-center">Leggings</th>
+                    <th class="text-center">Team Bag</th>
+                    <th class="text-center">Jacket</th>
+                    <th class="text-center">Team Camp</th>
                     <th class="text-end">Actions</th>
                 </tr>
             </thead>
@@ -79,7 +109,11 @@
                     <tr>
                         <td><strong>@g.Name</strong></td>
                         <td>@(g.Level ?? "—")</td>
-                        <td>@(g.ParentEmail ?? "—")</td>
+                        <td class="text-center">@(g.Leotard ? "✓" : "")</td>
+                        <td class="text-center">@(g.Leggings ? "✓" : "")</td>
+                        <td class="text-center">@(g.TeamBag ? "✓" : "")</td>
+                        <td class="text-center">@(g.Jacket ? "✓" : "")</td>
+                        <td class="text-center"><span class="badge bg-danger">Required</span></td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditGymnast(g)">Edit</button>
                             <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteGymnast(g)">Delete</button>
@@ -88,7 +122,7 @@
                 }
                 @if (!filteredGymnasts.Any())
                 {
-                    <tr><td colspan="4" class="text-center text-muted py-3">No gymnasts yet. Click "+ Add Gymnast" to get started.</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted py-3">No gymnasts yet. Click "+ Add Gymnast" to get started.</td></tr>
                 }
             </tbody>
         </table>
@@ -103,6 +137,11 @@
     private string formName = "";
     private string formLevel = "";
     private string formParentEmail = "";
+    private bool formLeotard;
+    private bool formLeggings;
+    private bool formTeamBag;
+    private bool formJacket;
+    private bool formTeamCamp = true;
     private string? filterLevel;
     private string? successMessage;
 
@@ -143,6 +182,11 @@
         formName = "";
         formLevel = "";
         formParentEmail = "";
+        formLeotard = false;
+        formLeggings = false;
+        formTeamBag = false;
+        formJacket = false;
+        formTeamCamp = true;
         showForm = true;
     }
 
@@ -152,6 +196,11 @@
         formName = g.Name;
         formLevel = g.Level ?? "";
         formParentEmail = g.ParentEmail ?? "";
+        formLeotard = g.Leotard;
+        formLeggings = g.Leggings;
+        formTeamBag = g.TeamBag;
+        formJacket = g.Jacket;
+        formTeamCamp = g.TeamCamp;
         showForm = true;
     }
 
@@ -170,6 +219,11 @@
                 entity.Name = formName.Trim();
                 entity.Level = string.IsNullOrWhiteSpace(formLevel) ? null : formLevel.Trim();
                 entity.ParentEmail = string.IsNullOrWhiteSpace(formParentEmail) ? null : formParentEmail.Trim();
+                entity.Leotard = formLeotard;
+                entity.Leggings = formLeggings;
+                entity.TeamBag = formTeamBag;
+                entity.Jacket = formJacket;
+                entity.TeamCamp = true;
                 await db.SaveChangesAsync();
             }
         }
@@ -180,6 +234,11 @@
                 Name = formName.Trim(),
                 Level = string.IsNullOrWhiteSpace(formLevel) ? null : formLevel.Trim(),
                 ParentEmail = string.IsNullOrWhiteSpace(formParentEmail) ? null : formParentEmail.Trim(),
+                Leotard = formLeotard,
+                Leggings = formLeggings,
+                TeamBag = formTeamBag,
+                Jacket = formJacket,
+                TeamCamp = true,
                 UserId = userId!
             });
             await db.SaveChangesAsync();

@@ -13,6 +13,15 @@ namespace GymBudgetApp.Models
         [StringLength(100)]
         public string? Level { get; set; }
 
+        // Optional items
+        public bool Leotard { get; set; }
+        public bool Leggings { get; set; }
+        public bool TeamBag { get; set; }
+        public bool Jacket { get; set; }
+
+        // Required items
+        public bool TeamCamp { get; set; } = true;
+
         [StringLength(200)]
         public string? ParentEmail { get; set; }
 
