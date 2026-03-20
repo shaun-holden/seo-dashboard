@@ -918,11 +918,7 @@ else
             needsCommitment = false;
         }
 
-        // Re-filter athletes to only those with published levels
-        levelIds = teamLevels.Select(t => t.Id).ToList();
-        athletes = athletes.Where(a => levelIds.Contains(a.TeamLevelId)).ToList();
-        athleteItems = await db.AthleteItems.AsNoTracking().Where(i => levelIds.Contains(i.TeamLevelId)).ToListAsync();
-        selections = await db.AthleteItemSelections.AsNoTracking().Where(s => athleteIds.Contains(s.AthleteId)).ToListAsync();
+        // Athletes already loaded from Gymnasts — no need to re-filter by TeamLevel
         payments = await db.Payments.AsNoTracking().Where(p => athleteIds.Contains(p.AthleteId)).ToListAsync();
         parentLinksData = await db.ParentLinks.AsNoTracking().Where(pl => pl.ParentUserId == userId && pl.IsClaimed).ToListAsync();
         parentGymnasts = await db.Gymnasts.AsNoTracking().Where(g => athleteIds.Contains(g.Id)).ToListAsync();
