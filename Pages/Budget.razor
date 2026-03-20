@@ -31,38 +31,6 @@ else
 
     @if (selectedSeasonId > 0)
     {
-        <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
-            <div class="btn-group btn-group-sm">
-                <button class="btn btn-outline-secondary" @onclick="ExpandAll">
-                    <span class="oi oi-fullscreen-enter me-1"></span> Expand All
-                </button>
-                <button class="btn btn-outline-secondary" @onclick="CollapseAll">
-                    <span class="oi oi-fullscreen-exit me-1"></span> Collapse All
-                </button>
-            </div>
-            @if (teamLevels.Count > 1)
-            {
-                <select class="form-select" style="max-width: 200px;" value="@filterLevelId"
-                        @onchange="OnFilterLevelChanged">
-                    <option value="0">All @labels.TeamLevels</option>
-                    @foreach (var level in teamLevels)
-                    {
-                        <option value="@level.Id">@level.Name</option>
-                    }
-                </select>
-            }
-            @if (seasonGroups.Any())
-            {
-                <select class="form-select" style="max-width: 200px;" value="@filterGroupId"
-                        @onchange="OnFilterGroupChanged">
-                    <option value="0">All Groups</option>
-                    @foreach (var g in seasonGroups)
-                    {
-                        <option value="@g.Id">@g.Name</option>
-                    }
-                </select>
-            }
-        </div>
 
         <div class="row mb-3">
             <div class="col-md-3">
@@ -151,63 +119,6 @@ else
             </div>
         }
 
-        @* Per-level budget breakdown *@
-        @if (seasonGroups.Any())
-        {
-            var allGroupedLevelIds = levelGroupAssignments.Select(a => a.TeamLevelId).ToHashSet();
-
-            @foreach (var group in seasonGroups)
-            {
-                var groupLevelIds = levelGroupAssignments.Where(a => a.SeasonGroupId == group.Id).Select(a => a.TeamLevelId).ToHashSet();
-                var groupLevels = filteredTeamLevels.Where(t => groupLevelIds.Contains(t.Id)).ToList();
-                if (groupLevels.Any())
-                {
-                    @if (groupLevels.Count == 1 && string.Equals(groupLevels[0].Name?.Trim(), group.Name?.Trim(), StringComparison.OrdinalIgnoreCase))
-                    {
-                        @RenderLevelBudget(groupLevels[0])
-                    }
-                    else
-                    {
-                        var groupTotal = groupLevels.Sum(l => GetLevelTotal(l.Id));
-                        var gId = group.Id;
-                        var groupExpanded = expandedGroups.Contains(gId);
-                        <div class="card mb-4 border-primary">
-                            <div class="card-header bg-light d-flex justify-content-between align-items-center"
-                                 @onclick="() => ToggleGroup(gId)" style="cursor: pointer;">
-                                <div>
-                                    <h5 class="mb-0 d-inline">@group.Name</h5>
-                                    <span class="badge bg-primary ms-2">@groupLevels.Count @labels.TeamLevels</span>
-                                </div>
-                                <div>
-                                    <span class="fw-bold me-2">$@groupTotal.ToString("N2")</span>
-                                    <span class="oi @(groupExpanded ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
-                                </div>
-                            </div>
-                            @if (groupExpanded)
-                            {
-                            <div class="card-body">
-                                @foreach (var level in groupLevels)
-                                {
-                                    @RenderLevelBudget(level)
-                                }
-                            </div>
-                            }
-                        </div>
-                    }
-                }
-            }
-        }
-        else
-        {
-            @foreach (var level in filteredTeamLevels)
-            {
-                @RenderLevelBudget(level)
-            }
-        }
-
-        <div class="fw-bold mt-2 p-2 bg-light rounded">
-            Grand Total: $@budgetTotal.ToString("N2")
-        </div>
     }
 }
 
