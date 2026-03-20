@@ -1,0 +1,178 @@
+@page "/payment-plans"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+<h3>Payment Plans</h3>
+<p class="text-muted">Set custom payment months per athlete. Default uses the season setting.</p>
+
+@if (loading)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <input type="text" class="form-control" placeholder="Search athlete..." @bind="searchText" @bind:event="oninput" />
+        </div>
+        <div class="col-md-3">
+            <select class="form-select" @bind="filterLevel">
+                <option value="">All Levels</option>
+                @foreach (var lvl in levels)
+                {
+                    <option value="@lvl">@lvl</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-3">
+            <span class="text-muted mt-2 d-block">Season default: <strong>@seasonPaymentMonths months</strong></span>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Athlete</th>
+                        <th>Level</th>
+                        <th class="text-center">Payment Months</th>
+                        <th class="text-center">Start Month</th>
+                        <th class="text-end">Monthly Amount</th>
+                        <th class="text-center">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var g in filteredGymnasts)
+                    {
+                        var gId = g.Id;
+                        var months = g.PaymentPlanMonths ?? seasonPaymentMonths;
+                        var startMonth = g.PaymentStartMonth ?? DateTime.Today.Month;
+                        var monthlyAmt = months > 0 ? Math.Round(costPerGymnast / months, 2) : 0;
+                        <tr>
+                            <td><strong>@g.Name</strong></td>
+                            <td>@(g.Level ?? "—")</td>
+                            <td class="text-center">
+                                <select class="form-select form-select-sm d-inline-block" style="width: 90px;"
+                                        value="@months"
+                                        @onchange="(e) => UpdateMonths(gId, e)">
+                                    @for (int m = 1; m <= 12; m++)
+                                    {
+                                        <option value="@m">@m</option>
+                                    }
+                                </select>
+                            </td>
+                            <td class="text-center">
+                                <select class="form-select form-select-sm d-inline-block" style="width: 130px;"
+                                        value="@startMonth"
+                                        @onchange="(e) => UpdateStartMonth(gId, e)">
+                                    @for (int m = 1; m <= 12; m++)
+                                    {
+                                        <option value="@m">@(new DateTime(2026, m, 1).ToString("MMMM"))</option>
+                                    }
+                                </select>
+                            </td>
+                            <td class="text-end fw-bold">$@monthlyAmt.ToString("N2")</td>
+                            <td class="text-center">
+                                @if (g.PaymentPlanMonths.HasValue)
+                                {
+                                    <span class="badge bg-primary">Custom</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Default</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @if (successMessage != null)
+    {
+        <div class="alert alert-success mt-3 alert-dismissible">
+            @successMessage
+            <button type="button" class="btn-close" @onclick="() => successMessage = null"></button>
+        </div>
+    }
+}
+
+@code {
+    private bool loading = true;
+    private List<Gymnast> gymnasts = new();
+    private string searchText = "";
+    private string filterLevel = "";
+    private decimal costPerGymnast;
+    private int seasonPaymentMonths = 8;
+    private string? successMessage;
+
+    private List<string> levels => gymnasts
+        .Where(g => !string.IsNullOrWhiteSpace(g.Level))
+        .Select(g => g.Level!).Distinct().OrderBy(l => l).ToList();
+
+    private List<Gymnast> filteredGymnasts
+    {
+        get
+        {
+            var list = gymnasts.AsEnumerable();
+            if (!string.IsNullOrWhiteSpace(searchText))
+                list = list.Where(g => g.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrEmpty(filterLevel))
+                list = list.Where(g => g.Level == filterLevel);
+            return list.ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        gymnasts = await db.Gymnasts.OrderBy(g => g.Name).ToListAsync();
+
+        var activeSeason = await db.Seasons.FirstOrDefaultAsync(s => s.IsActive);
+        if (activeSeason != null)
+        {
+            seasonPaymentMonths = activeSeason.PaymentMonths > 0 ? activeSeason.PaymentMonths : 8;
+            var calcTotal = await db.BudgetCalculatorEntries
+                .Where(e => e.SeasonId == activeSeason.Id)
+                .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
+            var athleteCount = activeSeason.AthleteCount > 0 ? activeSeason.AthleteCount : gymnasts.Count;
+            costPerGymnast = athleteCount > 0 ? Math.Round(calcTotal / athleteCount, 2) : 0;
+        }
+        loading = false;
+    }
+
+    private async Task UpdateMonths(int gymnastId, ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var months) || months < 1) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var g = await db.Gymnasts.FindAsync(gymnastId);
+        if (g != null)
+        {
+            g.PaymentPlanMonths = months;
+            await db.SaveChangesAsync();
+            var local = gymnasts.FirstOrDefault(x => x.Id == gymnastId);
+            if (local != null) local.PaymentPlanMonths = months;
+            successMessage = $"Payment plan for {g.Name} set to {months} months.";
+        }
+    }
+
+    private async Task UpdateStartMonth(int gymnastId, ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var month) || month < 1 || month > 12) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var g = await db.Gymnasts.FindAsync(gymnastId);
+        if (g != null)
+        {
+            g.PaymentStartMonth = month;
+            await db.SaveChangesAsync();
+            var local = gymnasts.FirstOrDefault(x => x.Id == gymnastId);
+            if (local != null) local.PaymentStartMonth = month;
+            successMessage = $"Start month for {g.Name} set to {new DateTime(2026, month, 1):MMMM}.";
+        }
+    }
+}

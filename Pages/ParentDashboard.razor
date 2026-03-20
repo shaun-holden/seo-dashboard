@@ -248,11 +248,14 @@ else
 
                 @{
                     var athleteLevelObj = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId);
+                    var gymnastRecord = parentGymnasts.FirstOrDefault(g => g.Id == athlete.Id);
                     var seasonPayMonths = seasons.FirstOrDefault()?.PaymentMonths ?? 8;
-                    var planMonths = seasonPayMonths > 0 ? seasonPayMonths : 8;
+                    var planMonths = gymnastRecord?.PaymentPlanMonths ?? seasonPayMonths;
+                    if (planMonths <= 0) planMonths = 8;
+                    var startMonthNum = gymnastRecord?.PaymentStartMonth ?? DateTime.Today.Month;
                     var monthlyAmount = Math.Round(balance / planMonths, 2);
-                    var scheduleStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 15);
-                    if (DateTime.Today.Day > 15) scheduleStart = scheduleStart.AddMonths(1);
+                    var scheduleYear = startMonthNum >= DateTime.Today.Month ? DateTime.Today.Year : DateTime.Today.Year + 1;
+                    var scheduleStart = new DateTime(scheduleYear, startMonthNum, 15);
                     var payLink = parentLinksData.FirstOrDefault(pl => pl.AthleteId == athlete.Id);
                     var usesExternalBilling = payLink?.UseExternalBilling == true;
                 }
@@ -692,6 +695,7 @@ else
     private List<ApparelItem> parentApparelItems = new();
     private List<GymnastApparelSelection> parentApparelSelections = new();
     private decimal parentCostPerGymnast;
+    private List<Gymnast> parentGymnasts = new();
 
     private record ParentItemCol(string Name, bool IsRequired);
     private List<ParentItemCol> parentApparelColumns = new();
@@ -898,6 +902,7 @@ else
         selections = await db.AthleteItemSelections.AsNoTracking().Where(s => athleteIds.Contains(s.AthleteId)).ToListAsync();
         payments = await db.Payments.AsNoTracking().Where(p => athleteIds.Contains(p.AthleteId)).ToListAsync();
         parentLinksData = await db.ParentLinks.AsNoTracking().Where(pl => pl.ParentUserId == userId && pl.IsClaimed).ToListAsync();
+        parentGymnasts = await db.Gymnasts.AsNoTracking().Where(g => athleteIds.Contains(g.Id)).ToListAsync();
 
         // Load seasons and shared fees
         var seasonIds = teamLevels.Select(t => t.SeasonId).Distinct().ToList();
