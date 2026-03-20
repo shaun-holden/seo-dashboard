@@ -367,12 +367,31 @@
     private bool LevelMatchesAppliesTo(string level, string appliesTo)
     {
         var keywords = appliesTo.Split(',').Select(k => k.Trim()).Where(k => k.Length > 0);
+        var levelUpper = level.ToUpper().Trim();
+
         foreach (var keyword in keywords)
         {
-            // Check both directions: level contains keyword OR keyword contains level
-            if (level.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                keyword.Contains(level, StringComparison.OrdinalIgnoreCase))
-                return true;
+            var kwUpper = keyword.ToUpper().Trim();
+
+            // Exact match
+            if (levelUpper == kwUpper) return true;
+
+            // Level contains the full keyword (e.g. "Xcel Bronze" contains "Bronze")
+            if (kwUpper.Length >= 3 && levelUpper.Contains(kwUpper)) return true;
+
+            // Keyword contains the full level (e.g. "USA/NGA/Xcel Bronze" contains "Xcel Bronze")
+            if (kwUpper.Contains(levelUpper)) return true;
+
+            // For short keywords (numbers like "9", "10"), require they appear as a word boundary
+            // e.g. "NGA 9" matches "9" but "USA Level 9" should only match if the prefix matches too
+            if (kwUpper.Length <= 2)
+            {
+                // Check if level starts with a prefix that's in the AppliesTo string
+                // e.g. "NGA 9" → level must contain "NGA" for "9" to match
+                var prefixes = appliesTo.Split(',')[0].Split(' ', '/').Where(p => p.Length >= 3).Select(p => p.Trim().ToUpper());
+                if (prefixes.Any(p => levelUpper.Contains(p)) && levelUpper.Contains(kwUpper))
+                    return true;
+            }
         }
         return false;
     }
