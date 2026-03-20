@@ -60,6 +60,7 @@ namespace GymBudgetApp
         public DbSet<EmployeePermission> EmployeePermissions { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<ApparelItem> ApparelItems { get; set; }
+        public DbSet<GymnastApparelSelection> GymnastApparelSelections { get; set; }
         public DbSet<Announcement> Announcements { get; set; }
         public DbSet<AnnouncementReadReceipt> AnnouncementReadReceipts { get; set; }
         public DbSet<EventRsvp> EventRsvps { get; set; }

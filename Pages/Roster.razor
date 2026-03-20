@@ -90,17 +90,25 @@
 
 <div class="card">
     <div class="card-body p-0">
+        <div style="overflow-x: auto;">
         <table class="table table-sm table-hover mb-0">
             <thead class="table-light">
                 <tr>
                     <th>Name</th>
                     <th>Level</th>
-                    <th class="text-center">Leotard</th>
-                    <th class="text-center">Leggings</th>
-                    <th class="text-center">Team Bag</th>
-                    <th class="text-center">Jacket</th>
-                    <th class="text-center">Team Camp</th>
+                    @foreach (var item in apparelItems)
+                    {
+                        <th class="text-center" style="min-width: 80px;">
+                            @item.Name
+                            <br/><small class="text-muted">$@item.Price.ToString("N0")</small>
+                            @if (item.IsRequired)
+                            {
+                                <br/><span class="badge bg-danger" style="font-size: 0.6rem;">Required</span>
+                            }
+                        </th>
+                    }
                     <th class="text-end">Shared Fees</th>
+                    <th class="text-end">Apparel</th>
                     <th class="text-end">Total Cost</th>
                     <th class="text-end">Actions</th>
                 </tr>
@@ -108,30 +116,35 @@
             <tbody>
                 @foreach (var g in filteredGymnasts)
                 {
-                    var itemsCost = GetGymnastItemsCost(g);
-                    var gymnastTotal = costPerGymnast + itemsCost;
+                    var apparelCost = GetGymnastApparelCost(g);
+                    var gymnastTotal = costPerGymnast + apparelCost;
                     <tr>
                         <td><strong>@g.Name</strong></td>
                         <td>@(g.Level ?? "—")</td>
-                        <td class="text-center">
-                            <input type="checkbox" class="form-check-input" checked="@g.Leotard"
-                                   @onchange="(e) => ToggleItem(g.Id, nameof(Gymnast.Leotard), (bool)e.Value!)" />
-                            @if (g.Leotard) { <small class="d-block text-muted">$@GetItemPrice("Leotard", g.Level).ToString("N0")</small> }
-                        </td>
-                        <td class="text-center">
-                            <input type="checkbox" class="form-check-input" checked="@g.Leggings"
-                                   @onchange="(e) => ToggleItem(g.Id, nameof(Gymnast.Leggings), (bool)e.Value!)" />
-                        </td>
-                        <td class="text-center">
-                            <input type="checkbox" class="form-check-input" checked="@g.TeamBag"
-                                   @onchange="(e) => ToggleItem(g.Id, nameof(Gymnast.TeamBag), (bool)e.Value!)" />
-                        </td>
-                        <td class="text-center">
-                            <input type="checkbox" class="form-check-input" checked="@g.Jacket"
-                                   @onchange="(e) => ToggleItem(g.Id, nameof(Gymnast.Jacket), (bool)e.Value!)" />
-                        </td>
-                        <td class="text-center"><input type="checkbox" class="form-check-input" checked disabled /></td>
+                        @foreach (var item in apparelItems)
+                        {
+                            var isChecked = IsGymnastItemChecked(g, item.Name);
+                            var itemPrice = GetItemPrice(item.Name, g.Level);
+                            var apparelItemName = item.Name;
+                            var gymnastId = g.Id;
+                            <td class="text-center">
+                                @if (item.IsRequired)
+                                {
+                                    <input type="checkbox" class="form-check-input" checked disabled />
+                                }
+                                else
+                                {
+                                    <input type="checkbox" class="form-check-input" checked="@isChecked"
+                                           @onchange="(e) => ToggleApparelItem(gymnastId, apparelItemName, (bool)e.Value!)" />
+                                }
+                                @if (isChecked || item.IsRequired)
+                                {
+                                    <small class="d-block text-muted">$@itemPrice.ToString("N0")</small>
+                                }
+                            </td>
+                        }
                         <td class="text-end fw-bold text-primary">$@costPerGymnast.ToString("N2")</td>
+                        <td class="text-end">$@apparelCost.ToString("N2")</td>
                         <td class="text-end fw-bold">$@gymnastTotal.ToString("N2")</td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditGymnast(g)">Edit</button>
@@ -141,7 +154,7 @@
                 }
                 @if (!filteredGymnasts.Any())
                 {
-                    <tr><td colspan="10" class="text-center text-muted py-3">No gymnasts yet. Click "+ Add Gymnast" to get started.</td></tr>
+                    <tr><td colspan="@(apparelItems.Count + 6)" class="text-center text-muted py-3">No gymnasts yet. Click "+ Add Gymnast" to get started.</td></tr>
                 }
             </tbody>
             @if (filteredGymnasts.Any())
@@ -150,18 +163,20 @@
                     <tr class="fw-bold">
                         <td>@filteredGymnasts.Count gymnast(s)</td>
                         <td></td>
-                        <td class="text-center">@filteredGymnasts.Count(g => g.Leotard)</td>
-                        <td class="text-center">@filteredGymnasts.Count(g => g.Leggings)</td>
-                        <td class="text-center">@filteredGymnasts.Count(g => g.TeamBag)</td>
-                        <td class="text-center">@filteredGymnasts.Count(g => g.Jacket)</td>
-                        <td class="text-center">@filteredGymnasts.Count</td>
+                        @foreach (var item in apparelItems)
+                        {
+                            var count = filteredGymnasts.Count(g => item.IsRequired || IsGymnastItemChecked(g, item.Name));
+                            <td class="text-center">@count</td>
+                        }
                         <td class="text-end text-primary">$@((costPerGymnast * filteredGymnasts.Count).ToString("N2"))</td>
+                        <td class="text-end">$@filteredGymnasts.Sum(g => GetGymnastApparelCost(g)).ToString("N2")</td>
                         <td class="text-end">$@GetGrandTotal().ToString("N2")</td>
                         <td></td>
                     </tr>
                 </tfoot>
             }
         </table>
+        </div>
     </div>
 </div>
 
@@ -222,9 +237,15 @@
             var athleteCount = activeSeason.AthleteCount > 0 ? activeSeason.AthleteCount : gymnasts.Count;
             costPerGymnast = athleteCount > 0 ? Math.Round(calcTotal / athleteCount, 2) : 0;
 
-            // Load apparel items
+            // Load apparel items and selections
             apparelItems = await db.ApparelItems.AsNoTracking()
                 .Where(a => a.SeasonId == activeSeason.Id)
+                .OrderBy(a => a.IsRequired ? 0 : 1).ThenBy(a => a.Name)
+                .ToListAsync();
+
+            var gymnastIds = gymnasts.Select(g => g.Id).ToList();
+            apparelSelections = await db.GymnastApparelSelections
+                .Where(s => gymnastIds.Contains(s.GymnastId))
                 .ToListAsync();
         }
     }
@@ -303,14 +324,13 @@
     }
 
     private List<ApparelItem> apparelItems = new();
+    private List<GymnastApparelSelection> apparelSelections = new();
 
     private decimal GetItemPrice(string itemName, string? level)
     {
-        // Find matching apparel item - check level-specific first, then general
         var items = apparelItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
         if (!items.Any()) return 0;
 
-        // Check for level-specific pricing
         if (!string.IsNullOrEmpty(level))
         {
             var levelItem = items.FirstOrDefault(a => !string.IsNullOrEmpty(a.AppliesTo) &&
@@ -318,25 +338,60 @@
             if (levelItem != null) return levelItem.Price;
         }
 
-        // Fall back to general (no AppliesTo specified)
         return items.FirstOrDefault(a => string.IsNullOrEmpty(a.AppliesTo))?.Price ?? items.First().Price;
     }
 
-    private decimal GetGymnastItemsCost(Gymnast g)
+    private bool IsGymnastItemChecked(Gymnast g, string itemName)
+    {
+        var sel = apparelSelections.FirstOrDefault(s => s.GymnastId == g.Id && s.ItemName == itemName);
+        return sel?.IsSelected ?? false;
+    }
+
+    private decimal GetGymnastApparelCost(Gymnast g)
     {
         decimal cost = 0;
-        if (g.Leotard) cost += GetItemPrice("Leotard", g.Level);
-        if (g.Leggings) cost += GetItemPrice("Leggings", g.Level);
-        if (g.TeamBag) cost += GetItemPrice("Team Bag", g.Level);
-        if (g.Jacket) cost += GetItemPrice("Jacket", g.Level);
-        // Team Camp is required but priced separately if in apparel
-        cost += GetItemPrice("Team Camp", g.Level);
+        foreach (var item in apparelItems)
+        {
+            if (item.IsRequired || IsGymnastItemChecked(g, item.Name))
+            {
+                cost += GetItemPrice(item.Name, g.Level);
+            }
+        }
         return cost;
     }
 
     private decimal GetGrandTotal()
     {
-        return filteredGymnasts.Sum(g => costPerGymnast + GetGymnastItemsCost(g));
+        return filteredGymnasts.Sum(g => costPerGymnast + GetGymnastApparelCost(g));
+    }
+
+    private async Task ToggleApparelItem(int gymnastId, string itemName, bool isChecked)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.GymnastApparelSelections
+            .FirstOrDefaultAsync(s => s.GymnastId == gymnastId && s.ItemName == itemName);
+
+        if (existing != null)
+        {
+            existing.IsSelected = isChecked;
+        }
+        else
+        {
+            db.GymnastApparelSelections.Add(new GymnastApparelSelection
+            {
+                GymnastId = gymnastId,
+                ItemName = itemName,
+                IsSelected = isChecked
+            });
+        }
+        await db.SaveChangesAsync();
+
+        // Update local state
+        var localSel = apparelSelections.FirstOrDefault(s => s.GymnastId == gymnastId && s.ItemName == itemName);
+        if (localSel != null)
+            localSel.IsSelected = isChecked;
+        else
+            apparelSelections.Add(new GymnastApparelSelection { GymnastId = gymnastId, ItemName = itemName, IsSelected = isChecked });
     }
 
     private async Task ToggleItem(int gymnastId, string field, bool value)
