@@ -51,6 +51,15 @@
 
 <h3>My Athletes</h3>
 
+<!-- Debug info - remove after fixing -->
+<div class="alert alert-secondary small mb-2">
+    User: @userId |
+    Links: @parentLinkCount |
+    Gymnasts found: @gymnastCount |
+    Budget ready: @(!budgetNotReady) |
+    Needs commitment: @needsCommitment
+</div>
+
 @if (loading)
 {
     <p>Loading...</p>
@@ -732,6 +741,8 @@ else
     }
 
     private bool budgetNotReady;
+    private int parentLinkCount;
+    private int gymnastCount;
     private bool needsCommitment;
 
     protected override async Task OnInitializedAsync()
@@ -855,12 +866,15 @@ else
             .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
             .ToListAsync();
         var athleteIds = parentLinks.Select(l => l.AthleteId).ToList();
+        parentLinkCount = parentLinks.Count;
 
         // Load from Gymnasts table and map to Athlete objects for compatibility
         var gymnastRecords = await db.Gymnasts.AsNoTracking()
             .Where(g => athleteIds.Contains(g.Id))
             .OrderBy(g => g.Name)
             .ToListAsync();
+
+        gymnastCount = gymnastRecords.Count;
 
         // Get team levels to map gymnast Level string to TeamLevelId
         var allTeamLevels = await db.TeamLevels.AsNoTracking().ToListAsync();
