@@ -356,54 +356,6 @@ else
         showForm = false;
     }
 
-    // --- Season Groups ---
-    private int groupSeasonId;
-    private List<SeasonGroup> seasonGroupsList = new();
-    private bool showGroupForm;
-    private SeasonGroup? editingGroup;
-    private string groupFormName = "";
-    private int groupFormSortOrder;
-
-    private async Task LoadGroups()
-    {
-        seasonGroupsList = groupSeasonId > 0
-            ? Db.SeasonGroups.Where(g => g.SeasonId == groupSeasonId).OrderBy(g => g.SortOrder).ToList()
-            : new();
-        await Task.CompletedTask;
-    }
-
-    private void ShowGroupForm() { editingGroup = null; groupFormName = ""; groupFormSortOrder = seasonGroupsList.Count; showGroupForm = true; }
-    private void CancelGroupForm() { showGroupForm = false; }
-
-    private void EditGroup(SeasonGroup g)
-    {
-        editingGroup = g; groupFormName = g.Name; groupFormSortOrder = g.SortOrder; showGroupForm = true;
-    }
-
-    private async Task SaveGroup()
-    {
-        if (string.IsNullOrWhiteSpace(groupFormName)) return;
-        if (editingGroup == null)
-        {
-            Db.SeasonGroups.Add(new SeasonGroup { Name = groupFormName, SortOrder = groupFormSortOrder, SeasonId = groupSeasonId });
-        }
-        else
-        {
-            editingGroup.Name = groupFormName; editingGroup.SortOrder = groupFormSortOrder;
-            Db.SeasonGroups.Update(editingGroup);
-        }
-        await Db.SaveChangesAsync();
-        await LoadGroups();
-        showGroupForm = false;
-    }
-
-    private async Task DeleteGroup(SeasonGroup g)
-    {
-        Db.SeasonGroups.Remove(g);
-        await Db.SaveChangesAsync();
-        await LoadGroups();
-    }
-
     // --- Copy Structure ---
     private Season? copySource;
     private int copyTargetId;

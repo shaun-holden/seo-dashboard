@@ -44,7 +44,7 @@
                 <div class="card-body">
                     <h6 class="card-title">Total Budget</h6>
                     <h3>$@totalBudget.ToString("N2")</h3>
-                    <small>@budgetItemCount line items</small>
+                    <small>from calculator</small>
                 </div>
             </div>
         </div>
@@ -136,12 +136,8 @@
     private ProjectLabels labels = ProjectLabels.Default;
     private Season? activeSeason;
     private int meetCount;
-    private int coachCount;
-    private int activeCoachCount;
     private decimal totalBudget;
-    private int budgetItemCount;
     private int totalAthletes;
-    private int teamLevelCount;
     private Meet? nextMeet;
 
     protected override async Task OnInitializedAsync()
@@ -170,9 +166,6 @@
             {
                 var seasonId = activeSeason.Id;
                 meetCount = await Db.Meets.CountAsync(m => m.SeasonId == seasonId);
-                coachCount = await Db.Coaches.CountAsync(c => c.SeasonId == seasonId);
-                activeCoachCount = await Db.Coaches.CountAsync(c => c.SeasonId == seasonId && c.IsActive);
-                budgetItemCount = await Db.BudgetLineItems.CountAsync(b => b.SeasonId == seasonId);
 
                 // Use calculator total if available, fall back to shared fees + athlete items
                 var calcTotal = await Db.BudgetCalculatorEntries
