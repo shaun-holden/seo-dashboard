@@ -167,6 +167,42 @@ else
                                 <td class="text-end">@(isSelected ? $"${item.Cost:N2}" : "—")</td>
                             </tr>
                         }
+                        @if (parentCompetitionItems.Any())
+                        {
+                            <tr class="table-light"><td colspan="3"><strong>Competitions</strong></td></tr>
+                        }
+                        @foreach (var comp in parentCompetitionItems)
+                        {
+                            var compApplies = DoesCompApplyToLevel(comp.Name, athlete);
+                            if (!compApplies) continue;
+                            var compPrice = GetCompPrice(comp.Name, athlete);
+                            var compId = comp.Id;
+                            var athId = athlete.Id;
+                            var compSelected = IsParentCompSelected(athlete.Id, comp.Name);
+                            if (comp.IsRequired)
+                            {
+                                <tr>
+                                    <td>
+                                        <input type="checkbox" class="form-check-input me-2" checked disabled />
+                                        @comp.Name
+                                    </td>
+                                    <td><span class="badge bg-danger">Required</span></td>
+                                    <td class="text-end">$@compPrice.ToString("N2")</td>
+                                </tr>
+                            }
+                            else
+                            {
+                                <tr class="@(compSelected ? "" : "table-secondary")">
+                                    <td>
+                                        <input type="checkbox" class="form-check-input me-2" checked="@compSelected"
+                                               @onchange="(e) => ToggleCompSelection(athId, comp.Name, (bool)e.Value!)" />
+                                        @comp.Name
+                                    </td>
+                                    <td><span class="badge bg-info">Optional</span></td>
+                                    <td class="text-end">@(compSelected ? $"${compPrice:N2}" : "—")</td>
+                                </tr>
+                            }
+                        }
                     </tbody>
                     <tfoot class="table-light">
                         <tr class="fw-bold">
@@ -617,6 +653,8 @@ else
     private Dictionary<int, decimal> customAmounts = new();
     private List<ParentLink> parentLinksData = new();
     private Dictionary<int, DateTime> lastPaymentAttempt = new();
+    private List<CompetitionItem> parentCompetitionItems = new();
+    private List<GymnastCompetitionSelection> parentCompSelections = new();
     private List<Announcement> announcements = new();
     private HashSet<int> readAnnouncementIds = new();
     private int announcementDisplayCount = 10;
@@ -854,6 +892,15 @@ else
             .Where(r => r.ParentUserId == userId && athleteIds.Contains(r.AthleteId))
             .ToListAsync();
 
+        // Load competition items
+        parentCompetitionItems = await db.CompetitionItems.AsNoTracking()
+            .Where(c => seasonIds.Contains(c.SeasonId))
+            .OrderBy(c => c.IsRequired ? 0 : 1).ThenBy(c => c.Name)
+            .ToListAsync();
+        parentCompSelections = await db.GymnastCompetitionSelections
+            .Where(s => athleteIds.Contains(s.GymnastId))
+            .ToListAsync();
+
         expandedAthletes = athletes.Select(a => a.Id).ToHashSet();
         foreach (var a in athletes)
             customAmounts.TryAdd(a.Id, 0);
@@ -875,6 +922,57 @@ else
                 .ToListAsync())
                 .ToHashSet();
         }
+    }
+
+    // Competition item helpers for parent
+    private bool DoesCompApplyToLevel(string itemName, Athlete athlete)
+    {
+        var level = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name;
+        if (string.IsNullOrEmpty(level)) return true;
+        var items = parentCompetitionItems.Where(c => c.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!items.Any()) return false;
+        if (items.Any(c => string.IsNullOrEmpty(c.AppliesTo))) return true;
+        return items.Any(c => !string.IsNullOrEmpty(c.AppliesTo) &&
+            c.AppliesTo.Split(',').Any(k =>
+                level.Contains(k.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                k.Trim().Contains(level, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private decimal GetCompPrice(string itemName, Athlete athlete)
+    {
+        var level = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "";
+        var items = parentCompetitionItems.Where(c => c.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!items.Any()) return 0;
+        if (!string.IsNullOrEmpty(level))
+        {
+            var match = items.FirstOrDefault(c => !string.IsNullOrEmpty(c.AppliesTo) &&
+                c.AppliesTo.Split(',').Any(k =>
+                    level.Contains(k.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                    k.Trim().Contains(level, StringComparison.OrdinalIgnoreCase)));
+            if (match != null) return match.Price;
+        }
+        return items.FirstOrDefault(c => string.IsNullOrEmpty(c.AppliesTo))?.Price ?? 0;
+    }
+
+    private bool IsParentCompSelected(int athleteId, string itemName)
+    {
+        return parentCompSelections.Any(s => s.GymnastId == athleteId && s.ItemName == itemName && s.IsSelected);
+    }
+
+    private async Task ToggleCompSelection(int athleteId, string itemName, bool isChecked)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.GymnastCompetitionSelections
+            .FirstOrDefaultAsync(s => s.GymnastId == athleteId && s.ItemName == itemName);
+        if (existing != null)
+            existing.IsSelected = isChecked;
+        else
+            db.GymnastCompetitionSelections.Add(new GymnastCompetitionSelection { GymnastId = athleteId, ItemName = itemName, IsSelected = isChecked });
+        await db.SaveChangesAsync();
+
+        var local = parentCompSelections.FirstOrDefault(s => s.GymnastId == athleteId && s.ItemName == itemName);
+        if (local != null) local.IsSelected = isChecked;
+        else parentCompSelections.Add(new GymnastCompetitionSelection { GymnastId = athleteId, ItemName = itemName, IsSelected = isChecked });
     }
 
     private async Task ToggleSelection(int athleteId, int itemId, bool isChecked)
