@@ -78,11 +78,10 @@
             .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
             .ToListAsync();
         var athleteIds = links.Select(l => l.AthleteId).ToList();
-        var athletes = await db.Athletes
-            .Include(a => a.TeamLevel)
-            .Where(a => athleteIds.Contains(a.Id))
+        var gymnasts = await db.Gymnasts
+            .Where(g => athleteIds.Contains(g.Id))
             .ToListAsync();
-        myAthletes = athletes.Select(a => (a.Name, a.TeamLevel?.Name ?? "")).ToList();
+        myAthletes = gymnasts.Select(g => (g.Name, g.Level ?? "")).ToList();
     }
 
     private async Task ClaimInvite()
