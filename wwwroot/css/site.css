@@ -269,9 +269,16 @@ a, .btn-link {
 .budget-grand-total { position: sticky; bottom: 0; background: #212529; color: white; padding: 12px 16px; border-radius: 8px; margin-top: 16px; }
 
 /* Roster table */
-.roster-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
-.roster-table-wrap table { font-size: 0.8rem; }
-.roster-table-wrap th, .roster-table-wrap td { white-space: nowrap; padding: 4px 8px !important; }
-.roster-table-wrap th:first-child, .roster-table-wrap td:first-child { position: sticky; left: 0; background: white; z-index: 1; }
+.roster-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -1rem; padding: 0 1rem; }
+.roster-table-wrap table { font-size: 0.75rem; min-width: 100%; }
+.roster-table-wrap th, .roster-table-wrap td { white-space: nowrap; padding: 3px 6px !important; vertical-align: middle; }
+.roster-table-wrap th:first-child, .roster-table-wrap td:first-child { position: sticky; left: 0; background: white; z-index: 1; min-width: 120px; }
 .roster-table-wrap thead th:first-child { background: #f8f9fa; }
 .roster-table-wrap tfoot td:first-child { background: #f8f9fa; }
+.roster-table-wrap .form-check-input { margin: 0; }
+
+@media (max-width: 768px) {
+    .roster-table-wrap { margin: 0 -1.5rem; padding: 0; }
+    .roster-table-wrap table { font-size: 0.7rem; }
+    .roster-table-wrap th, .roster-table-wrap td { padding: 2px 4px !important; }
+}
