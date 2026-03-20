@@ -96,25 +96,55 @@ using (var scope = app.Services.CreateScope())
         }
     }
 
-    // Migrate Athletes to Gymnasts (one-time data migration)
-    if (!db.Gymnasts.Any() && db.Athletes.Any())
+    // Fix ParentLinks to point to Gymnast IDs (one-time)
+    if (db.Gymnasts.Any() && db.Athletes.Any())
     {
-        var athletes = db.Athletes.Include(a => a.TeamLevel).ToList();
-        foreach (var a in athletes)
-        {
-            db.Gymnasts.Add(new GymBudgetApp.Models.Gymnast
-            {
-                Id = a.Id,
-                Name = a.Name,
-                Level = a.TeamLevel?.Name,
-                UserId = "migrated",
-                ParentEmail = a.ParentPhone
-            });
-        }
-        await db.SaveChangesAsync();
+        var parentLinks = db.ParentLinks.ToList();
+        var gymnasts = db.Gymnasts.ToList();
+        var athletes = db.Athletes.ToList();
+        var needsSave = false;
 
-        // Also update ParentLinks to reference gymnast IDs (they already match since we kept the same IDs)
-        // ParentLinks.AthleteId already points to the right ID
+        foreach (var link in parentLinks)
+        {
+            // Check if the link's AthleteId points to a Gymnast
+            if (!gymnasts.Any(g => g.Id == link.AthleteId))
+            {
+                // Find the athlete this link was for
+                var athlete = athletes.FirstOrDefault(a => a.Id == link.AthleteId);
+                if (athlete != null)
+                {
+                    // Find the matching gymnast by name
+                    var gymnast = gymnasts.FirstOrDefault(g => g.Name == athlete.Name);
+                    if (gymnast != null)
+                    {
+                        link.AthleteId = gymnast.Id;
+                        needsSave = true;
+                    }
+                }
+            }
+        }
+
+        // Also fix Payments
+        var payments = db.Payments.ToList();
+        foreach (var payment in payments)
+        {
+            if (!gymnasts.Any(g => g.Id == payment.AthleteId))
+            {
+                var athlete = athletes.FirstOrDefault(a => a.Id == payment.AthleteId);
+                if (athlete != null)
+                {
+                    var gymnast = gymnasts.FirstOrDefault(g => g.Name == athlete.Name);
+                    if (gymnast != null)
+                    {
+                        payment.AthleteId = gymnast.Id;
+                        needsSave = true;
+                    }
+                }
+            }
+        }
+
+        if (needsSave)
+            await db.SaveChangesAsync();
     }
 }
 
