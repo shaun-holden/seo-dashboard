@@ -36,7 +36,7 @@ else
                     <div class="card-body">
                         <h6>Total Owed</h6>
                         <h4>$@totalOwed.ToString("N2")</h4>
-                        <small>@athletes.Count athlete(s)</small>
+                        <small>@gymnasts.Count gymnast(s)</small>
                     </div>
                 </div>
             </div>
@@ -83,9 +83,9 @@ else
                             <label class="form-label">Athlete</label>
                             <select class="form-select" @bind="creditAthleteId">
                                 <option value="0">-- Select Athlete --</option>
-                                @foreach (var a in athletes)
+                                @foreach (var a in gymnasts)
                                 {
-                                    var lvl = teamLevels.FirstOrDefault(t => t.Id == a.TeamLevelId)?.Name ?? "";
+                                    var lvl = a.Level ?? "";
                                     <option value="@a.Id">@a.Name (@lvl)</option>
                                 }
                             </select>
@@ -129,7 +129,7 @@ else
                         <tbody>
                             @foreach (var c in payments.Where(p => p.Type == PaymentType.Credit).OrderByDescending(p => p.PaidAt).Take(5))
                             {
-                                var aName = athletes.FirstOrDefault(a => a.Id == c.AthleteId)?.Name ?? "Unknown";
+                                var aName = gymnasts.FirstOrDefault(a => a.Id == c.AthleteId)?.Name ?? "Unknown";
                                 <tr>
                                     <td>@aName</td>
                                     <td class="text-success">-$@c.Amount.ToString("N2")</td>
@@ -159,18 +159,14 @@ else
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var athlete in athletes)
+                        @foreach (var athlete in gymnasts)
                         {
-                            var levelItems = athleteItems.Where(i => i.TeamLevelId == athlete.TeamLevelId).ToList();
-                            var requiredCost = levelItems.Where(i => i.IsRequired).Sum(i => i.Cost);
-                            var athleteSel = selections.Where(s => s.AthleteId == athlete.Id).Select(s => s.AthleteItemId).ToHashSet();
-                            var optionalCost = levelItems.Where(i => !i.IsRequired && athleteSel.Contains(i.Id)).Sum(i => i.Cost);
-                            var fees = requiredCost + optionalCost;
+                            var fees = costPerGymnast;
                             var paid = payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment).Sum(p => p.Amount);
                             var credits = payments.Where(p => p.AthleteId == athlete.Id && p.Type == PaymentType.Credit).Sum(p => p.Amount);
                             var balance = fees - paid - credits;
                             var link = parentLinks.FirstOrDefault(pl => pl.AthleteId == athlete.Id);
-                            var levelName = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "";
+                            var levelName = athlete.Level ?? "";
 
                             <tr>
                                 <td><strong>@athlete.Name</strong></td>
@@ -214,7 +210,7 @@ else
                             <td colspan="2">Totals</td>
                             <td class="text-end">$@totalOwed.ToString("N2")</td>
                             <td class="text-end text-success">$@totalPaid.ToString("N2")</td>
-                            <td class="text-end">$@(totalOwed - totalPaid).ToString("N2")</td>
+                            <td class="text-end">$@((totalOwed - totalPaid).ToString("N2"))</td>
                             <td colspan="2"></td>
                         </tr>
                     </tfoot>
@@ -226,12 +222,10 @@ else
 
 @code {
     private List<Season>? seasons;
-    private List<TeamLevel> teamLevels = new();
-    private List<AthleteItem> athleteItems = new();
-    private List<Athlete> athletes = new();
-    private List<AthleteItemSelection> selections = new();
+    private List<Gymnast> gymnasts = new();
     private List<Payment> payments = new();
     private List<ParentLink> parentLinks = new();
+    private decimal costPerGymnast;
     private int selectedSeasonId;
     private string? userId;
     private string? userEmail;
@@ -245,14 +239,7 @@ else
     private List<Payment> paidPayments => payments.Where(p => p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment).ToList();
     private decimal totalCredits => payments.Where(p => p.Type == PaymentType.Credit).Sum(p => p.Amount);
     private decimal totalPaid => paidPayments.Sum(p => p.Amount) + totalCredits;
-    private decimal totalOwed => athletes.Sum(a =>
-    {
-        var items = athleteItems.Where(i => i.TeamLevelId == a.TeamLevelId).ToList();
-        var req = items.Where(i => i.IsRequired).Sum(i => i.Cost);
-        var sel = selections.Where(s => s.AthleteId == a.Id).Select(s => s.AthleteItemId).ToHashSet();
-        var opt = items.Where(i => !i.IsRequired && sel.Contains(i.Id)).Sum(i => i.Cost);
-        return req + opt;
-    });
+    private decimal totalOwed => costPerGymnast * gymnasts.Count;
 
     protected override async Task OnInitializedAsync()
     {
@@ -275,7 +262,7 @@ else
     {
         if (creditAthleteId == 0 || creditAmount <= 0) return;
         using var db = await DbFactory.CreateDbContextAsync();
-        var athlete = await db.Athletes.FindAsync(creditAthleteId);
+        var athlete = await db.Gymnasts.FindAsync(creditAthleteId);
         db.Payments.Add(new Payment
         {
             AthleteId = creditAthleteId,
@@ -298,13 +285,17 @@ else
     private async Task LoadData()
     {
         using var db = await DbFactory.CreateDbContextAsync();
-        teamLevels = await db.TeamLevels.AsNoTracking().Where(t => t.SeasonId == selectedSeasonId).ToListAsync();
-        var levelIds = teamLevels.Select(t => t.Id).ToList();
-        athleteItems = await db.AthleteItems.AsNoTracking().Where(i => levelIds.Contains(i.TeamLevelId)).ToListAsync();
-        athletes = await db.Athletes.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).OrderBy(a => a.Name).ToListAsync();
-        var athleteIds = athletes.Select(a => a.Id).ToList();
-        selections = await db.AthleteItemSelections.AsNoTracking().Where(s => athleteIds.Contains(s.AthleteId)).ToListAsync();
-        payments = await db.Payments.AsNoTracking().Where(p => athleteIds.Contains(p.AthleteId)).ToListAsync();
-        parentLinks = await db.ParentLinks.AsNoTracking().Where(pl => athleteIds.Contains(pl.AthleteId)).ToListAsync();
+        gymnasts = await db.Gymnasts.AsNoTracking().OrderBy(g => g.Name).ToListAsync();
+        var gymnastIds = gymnasts.Select(g => g.Id).ToList();
+        payments = await db.Payments.AsNoTracking().Where(p => gymnastIds.Contains(p.AthleteId)).ToListAsync();
+        parentLinks = await db.ParentLinks.AsNoTracking().Where(pl => gymnastIds.Contains(pl.AthleteId)).ToListAsync();
+
+        // Calculate cost per gymnast from calculator
+        var calcTotal = await db.BudgetCalculatorEntries.AsNoTracking()
+            .Where(e => e.SeasonId == selectedSeasonId)
+            .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
+        var season = await db.Seasons.FindAsync(selectedSeasonId);
+        var athleteCount = season?.AthleteCount > 0 ? season.AthleteCount : gymnasts.Count;
+        costPerGymnast = athleteCount > 0 ? Math.Round(calcTotal / athleteCount, 2) : 0;
     }
 }
