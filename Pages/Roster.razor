@@ -96,12 +96,11 @@
                 <tr>
                     <th>Name</th>
                     <th>Level</th>
-                    @foreach (var item in apparelItems)
+                    @foreach (var col in apparelColumns)
                     {
                         <th class="text-center" style="min-width: 80px;">
-                            @item.Name
-                            <br/><small class="text-muted">$@item.Price.ToString("N0")</small>
-                            @if (item.IsRequired)
+                            @col.Name
+                            @if (col.IsRequired)
                             {
                                 <br/><span class="badge bg-danger" style="font-size: 0.6rem;">Required</span>
                             }
@@ -121,23 +120,23 @@
                     <tr>
                         <td><strong>@g.Name</strong></td>
                         <td>@(g.Level ?? "—")</td>
-                        @foreach (var item in apparelItems)
+                        @foreach (var col in apparelColumns)
                         {
-                            var isChecked = IsGymnastItemChecked(g, item.Name);
-                            var itemPrice = GetItemPrice(item.Name, g.Level);
-                            var apparelItemName = item.Name;
+                            var isChecked = IsGymnastItemChecked(g, col.Name);
+                            var itemPrice = GetItemPrice(col.Name, g.Level);
+                            var colName = col.Name;
                             var gymnastId = g.Id;
                             <td class="text-center">
-                                @if (item.IsRequired)
+                                @if (col.IsRequired)
                                 {
                                     <input type="checkbox" class="form-check-input" checked disabled />
                                 }
                                 else
                                 {
                                     <input type="checkbox" class="form-check-input" checked="@isChecked"
-                                           @onchange="(e) => ToggleApparelItem(gymnastId, apparelItemName, (bool)e.Value!)" />
+                                           @onchange="(e) => ToggleApparelItem(gymnastId, colName, (bool)e.Value!)" />
                                 }
-                                @if (isChecked || item.IsRequired)
+                                @if ((isChecked || col.IsRequired) && itemPrice > 0)
                                 {
                                     <small class="d-block text-muted">$@itemPrice.ToString("N0")</small>
                                 }
@@ -154,7 +153,7 @@
                 }
                 @if (!filteredGymnasts.Any())
                 {
-                    <tr><td colspan="@(apparelItems.Count + 6)" class="text-center text-muted py-3">No gymnasts yet. Click "+ Add Gymnast" to get started.</td></tr>
+                    <tr><td colspan="@(apparelColumns.Count + 6)" class="text-center text-muted py-3">No gymnasts yet. Click "+ Add Gymnast" to get started.</td></tr>
                 }
             </tbody>
             @if (filteredGymnasts.Any())
@@ -163,9 +162,9 @@
                     <tr class="fw-bold">
                         <td>@filteredGymnasts.Count gymnast(s)</td>
                         <td></td>
-                        @foreach (var item in apparelItems)
+                        @foreach (var col in apparelColumns)
                         {
-                            var count = filteredGymnasts.Count(g => item.IsRequired || IsGymnastItemChecked(g, item.Name));
+                            var count = filteredGymnasts.Count(g => col.IsRequired || IsGymnastItemChecked(g, col.Name));
                             <td class="text-center">@count</td>
                         }
                         <td class="text-end text-primary">$@((costPerGymnast * filteredGymnasts.Count).ToString("N2"))</td>
@@ -242,6 +241,12 @@
                 .Where(a => a.SeasonId == activeSeason.Id)
                 .OrderBy(a => a.IsRequired ? 0 : 1).ThenBy(a => a.Name)
                 .ToListAsync();
+
+            // Deduplicate apparel into one column per unique name
+            apparelColumns = apparelItems
+                .GroupBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(g => new ApparelColumn(g.Key, g.Any(a => a.IsRequired)))
+                .ToList();
 
             var gymnastIds = gymnasts.Select(g => g.Id).ToList();
             apparelSelections = await db.GymnastApparelSelections
@@ -325,6 +330,9 @@
 
     private List<ApparelItem> apparelItems = new();
     private List<GymnastApparelSelection> apparelSelections = new();
+
+    private record ApparelColumn(string Name, bool IsRequired);
+    private List<ApparelColumn> apparelColumns = new();
 
     private decimal GetItemPrice(string itemName, string? level)
     {
