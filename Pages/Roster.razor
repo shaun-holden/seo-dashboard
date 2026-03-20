@@ -100,6 +100,8 @@
                     <th class="text-center">Team Bag</th>
                     <th class="text-center">Jacket</th>
                     <th class="text-center">Team Camp</th>
+                    <th class="text-end">Shared Fees</th>
+                    <th class="text-end">Total Cost</th>
                     <th class="text-end">Actions</th>
                 </tr>
             </thead>
@@ -126,6 +128,8 @@
                                    @onchange="(e) => ToggleItem(g.Id, nameof(Gymnast.Jacket), (bool)e.Value!)" />
                         </td>
                         <td class="text-center"><input type="checkbox" class="form-check-input" checked disabled /></td>
+                        <td class="text-end fw-bold text-primary">$@costPerGymnast.ToString("N2")</td>
+                        <td class="text-end fw-bold">$@costPerGymnast.ToString("N2")</td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditGymnast(g)">Edit</button>
                             <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteGymnast(g)">Delete</button>
@@ -134,9 +138,26 @@
                 }
                 @if (!filteredGymnasts.Any())
                 {
-                    <tr><td colspan="8" class="text-center text-muted py-3">No gymnasts yet. Click "+ Add Gymnast" to get started.</td></tr>
+                    <tr><td colspan="10" class="text-center text-muted py-3">No gymnasts yet. Click "+ Add Gymnast" to get started.</td></tr>
                 }
             </tbody>
+            @if (filteredGymnasts.Any())
+            {
+                <tfoot class="table-light">
+                    <tr class="fw-bold">
+                        <td>@filteredGymnasts.Count gymnast(s)</td>
+                        <td></td>
+                        <td class="text-center">@filteredGymnasts.Count(g => g.Leotard)</td>
+                        <td class="text-center">@filteredGymnasts.Count(g => g.Leggings)</td>
+                        <td class="text-center">@filteredGymnasts.Count(g => g.TeamBag)</td>
+                        <td class="text-center">@filteredGymnasts.Count(g => g.Jacket)</td>
+                        <td class="text-center">@filteredGymnasts.Count</td>
+                        <td class="text-end text-primary">$@costPerGymnast.ToString("N2")/ea</td>
+                        <td class="text-end">$@((costPerGymnast * filteredGymnasts.Count).ToString("N2"))</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            }
         </table>
     </div>
 </div>
@@ -144,6 +165,7 @@
 @code {
     private List<Gymnast> gymnasts = new();
     private string? userId;
+    private decimal costPerGymnast;
     private bool showForm;
     private Gymnast? editingGymnast;
     private string formName = "";
@@ -186,6 +208,17 @@
         gymnasts = await db.Gymnasts.AsNoTracking()
             .OrderBy(g => g.Level).ThenBy(g => g.Name)
             .ToListAsync();
+
+        // Calculate cost per gymnast from active season's calculator
+        var activeSeason = await db.Seasons.AsNoTracking().FirstOrDefaultAsync(s => s.IsActive);
+        if (activeSeason != null)
+        {
+            var calcTotal = await db.BudgetCalculatorEntries.AsNoTracking()
+                .Where(e => e.SeasonId == activeSeason.Id)
+                .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
+            var athleteCount = activeSeason.AthleteCount > 0 ? activeSeason.AthleteCount : gymnasts.Count;
+            costPerGymnast = athleteCount > 0 ? Math.Round(calcTotal / athleteCount, 2) : 0;
+        }
     }
 
     private void ShowAddForm()
