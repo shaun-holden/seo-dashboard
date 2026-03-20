@@ -47,15 +47,21 @@ else
                         {
                             var entry = GetOrCreateEntry("TeamEntry", teamLevelId: level.Id);
                             <div class="row mb-2 align-items-center">
-                                <div class="col-md-4"><label class="form-label mb-0">@level.Name</label></div>
-                                <div class="col-md-4">
-                                    <div class="input-group">
+                                <div class="col-md-3"><label class="form-label mb-0">@level.Name</label></div>
+                                <div class="col-md-3">
+                                    <label class="form-label mb-0 small">Fee/Meet</label>
+                                    <div class="input-group input-group-sm">
                                         <span class="input-group-text">$</span>
                                         <input type="number" class="form-control" step="0.01" value="@entry.Amount"
-                                               @onchange="@(e => UpdateTeamEntry(entry, e))" />
+                                               @onchange="@(e => UpdateTeamEntry(entry, e, "amount"))" />
                                     </div>
                                 </div>
-                                <div class="col-md-4 text-muted">Total: $@entry.CalculatedTotal.ToString("N2")</div>
+                                <div class="col-md-2">
+                                    <label class="form-label mb-0 small">Meets</label>
+                                    <input type="number" class="form-control form-control-sm" value="@entry.Quantity1"
+                                           @onchange="@(e => UpdateTeamEntry(entry, e, "q1"))" />
+                                </div>
+                                <div class="col-md-3 text-muted">Total: $@entry.CalculatedTotal.ToString("N2")</div>
                             </div>
                         }
                     }
@@ -95,6 +101,9 @@ else
                             </div>
                             <div class="col-md-2 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
                             <div class="col-md-1">
+                                <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
+                                    <span class="oi oi-clipboard"></span>
+                                </button>
                                 <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteEntry(entry)">
                                     <span class="oi oi-trash"></span>
                                 </button>
@@ -134,8 +143,16 @@ else
                                 <input type="number" class="form-control form-control-sm" value="@entry.Quantity2"
                                        @onchange="@(e => UpdateMileage(entry, e, "q2"))" />
                             </div>
+                            <div class="col-md-1">
+                                <label class="form-label mb-0 small">Coaches</label>
+                                <input type="number" class="form-control form-control-sm" value="@entry.Quantity3"
+                                       @onchange="@(e => UpdateMileage(entry, e, "q3"))" />
+                            </div>
                             <div class="col-md-2 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
                             <div class="col-md-1">
+                                <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
+                                    <span class="oi oi-clipboard"></span>
+                                </button>
                                 <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteEntry(entry)">
                                     <span class="oi oi-trash"></span>
                                 </button>
@@ -172,6 +189,9 @@ else
                             </div>
                             <div class="col-md-2 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
                             <div class="col-md-1">
+                                <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
+                                    <span class="oi oi-clipboard"></span>
+                                </button>
                                 <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteEntry(entry)">
                                     <span class="oi oi-trash"></span>
                                 </button>
@@ -213,6 +233,9 @@ else
                             </div>
                             <div class="col-md-2 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
                             <div class="col-md-1">
+                                <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
+                                    <span class="oi oi-clipboard"></span>
+                                </button>
                                 <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteEntry(entry)">
                                     <span class="oi oi-trash"></span>
                                 </button>
@@ -254,6 +277,9 @@ else
                             </div>
                             <div class="col-md-2 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
                             <div class="col-md-1">
+                                <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
+                                    <span class="oi oi-clipboard"></span>
+                                </button>
                                 <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteEntry(entry)">
                                     <span class="oi oi-trash"></span>
                                 </button>
@@ -264,47 +290,6 @@ else
                         <span class="oi oi-plus me-1"></span>Add Vehicle
                     </button>
                     <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("CarRental").ToString("N2")</div>
-                }
-                else if (activeTab == "PerDiem")
-                {
-                    <h5>Per Diem</h5>
-                    @foreach (var entry in GetEntriesForCategory("PerDiem"))
-                    {
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-2">
-                                <input type="text" class="form-control form-control-sm" placeholder="Label" value="@entry.Name"
-                                       @onchange="@(e => UpdateEntryName(entry, e))" />
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label mb-0 small">Daily Rate</label>
-                                <div class="input-group input-group-sm">
-                                    <span class="input-group-text">$</span>
-                                    <input type="number" class="form-control" step="0.01" value="@entry.Amount"
-                                           @onchange="@(e => UpdateThreeField(entry, e, "amount"))" />
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label mb-0 small">Days</label>
-                                <input type="number" class="form-control form-control-sm" value="@entry.Quantity1"
-                                       @onchange="@(e => UpdateThreeField(entry, e, "q1"))" />
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label mb-0 small">Coaches</label>
-                                <input type="number" class="form-control form-control-sm" value="@entry.Quantity2"
-                                       @onchange="@(e => UpdateThreeField(entry, e, "q2"))" />
-                            </div>
-                            <div class="col-md-2 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
-                            <div class="col-md-1">
-                                <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteEntry(entry)">
-                                    <span class="oi oi-trash"></span>
-                                </button>
-                            </div>
-                        </div>
-                    }
-                    <button class="btn btn-outline-primary btn-sm mt-2" @onclick="@(() => AddLineItem("PerDiem"))">
-                        <span class="oi oi-plus me-1"></span>Add Per Diem Entry
-                    </button>
-                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("PerDiem").ToString("N2")</div>
                 }
                 else if (activeTab == "Coaches")
                 {
@@ -331,6 +316,9 @@ else
                             </div>
                             <div class="col-md-2 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
                             <div class="col-md-1">
+                                <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
+                                    <span class="oi oi-clipboard"></span>
+                                </button>
                                 <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteEntry(entry)">
                                     <span class="oi oi-trash"></span>
                                 </button>
@@ -361,6 +349,9 @@ else
                             </div>
                             <div class="col-md-2 text-muted">$@entry.CalculatedTotal.ToString("N2")</div>
                             <div class="col-md-1">
+                                <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
+                                    <span class="oi oi-clipboard"></span>
+                                </button>
                                 <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteEntry(entry)">
                                     <span class="oi oi-trash"></span>
                                 </button>
@@ -453,6 +444,9 @@ else
                             </div>
                             <div class="col-md-2 text-muted">$@entry.CalculatedTotal.ToString("N2")</div>
                             <div class="col-md-1">
+                                <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
+                                    <span class="oi oi-clipboard"></span>
+                                </button>
                                 <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteEntry(entry)">
                                     <span class="oi oi-trash"></span>
                                 </button>
@@ -483,10 +477,10 @@ else
                     </div>
                 </div>
                 <div class="col-md-4 text-end">
-                    <div style="font-size: 1.25rem; font-weight: bold;">Grand Total: $@grandTotal.ToString("N2")</div>
+                    <div style="font-size: 1.25rem; font-weight: bold;">Total Budget: $@grandTotal.ToString("N2")</div>
                     @if (seasonAthleteCount > 0)
                     {
-                        <div class="text-white-50">Per Athlete: $@((grandTotal / seasonAthleteCount).ToString("N2")) (@seasonAthleteCount athletes)</div>
+                        <div class="text-white-50">Cost Per Gymnast: $@((grandTotal / seasonAthleteCount).ToString("N2")) (@seasonAthleteCount gymnasts)</div>
                     }
                 </div>
             </div>
@@ -512,7 +506,7 @@ else
     private readonly List<string> defaultTabs = new()
     {
         "TeamEntry", "SessionCost", "Mileage", "Flights", "Hotel",
-        "CarRental", "PerDiem", "Coaches", "Miscellaneous", "BankFees"
+        "CarRental", "Coaches", "Miscellaneous", "BankFees"
     };
 
     private List<string> allTabs => defaultTabs.Concat(customCategories).ToList();
@@ -579,7 +573,6 @@ else
             "TeamEntry" => "Team Entry",
             "SessionCost" => "Session Cost",
             "CarRental" => "Car Rental",
-            "PerDiem" => "Per Diem",
             "BankFees" => "Bank Fees",
             _ => tab
         };
@@ -602,12 +595,16 @@ else
         return entry;
     }
 
-    private async Task UpdateTeamEntry(BudgetCalculatorEntry entry, ChangeEventArgs e)
+    private async Task UpdateTeamEntry(BudgetCalculatorEntry entry, ChangeEventArgs e, string field)
     {
         if (decimal.TryParse(e.Value?.ToString(), out var val))
         {
-            entry.Amount = val;
-            entry.CalculatedTotal = val;
+            switch (field)
+            {
+                case "amount": entry.Amount = val; break;
+                case "q1": entry.Quantity1 = val; break;
+            }
+            entry.CalculatedTotal = entry.Amount * entry.Quantity1;
             await SaveEntry(entry);
             RecalcGrandTotal();
         }
@@ -630,7 +627,7 @@ else
         }
     }
 
-    // ---- Mileage: Miles x Rate x Trips ----
+    // ---- Mileage: Miles x Rate x Trips x Coaches ----
     private async Task UpdateMileage(BudgetCalculatorEntry entry, ChangeEventArgs e, string field)
     {
         if (decimal.TryParse(e.Value?.ToString(), out var val))
@@ -640,8 +637,9 @@ else
                 case "amount": entry.Amount = val; break;
                 case "q1": entry.Quantity1 = val; break;
                 case "q2": entry.Quantity2 = val; break;
+                case "q3": entry.Quantity3 = val; break;
             }
-            entry.CalculatedTotal = entry.Amount * entry.Quantity1 * entry.Quantity2;
+            entry.CalculatedTotal = entry.Amount * entry.Quantity1 * entry.Quantity2 * entry.Quantity3;
             await SaveEntry(entry);
             RecalcGrandTotal();
         }
@@ -663,7 +661,7 @@ else
         }
     }
 
-    // ---- Three-field: Amount x Q1 x Q2 (Hotel, CarRental, PerDiem) ----
+    // ---- Three-field: Amount x Q1 x Q2 (Hotel, CarRental) ----
     private async Task UpdateThreeField(BudgetCalculatorEntry entry, ChangeEventArgs e, string field)
     {
         if (decimal.TryParse(e.Value?.ToString(), out var val))
@@ -789,6 +787,25 @@ else
                 await db.SaveChangesAsync();
             }
         }
+        RecalcGrandTotal();
+    }
+
+    private async Task DuplicateEntry(BudgetCalculatorEntry source)
+    {
+        var copy = new BudgetCalculatorEntry
+        {
+            SeasonId = selectedSeasonId,
+            Category = source.Category,
+            Name = source.Name + " (copy)",
+            Amount = source.Amount,
+            Quantity1 = source.Quantity1,
+            Quantity2 = source.Quantity2,
+            Quantity3 = source.Quantity3,
+            CalculatedTotal = source.CalculatedTotal,
+            IsPercentage = source.IsPercentage
+        };
+        entries.Add(copy);
+        await SaveEntry(copy);
         RecalcGrandTotal();
     }
 
