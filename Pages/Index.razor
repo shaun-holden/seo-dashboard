@@ -60,11 +60,15 @@
         <div class="col-md-3 mb-3">
             <div class="card text-white bg-warning h-100">
                 <div class="card-body">
-                    <h6 class="card-title">Athletes</h6>
-                    <h3>@totalAthletes</h3>
+                    <h6 class="card-title">Cost Per Gymnast</h6>
                     @if (totalAthletes > 0 && totalBudget > 0)
                     {
-                        <small>Avg $@((totalBudget / totalAthletes).ToString("N2"))/athlete</small>
+                        <h3>$@((totalBudget / totalAthletes).ToString("N2"))</h3>
+                        <small>@totalAthletes gymnasts</small>
+                    }
+                    else
+                    {
+                        <h3>@totalAthletes</h3>
                     }
                     else if (teamLevelCount > 0)
                     {
@@ -184,17 +188,27 @@
                 activeCoachCount = await Db.Coaches.CountAsync(c => c.SeasonId == seasonId && c.IsActive);
                 budgetItemCount = await Db.BudgetLineItems.CountAsync(b => b.SeasonId == seasonId);
 
-                var sharedFeesTotal = await Db.SharedFees
-                    .Where(f => f.SeasonId == seasonId && f.IsIncludedInBudget)
-                    .SumAsync(f => (decimal?)f.Amount) ?? 0;
+                // Use calculator total if available, fall back to shared fees + athlete items
+                var calcTotal = await Db.BudgetCalculatorEntries
+                    .Where(e => e.SeasonId == seasonId)
+                    .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
 
-                var levelIds = await Db.TeamLevels.Where(t => t.SeasonId == seasonId).Select(t => t.Id).ToListAsync();
-                var athleteItemsTotal = await Db.AthleteItems
-                    .Where(a => levelIds.Contains(a.TeamLevelId))
-                    .SumAsync(a => (decimal?)a.Cost) ?? 0;
+                if (calcTotal > 0)
+                {
+                    totalBudget = calcTotal;
+                }
+                else
+                {
+                    var sharedFeesTotal = await Db.SharedFees
+                        .Where(f => f.SeasonId == seasonId && f.IsIncludedInBudget)
+                        .SumAsync(f => (decimal?)f.Amount) ?? 0;
+                    var levelIds2 = await Db.TeamLevels.Where(t => t.SeasonId == seasonId).Select(t => t.Id).ToListAsync();
+                    var athleteItemsTotal = await Db.AthleteItems
+                        .Where(a => levelIds2.Contains(a.TeamLevelId))
+                        .SumAsync(a => (decimal?)a.Cost) ?? 0;
+                    totalBudget = sharedFeesTotal + athleteItemsTotal;
+                }
 
-                totalBudget = sharedFeesTotal + athleteItemsTotal;
-                teamLevelCount = levelIds.Count;
                 totalAthletes = activeSeason.AthleteCount;
 
                 nextMeet = await Db.Meets
