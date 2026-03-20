@@ -41,13 +41,14 @@ else
                 @if (activeTab == "TeamEntry")
                 {
                     <h5>Team Entry Fees</h5>
-                    @if (teamLevels.Any())
+                    @if (rosterLevels.Any())
                     {
-                        @foreach (var level in teamLevels)
+                        @foreach (var levelName in rosterLevels)
                         {
-                            var entry = GetOrCreateEntry("TeamEntry", teamLevelId: level.Id);
+                            var entry = GetOrCreateEntryByName("TeamEntry", levelName);
+                            var lvlName = levelName;
                             <div class="row mb-2 align-items-center">
-                                <div class="col-md-3"><label class="form-label mb-0">@level.Name</label></div>
+                                <div class="col-md-3"><label class="form-label mb-0">@levelName</label></div>
                                 <div class="col-md-3">
                                     <label class="form-label mb-0 small">Fee/Meet</label>
                                     <div class="input-group input-group-sm">
@@ -67,7 +68,7 @@ else
                     }
                     else
                     {
-                        <p class="text-muted">No team levels found for this season.</p>
+                        <p class="text-muted">No gymnasts in roster yet. Add gymnasts on the Roster page.</p>
                     }
                     <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("TeamEntry").ToString("N2")</div>
                 }
@@ -492,7 +493,7 @@ else
     private List<Season>? seasons;
     private int selectedSeasonId;
     private string activeTab = "TeamEntry";
-    private List<TeamLevel> teamLevels = new();
+    private List<string> rosterLevels = new();
     private List<BudgetCalculatorEntry> entries = new();
     private int seasonAthleteCount;
     private decimal grandTotal;
@@ -528,23 +529,25 @@ else
         {
             selectedSeasonId = 0;
             entries.Clear();
-            teamLevels.Clear();
+            rosterLevels.Clear();
         }
     }
 
     private async Task LoadSeasonData()
     {
         using var db = await DbFactory.CreateDbContextAsync();
-        teamLevels = await db.TeamLevels
-            .Where(tl => tl.SeasonId == selectedSeasonId)
-            .OrderBy(tl => tl.Name)
+        rosterLevels = await db.Gymnasts
+            .Where(g => !string.IsNullOrEmpty(g.Level))
+            .Select(g => g.Level!)
+            .Distinct()
+            .OrderBy(l => l)
             .ToListAsync();
 
         var season = await db.Seasons.FindAsync(selectedSeasonId);
         seasonAthleteCount = season?.AthleteCount ?? 0;
         if (seasonAthleteCount == 0)
         {
-            seasonAthleteCount = teamLevels.Sum(tl => tl.AthleteCount);
+            seasonAthleteCount = await db.Gymnasts.CountAsync();
         }
 
         entries = await db.BudgetCalculatorEntries
@@ -589,6 +592,22 @@ else
                 SeasonId = selectedSeasonId,
                 Category = category,
                 TeamLevelId = teamLevelId
+            };
+            entries.Add(entry);
+        }
+        return entry;
+    }
+
+    private BudgetCalculatorEntry GetOrCreateEntryByName(string category, string name)
+    {
+        var entry = entries.FirstOrDefault(e => e.Category == category && e.Name == name);
+        if (entry == null)
+        {
+            entry = new BudgetCalculatorEntry
+            {
+                SeasonId = selectedSeasonId,
+                Category = category,
+                Name = name
             };
             entries.Add(entry);
         }
