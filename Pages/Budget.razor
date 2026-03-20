@@ -81,18 +81,22 @@ else
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
-                <div class="card text-white bg-info">
-                    <div class="card-body">
-                        <h6>Total Athlete Fees</h6>
-                        <h4>$@budgetTotal.ToString("N2")</h4>
+            @if (calculatorTotal > 0)
+            {
+                <div class="col-md-3">
+                    <div class="card text-white bg-info">
+                        <div class="card-body">
+                            <h6>Calculator Total</h6>
+                            <h4>$@calculatorTotal.ToString("N2")</h4>
+                            <small><a href="/budget-calculator" class="text-white">Edit Calculator</a></small>
+                        </div>
                     </div>
                 </div>
-            </div>
+            }
             <div class="col-md-3">
                 <div class="card text-white bg-warning">
                     <div class="card-body">
-                        <h6>Avg Cost Per Athlete</h6>
+                        <h6>Cost Per Gymnast</h6>
                         @if (totalAthletes > 0)
                         {
                             <h4>$@avgCostPerAthlete.ToString("N2")</h4>
@@ -280,7 +284,8 @@ else
 
     private decimal sharedFeesTotal => sharedFees.Where(f => f.IsIncludedInBudget).Sum(f => f.Amount);
     private decimal athleteItemsTotal => athleteItems.Sum(a => a.Cost);
-    private decimal budgetTotal => sharedFeesTotal + athleteItemsTotal;
+    private decimal calculatorTotal;
+    private decimal budgetTotal => calculatorTotal > 0 ? calculatorTotal : (sharedFeesTotal + athleteItemsTotal);
     private int totalAthletes => selectedSeason?.AthleteCount ?? 0;
     private decimal avgCostPerAthlete => totalAthletes > 0 ? budgetTotal / totalAthletes : 0;
 
@@ -441,6 +446,12 @@ else
         levelGroupAssignments = await db.TeamLevelGroupAssignments.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
         var sharedFeeIds = sharedFees.Select(f => f.Id).ToList();
         sharedFeeAssignments = await db.SharedFeeTeamLevelAssignments.AsNoTracking().Where(a => sharedFeeIds.Contains(a.SharedFeeId)).ToListAsync();
+
+        // Load calculator total
+        calculatorTotal = await db.BudgetCalculatorEntries.AsNoTracking()
+            .Where(e => e.SeasonId == selectedSeasonId)
+            .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
+
         StateHasChanged();
     }
 
