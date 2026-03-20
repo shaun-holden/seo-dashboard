@@ -68,70 +68,68 @@
     </div>
 }
 
-<div class="row mt-3">
-    <div class="col-md-4 mb-3">
-        <a href="/seasons" class="text-decoration-none">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5 class="card-title"><span class="oi oi-calendar me-2"></span>Seasons</h5>
-                    <p class="card-text text-muted">Create and manage your budget seasons.</p>
-                </div>
-            </div>
-        </a>
-    </div>
-    <div class="col-md-4 mb-3">
-        <a href="/meets" class="text-decoration-none">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5 class="card-title"><span class="oi oi-map-marker me-2"></span>@labels.Meets</h5>
-                    <p class="card-text text-muted">Add and track @labels.Meets.ToLower().</p>
-                </div>
-            </div>
-        </a>
-    </div>
-    <div class="col-md-4 mb-3">
-        <a href="/coaches" class="text-decoration-none">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5 class="card-title"><span class="oi oi-people me-2"></span>@labels.Coaches</h5>
-                    <p class="card-text text-muted">Manage your @labels.Coaches.ToLower().</p>
-                </div>
-            </div>
-        </a>
-    </div>
+<h5 class="mt-4">Finance</h5>
+<div class="row">
     <div class="col-md-4 mb-3">
         <a href="/budget" class="text-decoration-none">
             <div class="card h-100">
                 <div class="card-body">
                     <h5 class="card-title"><span class="oi oi-dollar me-2"></span>Budget</h5>
-                    <p class="card-text text-muted">Enter budgeted and actual expenses.</p>
+                    <p class="card-text text-muted">View budget summary and breakdown.</p>
                 </div>
             </div>
         </a>
     </div>
     <div class="col-md-4 mb-3">
-        <a href="/reports" class="text-decoration-none">
+        <a href="/budget-calculator" class="text-decoration-none">
             <div class="card h-100">
                 <div class="card-body">
-                    <h5 class="card-title"><span class="oi oi-document me-2"></span>Reports</h5>
-                    <p class="card-text text-muted">View budget vs. actual reports.</p>
+                    <h5 class="card-title"><span class="oi oi-calculator me-2"></span>Budget Calculator</h5>
+                    <p class="card-text text-muted">Calculate fees by category.</p>
                 </div>
             </div>
         </a>
     </div>
-    @if (labels.EnableTeamLevels)
-    {
-        <div class="col-md-4 mb-3">
-            <a href="/teamlevels" class="text-decoration-none">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h5 class="card-title"><span class="oi oi-star me-2"></span>@labels.TeamLevels</h5>
-                        <p class="card-text text-muted">Set up @labels.TeamLevels.ToLower() and payment plans.</p>
-                    </div>
+    <div class="col-md-4 mb-3">
+        <a href="/apparel" class="text-decoration-none">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><span class="oi oi-tag me-2"></span>Apparel</h5>
+                    <p class="card-text text-muted">Set prices for gear and uniforms.</p>
                 </div>
-            </a>
-        </div>
-    }
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4 mb-3">
+        <a href="/competitions" class="text-decoration-none">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><span class="oi oi-badge me-2"></span>Competitions</h5>
+                    <p class="card-text text-muted">Set competition entry fees.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4 mb-3">
+        <a href="/payments" class="text-decoration-none">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><span class="oi oi-credit-card me-2"></span>Payments</h5>
+                    <p class="card-text text-muted">Track payments and apply credits.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4 mb-3">
+        <a href="/roster" class="text-decoration-none">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><span class="oi oi-list me-2"></span>Gymnast Roster</h5>
+                    <p class="card-text text-muted">Manage gymnasts and item selections.</p>
+                </div>
+            </div>
+        </a>
+    </div>
 </div>
 
 @code {
