@@ -764,6 +764,7 @@ else
         if (firstRender && userId != null && announcements.Any())
         {
             await MarkAnnouncementsAsRead();
+            StateHasChanged();
         }
     }
 
