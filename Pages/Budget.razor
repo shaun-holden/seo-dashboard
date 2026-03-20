@@ -73,14 +73,6 @@ else
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
-                <div class="card text-white bg-success">
-                    <div class="card-body">
-                        <h6>Total Shared Fees</h6>
-                        <h4>$@sharedFeesTotal.ToString("N2")</h4>
-                    </div>
-                </div>
-            </div>
             @if (calculatorTotal > 0)
             {
                 <div class="col-md-3">
@@ -112,47 +104,6 @@ else
             </div>
         </div>
 
-        @if (sharedFees.Any())
-        {
-            <div class="card mb-4 border-warning">
-                <div class="card-header bg-warning bg-opacity-25 d-flex justify-content-between align-items-center"
-                     @onclick="() => showBudgetSharedFees = !showBudgetSharedFees" style="cursor: pointer;">
-                    <div>
-                        <h5 class="mb-0 d-inline">Shared Fees</h5>
-                        <span class="badge bg-warning text-dark ms-2">@sharedFees.Count fee(s)</span>
-                    </div>
-                    <div>
-                        <span class="fw-bold me-2">$@sharedFeesTotal.ToString("N2")</span>
-                        <span class="oi @(showBudgetSharedFees ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
-                    </div>
-                </div>
-                @if (showBudgetSharedFees)
-                {
-                <div class="card-body p-0">
-                    <table class="table table-sm mb-0">
-                        <thead><tr><th>Category</th><th>Name</th><th>Total</th><th>Per Athlete</th><th>Shared Across</th></tr></thead>
-                        <tbody>
-                            @foreach (var fee in sharedFees)
-                            {
-                                var assignedLevelIds = sharedFeeAssignments.Where(a => a.SharedFeeId == fee.Id).Select(a => a.TeamLevelId).ToList();
-                                var assignedLevels = assignedLevelIds.Any() ? teamLevels.Where(t => assignedLevelIds.Contains(t.Id)).ToList() : teamLevels;
-                                var totalAssignedAthletes = assignedLevels.Sum(t => t.AthleteCount);
-                                var perAthlete = totalAssignedAthletes > 0 ? fee.Amount / totalAssignedAthletes : fee.Amount;
-                                var assignedNames = assignedLevels.Select(t => t.Name);
-                                <tr>
-                                    <td>@fee.DisplayName</td>
-                                    <td>@fee.Name</td>
-                                    <td>$@fee.Amount.ToString("N2")</td>
-                                    <td class="fw-bold text-primary">$@perAthlete.ToString("N2") <small class="text-muted fw-normal">(@totalAssignedAthletes athletes)</small></td>
-                                    <td><small class="text-muted">@(assignedLevelIds.Any() ? string.Join(", ", assignedNames) : "All")</small></td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-                }
-            </div>
-        }
 
         @if (calculatorCategories.Any())
         {
@@ -279,7 +230,6 @@ else
     private Dictionary<int, int> scenarioAthletes = new();
     private int filterLevelId = 0;
     private int filterGroupId = 0;
-    private bool showBudgetSharedFees = true;
     private HashSet<int> expandedGroups = new();
     private HashSet<int> expandedLevels = new();
 
@@ -297,14 +247,14 @@ else
 
     private void ExpandAll()
     {
-        showBudgetSharedFees = true;
+        showCalculatorBreakdown = true;
         expandedGroups = seasonGroups.Select(g => g.Id).ToHashSet();
         expandedLevels = teamLevels.Select(t => t.Id).ToHashSet();
     }
 
     private void CollapseAll()
     {
-        showBudgetSharedFees = false;
+        showCalculatorBreakdown = false;
         expandedGroups.Clear();
         expandedLevels.Clear();
     }
