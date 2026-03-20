@@ -73,6 +73,23 @@ else
         </div>
 
 
+        @if (selectedSeason != null)
+        {
+            <div class="card mb-4">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <label class="fw-bold mb-0">Payment Months:</label>
+                    <select class="form-select" style="max-width: 120px;" value="@selectedSeason.PaymentMonths"
+                            @onchange="UpdatePaymentMonths">
+                        @for (int m = 1; m <= 12; m++)
+                        {
+                            <option value="@m">@m months</option>
+                        }
+                    </select>
+                    <small class="text-muted">Parents will see this many monthly installments.</small>
+                </div>
+            </div>
+        }
+
         @if (calculatorCategories.Any())
         {
             <div class="card mb-4 border-info">
@@ -370,6 +387,21 @@ else
             .ToList();
 
         StateHasChanged();
+    }
+
+    private async Task UpdatePaymentMonths(ChangeEventArgs e)
+    {
+        if (selectedSeason != null && int.TryParse(e.Value?.ToString(), out var months) && months > 0)
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            var season = await db.Seasons.FindAsync(selectedSeason.Id);
+            if (season != null)
+            {
+                season.PaymentMonths = months;
+                await db.SaveChangesAsync();
+                selectedSeason.PaymentMonths = months;
+            }
+        }
     }
 
     private string GetCalcLabel(string category) => category switch

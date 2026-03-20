@@ -36,6 +36,9 @@ namespace GymBudgetApp.Models
         public bool EnablePerDiem { get; set; } = true;
         public bool EnableMileage { get; set; } = true;
 
+        // Payment settings
+        public int PaymentMonths { get; set; } = 8;
+
         // Audit timestamps
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime ModifiedAt { get; set; } = DateTime.UtcNow;

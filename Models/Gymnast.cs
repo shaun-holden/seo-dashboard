@@ -22,6 +22,13 @@ namespace GymBudgetApp.Models
         // Required items
         public bool TeamCamp { get; set; } = true;
 
+        // Sizes
+        [StringLength(20)]
+        public string? ShirtSize { get; set; }
+
+        [StringLength(20)]
+        public string? LeotardSize { get; set; }
+
         [StringLength(200)]
         public string? ParentEmail { get; set; }
 
