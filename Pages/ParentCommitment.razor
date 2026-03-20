@@ -129,23 +129,22 @@ else
 
         using var db = await DbFactory.CreateDbContextAsync();
 
-        // Get parent's athletes
+        // Get parent's athletes from Gymnasts table
         var parentLinks = await db.ParentLinks.AsNoTracking()
             .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
             .ToListAsync();
         var athleteIds = parentLinks.Select(l => l.AthleteId).ToList();
-        athletes = await db.Athletes.AsNoTracking()
-            .Where(a => athleteIds.Contains(a.Id))
+        var gymnasts = await db.Gymnasts.AsNoTracking()
+            .Where(g => athleteIds.Contains(g.Id))
             .ToListAsync();
+        athletes = gymnasts.Select(g => new Athlete { Id = g.Id, Name = g.Name }).ToList();
 
         if (!athletes.Any()) { loading = false; return; }
 
-        // Get season IDs from athletes' team levels
-        var levelIds = athletes.Select(a => a.TeamLevelId).Distinct().ToList();
-        var seasonIds = await db.TeamLevels.AsNoTracking()
-            .Where(t => levelIds.Contains(t.Id))
-            .Select(t => t.SeasonId)
-            .Distinct()
+        // Get published season IDs
+        var seasonIds = await db.Seasons.AsNoTracking()
+            .Where(s => s.IsPublished)
+            .Select(s => s.Id)
             .ToListAsync();
 
         // Find active commitment form
