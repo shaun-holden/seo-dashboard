@@ -154,6 +154,52 @@ else
             </div>
         }
 
+        @if (calculatorCategories.Any())
+        {
+            <div class="card mb-4 border-info">
+                <div class="card-header bg-info bg-opacity-25 d-flex justify-content-between align-items-center"
+                     @onclick="() => showCalculatorBreakdown = !showCalculatorBreakdown" style="cursor: pointer;">
+                    <div>
+                        <h5 class="mb-0 d-inline">Budget Breakdown</h5>
+                        <span class="badge bg-info text-dark ms-2">@calculatorCategories.Count categories</span>
+                    </div>
+                    <div>
+                        <span class="fw-bold me-2">$@calculatorTotal.ToString("N2")</span>
+                        <span class="oi @(showCalculatorBreakdown ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
+                    </div>
+                </div>
+                @if (showCalculatorBreakdown)
+                {
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Category</th><th class="text-end">Total</th><th class="text-end">Per Gymnast</th></tr></thead>
+                        <tbody>
+                            @foreach (var cat in calculatorCategories)
+                            {
+                                var perGymnast = totalAthletes > 0 ? cat.Total / totalAthletes : 0;
+                                <tr>
+                                    <td>@cat.Label</td>
+                                    <td class="text-end">$@cat.Total.ToString("N2")</td>
+                                    <td class="text-end fw-bold text-primary">$@perGymnast.ToString("N2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot class="table-light">
+                            <tr class="fw-bold">
+                                <td>Total Budget</td>
+                                <td class="text-end">$@calculatorTotal.ToString("N2")</td>
+                                <td class="text-end text-primary">$@avgCostPerAthlete.ToString("N2")</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <div class="p-2 text-end">
+                        <a href="/budget-calculator" class="btn btn-sm btn-outline-info">Edit in Calculator</a>
+                    </div>
+                </div>
+                }
+            </div>
+        }
+
         @* Per-level budget breakdown *@
         @if (seasonGroups.Any())
         {
@@ -285,6 +331,9 @@ else
     private decimal sharedFeesTotal => sharedFees.Where(f => f.IsIncludedInBudget).Sum(f => f.Amount);
     private decimal athleteItemsTotal => athleteItems.Sum(a => a.Cost);
     private decimal calculatorTotal;
+    private bool showCalculatorBreakdown = true;
+    private List<CalcCategory> calculatorCategories = new();
+    private record CalcCategory(string Label, decimal Total);
     private decimal budgetTotal => calculatorTotal > 0 ? calculatorTotal : (sharedFeesTotal + athleteItemsTotal);
     private int totalAthletes => selectedSeason?.AthleteCount ?? 0;
     private decimal avgCostPerAthlete => totalAthletes > 0 ? budgetTotal / totalAthletes : 0;
@@ -447,13 +496,29 @@ else
         var sharedFeeIds = sharedFees.Select(f => f.Id).ToList();
         sharedFeeAssignments = await db.SharedFeeTeamLevelAssignments.AsNoTracking().Where(a => sharedFeeIds.Contains(a.SharedFeeId)).ToListAsync();
 
-        // Load calculator total
-        calculatorTotal = await db.BudgetCalculatorEntries.AsNoTracking()
+        // Load calculator totals by category
+        var calcEntries = await db.BudgetCalculatorEntries.AsNoTracking()
             .Where(e => e.SeasonId == selectedSeasonId)
-            .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
+            .ToListAsync();
+        calculatorTotal = calcEntries.Sum(e => e.CalculatedTotal);
+        calculatorCategories = calcEntries
+            .GroupBy(e => e.Category)
+            .Where(g => g.Sum(e => e.CalculatedTotal) != 0)
+            .Select(g => new CalcCategory(GetCalcLabel(g.Key), g.Sum(e => e.CalculatedTotal)))
+            .OrderByDescending(c => c.Total)
+            .ToList();
 
         StateHasChanged();
     }
+
+    private string GetCalcLabel(string category) => category switch
+    {
+        "TeamEntry" => "Team Entry",
+        "SessionCost" => "Session Cost",
+        "CarRental" => "Car Rental",
+        "BankFees" => "Bank / Processing Fees",
+        _ => category
+    };
 
     private void OnFilterLevelChanged(ChangeEventArgs e) { filterLevelId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0; }
     private void OnFilterGroupChanged(ChangeEventArgs e) { filterGroupId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0; }
