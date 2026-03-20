@@ -267,3 +267,11 @@ a, .btn-link {
 .budget-tab.active { background: #0d6efd; color: white; border-color: #0d6efd; }
 .budget-tab:hover:not(.active) { background: #e9ecef; }
 .budget-grand-total { position: sticky; bottom: 0; background: #212529; color: white; padding: 12px 16px; border-radius: 8px; margin-top: 16px; }
+
+/* Roster table */
+.roster-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.roster-table-wrap table { font-size: 0.8rem; }
+.roster-table-wrap th, .roster-table-wrap td { white-space: nowrap; padding: 4px 8px !important; }
+.roster-table-wrap th:first-child, .roster-table-wrap td:first-child { position: sticky; left: 0; background: white; z-index: 1; }
+.roster-table-wrap thead th:first-child { background: #f8f9fa; }
+.roster-table-wrap tfoot td:first-child { background: #f8f9fa; }
