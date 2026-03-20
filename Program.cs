@@ -29,9 +29,9 @@ builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(keysFolder))
     .SetApplicationName("GymBudgetApp");
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite($"Data Source={dbPath}"));
+    options.UseSqlite($"Data Source={dbPath};Foreign Keys=False"));
 builder.Services.AddDbContextFactory<AppDbContext>(options =>
-    options.UseSqlite($"Data Source={dbPath}"), ServiceLifetime.Scoped);
+    options.UseSqlite($"Data Source={dbPath};Foreign Keys=False"), ServiceLifetime.Scoped);
 
 builder.Services.AddDefaultIdentity<IdentityUser>(options =>
 {
