@@ -8,494 +8,255 @@
 @inject AppDbContext Db
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@inject GymBudgetApp.Services.NotesPanelState NotesPanelState
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject NavigationManager NavigationManager
 
 <h3>Athletes</h3>
 
-@if (seasons == null)
+@if (gymnasts == null)
 {
     <p>Loading...</p>
 }
 else
 {
-    <div class="mb-3">
-        <label>Select Season</label>
-        <select class="form-select w-auto d-inline-block ms-2" @onchange="OnSeasonChanged">
-            <option value="">-- Select Season --</option>
-            @foreach (var s in seasons)
-            {
-                <option value="@s.Id" selected="@(s.Id == selectedSeasonId)">@s.Name</option>
-            }
-        </select>
+    <p class="text-muted">Manage gymnasts on the <a href="/roster">Roster page</a>.</p>
+
+    <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+        <input type="text" class="form-control" style="max-width: 200px;" placeholder="Search athlete..."
+               @bind="searchText" @bind:event="oninput" />
+        @if (allLevels.Count > 1)
+        {
+            <select class="form-select" style="max-width: 200px;" value="@filterLevel"
+                    @onchange="OnFilterLevelChanged">
+                <option value="">All Levels</option>
+                @foreach (var level in allLevels)
+                {
+                    <option value="@level">@level</option>
+                }
+            </select>
+        }
+        @if (gymnasts.Any())
+        {
+            <span class="text-muted">@filteredGymnasts.Count athlete(s)</span>
+        }
     </div>
 
-    @if (selectedSeasonId > 0)
+    @if (inviteMessage != null)
     {
-        <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
-            <button class="btn btn-primary" @onclick="ShowAddForm">+ Add Athlete</button>
-            <input type="text" class="form-control" style="max-width: 200px;" placeholder="Search athlete..."
-                   @bind="searchText" @bind:event="oninput" />
-            @if (teamLevels.Count > 1)
-            {
-                <select class="form-select" style="max-width: 200px;" value="@filterLevelId"
-                        @onchange="OnFilterLevelChanged">
-                    <option value="0">All @labels.TeamLevels</option>
-                    @foreach (var level in teamLevels)
-                    {
-                        <option value="@level.Id">@level.Name</option>
-                    }
-                </select>
-            }
-            @if (athletes.Any())
-            {
-                <span class="text-muted">@filteredAthletes.Count athlete(s)</span>
-            }
+        <div class="alert alert-success alert-dismissible mb-3">
+            @inviteMessage
+            <button type="button" class="btn-close" @onclick="() => inviteMessage = null"></button>
         </div>
+    }
+    @if (inviteError != null)
+    {
+        <div class="alert alert-danger alert-dismissible mb-3">
+            @inviteError
+            <button type="button" class="btn-close" @onclick="() => inviteError = null"></button>
+        </div>
+    }
 
-        @if (inviteMessage != null)
-        {
-            <div class="alert alert-success alert-dismissible mb-3">
-                @inviteMessage
-                <button type="button" class="btn-close" @onclick="() => inviteMessage = null"></button>
-            </div>
-        }
-        @if (inviteError != null)
-        {
-            <div class="alert alert-danger alert-dismissible mb-3">
-                @inviteError
-                <button type="button" class="btn-close" @onclick="() => inviteError = null"></button>
-            </div>
-        }
+    @foreach (var group in filteredGroups)
+    {
+        var levelGymnasts = group.Value;
+        var levelName = group.Key;
+        var isExpanded = expandedLevels.Contains(levelName);
 
-        @if (showForm)
-        {
-            <div class="card mb-4 p-3">
-                <h5>@(editingAthlete == null ? "Add Athlete" : "Edit Athlete")</h5>
-                @if (editingAthlete == null && rosterGymnasts.Any())
-                {
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Add from Roster</label>
-                        <select class="form-select" style="max-width: 400px;" @onchange="OnRosterSelect">
-                            <option value="">-- Pick from roster or type below --</option>
-                            @foreach (var g in rosterGymnasts)
-                            {
-                                <option value="@g.Id">@g.Name @(!string.IsNullOrEmpty(g.Level) ? $"({g.Level})" : "")</option>
-                            }
-                        </select>
-                    </div>
-                }
-                <div class="row">
-                    <div class="col-md-4 mb-2">
-                        <label>Name</label>
-                        <input class="form-control" @bind="formName" placeholder="Athlete name" />
-                    </div>
-                    <div class="col-md-4 mb-2">
-                        <label>@labels.TeamLevel</label>
-                        <select class="form-select" @bind="formTeamLevelId">
-                            <option value="0">-- Select --</option>
-                            @foreach (var level in teamLevels)
-                            {
-                                <option value="@level.Id">@level.Name</option>
-                            }
-                        </select>
-                    </div>
-                </div>
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 @onclick="() => ToggleLevel(levelName)" style="cursor: pointer;">
                 <div>
-                    <button class="btn btn-success me-2" @onclick="SaveAthlete">Save</button>
-                    <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                    <h5 class="mb-0 d-inline">@levelName</h5>
+                    <span class="badge bg-primary ms-2">@levelGymnasts.Count athlete(s)</span>
                 </div>
+                <span class="oi @(isExpanded ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
             </div>
-        }
-
-        @foreach (var level in filteredTeamLevels)
-        {
-            var levelAthletes = filteredAthletes.Where(a => a.TeamLevelId == level.Id).ToList();
-            var levelOptionalItems = athleteItems.Where(i => i.TeamLevelId == level.Id && !i.IsRequired).ToList();
-            var levelRequiredItems = athleteItems.Where(i => i.TeamLevelId == level.Id && i.IsRequired).ToList();
-            var requiredCost = levelRequiredItems.Sum(i => i.Cost);
-            var isExpanded = expandedLevels.Contains(level.Id);
-
-            <div class="card mb-4">
-                <div class="card-header d-flex justify-content-between align-items-center"
-                     @onclick="() => ToggleLevel(level.Id)" style="cursor: pointer;">
-                    <div>
-                        <h5 class="mb-0 d-inline">@level.Name</h5>
-                        <span class="badge bg-primary ms-2">@levelAthletes.Count athlete(s)</span>
-                        @if (levelOptionalItems.Any())
-                        {
-                            <span class="badge bg-info ms-1">@levelOptionalItems.Count optional item(s)</span>
-                        }
-                    </div>
-                    <span class="oi @(isExpanded ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
-                </div>
-                @if (isExpanded)
+            @if (isExpanded)
+            {
+            <div class="card-body p-0">
+                @if (!levelGymnasts.Any())
                 {
-                <div class="card-body p-0">
-                    @if (!levelAthletes.Any())
-                    {
-                        <div class="p-3 text-muted">No athletes in this level yet.</div>
-                    }
-                    else
-                    {
-                        <div style="overflow-x: auto;">
-                        <table class="table table-sm table-hover mb-0">
-                            <thead class="table-light">
+                    <div class="p-3 text-muted">No athletes in this level yet.</div>
+                }
+                else
+                {
+                    <div style="overflow-x: auto;">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Name</th>
+                                <th class="text-center">Leotard</th>
+                                <th class="text-center">Leggings</th>
+                                <th class="text-center">Team Bag</th>
+                                <th class="text-center">Jacket</th>
+                                <th class="text-center">Team Camp</th>
+                                <th>Invite Code</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var gymnast in levelGymnasts)
+                            {
                                 <tr>
-                                    <th>Athlete</th>
-                                    @foreach (var item in levelRequiredItems)
-                                    {
-                                        <th class="text-center" style="min-width: 90px;">
-                                            <span class="badge bg-success">@item.Name</span>
-                                            <br/><small class="text-muted">$@item.Cost.ToString("N2")</small>
-                                        </th>
-                                    }
-                                    @foreach (var item in levelOptionalItems)
-                                    {
-                                        <th class="text-center" style="min-width: 90px;">
-                                            @item.Name
-                                            <br/><small class="text-muted">$@item.Cost.ToString("N2")</small>
-                                        </th>
-                                    }
-                                    <th class="text-end">Total</th>
-                                    <th class="text-end">Actions</th>
+                                    <td><strong>@gymnast.Name</strong></td>
+                                    <td class="text-center">@(gymnast.Leotard ? "\u2713" : "")</td>
+                                    <td class="text-center">@(gymnast.Leggings ? "\u2713" : "")</td>
+                                    <td class="text-center">@(gymnast.TeamBag ? "\u2713" : "")</td>
+                                    <td class="text-center">@(gymnast.Jacket ? "\u2713" : "")</td>
+                                    <td class="text-center">@(gymnast.TeamCamp ? "\u2713" : "")</td>
+                                    <td>
+                                        @{
+                                            var link = parentLinks.FirstOrDefault(pl => pl.AthleteId == gymnast.Id);
+                                        }
+                                        @if (link != null)
+                                        {
+                                            <span class="badge @(link.IsClaimed ? "bg-success" : "bg-secondary") font-monospace" title="@(link.IsClaimed ? "Claimed" : "Pending")">@link.InviteCode</span>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => GenerateCodeOnly(gymnast.Id)">Code</button>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        @if (link != null)
+                                        {
+                                            <button class="btn btn-sm btn-outline-warning me-1" title="Regenerate invite code" @onclick="() => ShowInviteForm(gymnast.Id)">
+                                                <span class="oi oi-reload"></span>
+                                            </button>
+                                        }
+                                        <button class="btn btn-sm btn-outline-info me-1" @onclick="() => ShowInviteForm(gymnast.Id)">Email Invite</button>
+                                        @if (showInviteForm && inviteGymnastId == gymnast.Id)
+                                        {
+                                            <div class="d-inline-flex align-items-center gap-1 ms-1">
+                                                <input type="email" class="form-control form-control-sm" style="width: 200px;"
+                                                       placeholder="Parent email" @bind="inviteEmail" />
+                                                <button class="btn btn-sm btn-success" @onclick="() => SendInviteEmail(gymnast)">Send</button>
+                                                <button class="btn btn-sm btn-secondary" @onclick="CancelInviteForm">X</button>
+                                            </div>
+                                        }
+                                        <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => ToggleProfile(gymnast.Id)">Profile</button>
+                                        <a class="btn btn-sm btn-outline-primary" href="/roster">Edit</a>
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var athlete in levelAthletes)
+                                @if (profileGymnastId == gymnast.Id)
                                 {
-                                    var athleteSelections = selections.Where(s => s.AthleteId == athlete.Id).Select(s => s.AthleteItemId).ToHashSet();
-                                    var optionalCost = levelOptionalItems.Where(i => athleteSelections.Contains(i.Id)).Sum(i => i.Cost);
-                                    var totalCost = requiredCost + optionalCost;
-
                                     <tr>
-                                        <td><strong>@athlete.Name</strong></td>
-                                        @foreach (var item in levelRequiredItems)
-                                        {
-                                            <td class="text-center">
-                                                <input type="checkbox" class="form-check-input" checked disabled />
-                                            </td>
-                                        }
-                                        @foreach (var item in levelOptionalItems)
-                                        {
-                                            var itemId = item.Id;
-                                            var athleteId = athlete.Id;
-                                            var isSelected = athleteSelections.Contains(itemId);
-                                            <td class="text-center">
-                                                <input type="checkbox" class="form-check-input" checked="@isSelected"
-                                                       @onchange="(e) => ToggleSelection(athleteId, itemId, (bool)e.Value!)" />
-                                            </td>
-                                        }
-                                        <td class="text-end fw-bold">$@totalCost.ToString("N2")</td>
-                                        <td class="text-end">
-                                            @{
-                                                var link = parentLinks.FirstOrDefault(pl => pl.AthleteId == athlete.Id);
-                                            }
-                                            @if (link != null)
-                                            {
-                                                <span class="badge @(link.IsClaimed ? "bg-success" : "bg-secondary") font-monospace me-1" title="@(link.IsClaimed ? "Claimed" : "Pending")">@link.InviteCode</span>
-                                                <button class="btn btn-sm btn-outline-warning me-1" title="Regenerate invite code" @onclick="() => ShowInviteForm(athlete.Id)">
-                                                    <span class="oi oi-reload"></span>
-                                                </button>
-                                            }
-                                            else
-                                            {
-                                                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => GenerateCodeOnly(athlete.Id)">Code</button>
-                                                <button class="btn btn-sm btn-outline-info me-1" @onclick="() => ShowInviteForm(athlete.Id)">Email Invite</button>
-                                            }
-                                            @if (showInviteForm && inviteAthleteId == athlete.Id)
-                                            {
-                                                <div class="d-inline-flex align-items-center gap-1 ms-1">
-                                                    <input type="email" class="form-control form-control-sm" style="width: 200px;"
-                                                           placeholder="Parent email" @bind="inviteEmail" />
-                                                    <button class="btn btn-sm btn-success" @onclick="() => SendInviteEmail(athlete)">Send</button>
-                                                    <button class="btn btn-sm btn-secondary" @onclick="CancelInviteForm">X</button>
+                                        <td colspan="8">
+                                            <div class="card border-info m-2">
+                                                <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                                                    <strong>Profile - @gymnast.Name</strong>
+                                                    <button class="btn btn-sm btn-light" @onclick="() => profileGymnastId = null">Close</button>
                                                 </div>
-                                            }
-                                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditAthlete(athlete)">Edit</button>
-                                            <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => ToggleProfile(athlete.Id)">Profile</button>
-                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAthlete(athlete)">Delete</button>
+                                                <div class="card-body">
+                                                    <div class="row">
+                                                        <div class="col-md-4 mb-3">
+                                                            <label class="form-label fw-bold">Parent Email</label>
+                                                            <input type="email" class="form-control" @bind="profileParentEmail" placeholder="parent@example.com" />
+                                                        </div>
+                                                        <div class="col-md-4 mb-3">
+                                                            <label class="form-label fw-bold">Level</label>
+                                                            <input type="text" class="form-control" value="@gymnast.Level" disabled />
+                                                        </div>
+                                                    </div>
+                                                    <button class="btn btn-success" @onclick="SaveProfile">Save Profile</button>
+                                                    @if (profileSaveMessage != null)
+                                                    {
+                                                        <span class="text-success ms-2">@profileSaveMessage</span>
+                                                    }
+                                                </div>
+                                            </div>
                                         </td>
                                     </tr>
-                                    @if (profileAthleteId == athlete.Id)
-                                    {
-                                        <tr>
-                                            <td colspan="@(2 + levelRequiredItems.Count + levelOptionalItems.Count)">
-                                                <div class="card border-info m-2">
-                                                    <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
-                                                        <strong>Profile - @athlete.Name</strong>
-                                                        <button class="btn btn-sm btn-light" @onclick="() => profileAthleteId = null">Close</button>
-                                                    </div>
-                                                    <div class="card-body">
-                                                        <div class="row">
-                                                            <div class="col-md-4 mb-3">
-                                                                <label class="form-label fw-bold">Date of Birth</label>
-                                                                <input type="date" class="form-control"
-                                                                       value="@(profileDob?.ToString("yyyy-MM-dd"))"
-                                                                       @onchange="(e) => profileDob = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null" />
-                                                                @if (profileDob.HasValue)
-                                                                {
-                                                                    <small class="text-muted">Age: @((DateTime.Today - profileDob.Value).Days / 365)</small>
-                                                                }
-                                                            </div>
-                                                            <div class="col-md-4 mb-3">
-                                                                <label class="form-label fw-bold">Parent Phone</label>
-                                                                <input type="tel" class="form-control" @bind="profileParentPhone" placeholder="(555) 123-4567" />
-                                                            </div>
-                                                            <div class="col-md-4 mb-3">
-                                                                <label class="form-label fw-bold">Address</label>
-                                                                <input type="text" class="form-control" @bind="profileAddress" placeholder="Street, City, State ZIP" />
-                                                            </div>
-                                                        </div>
-                                                        <h6 class="mt-2">Emergency Contact</h6>
-                                                        <div class="row">
-                                                            <div class="col-md-4 mb-3">
-                                                                <label class="form-label">Contact Name</label>
-                                                                <input type="text" class="form-control" @bind="profileEmergencyName" placeholder="Full name" />
-                                                            </div>
-                                                            <div class="col-md-4 mb-3">
-                                                                <label class="form-label">Contact Phone</label>
-                                                                <input type="tel" class="form-control" @bind="profileEmergencyPhone" placeholder="(555) 123-4567" />
-                                                            </div>
-                                                            <div class="col-md-4 mb-3">
-                                                                <label class="form-label">Relationship</label>
-                                                                <input type="text" class="form-control" @bind="profileEmergencyRelationship" placeholder="e.g. Mother, Father" />
-                                                            </div>
-                                                        </div>
-                                                        <div class="mb-3">
-                                                            <label class="form-label fw-bold">Medical Notes</label>
-                                                            <textarea class="form-control" rows="3" @bind="profileMedicalNotes" placeholder="Allergies, conditions, medications..."></textarea>
-                                                        </div>
-                                                        <button class="btn btn-success" @onclick="SaveProfile">Save Profile</button>
-                                                        @if (profileSaveMessage != null)
-                                                        {
-                                                            <span class="text-success ms-2">@profileSaveMessage</span>
-                                                        }
-                                                    </div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    }
                                 }
-                            </tbody>
-                            <tfoot class="table-light">
-                                <tr class="fw-bold">
-                                    <td>Level Summary</td>
-                                    @foreach (var item in levelRequiredItems)
-                                    {
-                                        <td class="text-center">@levelAthletes.Count</td>
-                                    }
-                                    @foreach (var item in levelOptionalItems)
-                                    {
-                                        var selectedCount = levelAthletes.Count(a => selections.Any(s => s.AthleteId == a.Id && s.AthleteItemId == item.Id));
-                                        <td class="text-center">@selectedCount / @levelAthletes.Count</td>
-                                    }
-                                    @{
-                                        var levelTotalCost = levelAthletes.Sum(a =>
-                                        {
-                                            var sel = selections.Where(s => s.AthleteId == a.Id).Select(s => s.AthleteItemId).ToHashSet();
-                                            return requiredCost + levelOptionalItems.Where(i => sel.Contains(i.Id)).Sum(i => i.Cost);
-                                        });
-                                    }
-                                    <td class="text-end fw-bold">$@levelTotalCost.ToString("N2")</td>
-                                    <td></td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                        </div>
-                    }
-                </div>
+                            }
+                        </tbody>
+                    </table>
+                    </div>
                 }
             </div>
-        }
+            }
+        </div>
     }
 }
 
 @code {
-    private List<Season>? seasons;
-    private List<TeamLevel> teamLevels = new();
-    private List<AthleteItem> athleteItems = new();
-    private List<Athlete> athletes = new();
-    private List<AthleteItemSelection> selections = new();
+    private List<Gymnast>? gymnasts;
     private List<ParentLink> parentLinks = new();
-    private int selectedSeasonId;
-    private string? userId;
-    private ProjectLabels labels = ProjectLabels.Default;
+    private List<string> allLevels = new();
 
-    private bool showForm;
-    private Athlete? editingAthlete;
-    private string formName = "";
-    private int formTeamLevelId;
-
-    private int filterLevelId = 0;
+    private string filterLevel = "";
     private string searchText = "";
-    private HashSet<int> expandedLevels = new();
-    private List<Gymnast> rosterGymnasts = new();
+    private HashSet<string> expandedLevels = new();
 
     private bool showInviteForm;
-    private int inviteAthleteId;
+    private int inviteGymnastId;
     private string inviteEmail = "";
     private string? inviteMessage;
     private string? inviteError;
 
     // Profile state
-    private int? profileAthleteId;
-    private DateTime? profileDob;
-    private string? profileParentPhone;
-    private string? profileAddress;
-    private string? profileEmergencyName;
-    private string? profileEmergencyPhone;
-    private string? profileEmergencyRelationship;
-    private string? profileMedicalNotes;
+    private int? profileGymnastId;
+    private string? profileParentEmail;
     private string? profileSaveMessage;
 
-    private void OnFilterLevelChanged(ChangeEventArgs e) { filterLevelId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0; }
+    private void OnFilterLevelChanged(ChangeEventArgs e) { filterLevel = e.Value?.ToString() ?? ""; }
 
-    private void ToggleLevel(int levelId)
+    private void ToggleLevel(string levelName)
     {
-        if (!expandedLevels.Remove(levelId))
-            expandedLevels.Add(levelId);
+        if (!expandedLevels.Remove(levelName))
+            expandedLevels.Add(levelName);
     }
 
-    private List<TeamLevel> filteredTeamLevels
+    private List<Gymnast> filteredGymnasts
     {
         get
         {
-            var list = filterLevelId > 0 ? teamLevels.Where(t => t.Id == filterLevelId) : teamLevels;
+            IEnumerable<Gymnast> list = gymnasts ?? new();
+            if (!string.IsNullOrWhiteSpace(filterLevel))
+                list = list.Where(g => string.Equals(g.Level, filterLevel, StringComparison.OrdinalIgnoreCase));
             if (!string.IsNullOrWhiteSpace(searchText))
-            {
-                var matchingLevelIds = filteredAthletes.Select(a => a.TeamLevelId).ToHashSet();
-                list = list.Where(t => matchingLevelIds.Contains(t.Id));
-            }
+                list = list.Where(g => g.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase));
             return list.ToList();
         }
     }
 
-    private List<Athlete> filteredAthletes
+    private List<KeyValuePair<string, List<Gymnast>>> filteredGroups
     {
         get
         {
-            var list = filterLevelId > 0 ? athletes.Where(a => a.TeamLevelId == filterLevelId) : athletes;
-            if (!string.IsNullOrWhiteSpace(searchText))
-                list = list.Where(a => a.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase));
-            return list.ToList();
+            return filteredGymnasts
+                .GroupBy(g => g.Level ?? "Unassigned")
+                .OrderBy(g => g.Key)
+                .Select(g => new KeyValuePair<string, List<Gymnast>>(g.Key, g.OrderBy(x => x.Name).ToList()))
+                .ToList();
         }
     }
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        seasons = await Db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
-    }
-
-    private async Task OnSeasonChanged(ChangeEventArgs e)
-    {
-        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
-        labels = new ProjectLabels(seasons?.FirstOrDefault(s => s.Id == selectedSeasonId));
-        NotesPanelState.SeasonId = selectedSeasonId;
         await LoadData();
     }
 
     private async Task LoadData()
     {
         using var db = await DbFactory.CreateDbContextAsync();
-        teamLevels = await db.TeamLevels.AsNoTracking().Where(t => t.SeasonId == selectedSeasonId).ToListAsync();
-        var levelIds = teamLevels.Select(t => t.Id).ToList();
-        athleteItems = await db.AthleteItems.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
-        athletes = await db.Athletes.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).OrderBy(a => a.Name).ToListAsync();
-        var athleteIds = athletes.Select(a => a.Id).ToList();
-        selections = await db.AthleteItemSelections.AsNoTracking().Where(s => athleteIds.Contains(s.AthleteId)).ToListAsync();
-        parentLinks = await db.ParentLinks.AsNoTracking().Where(pl => athleteIds.Contains(pl.AthleteId)).ToListAsync();
+        gymnasts = await db.Gymnasts.AsNoTracking().OrderBy(g => g.Name).ToListAsync();
+        var gymnastIds = gymnasts.Select(g => g.Id).ToList();
+        parentLinks = await db.ParentLinks.AsNoTracking().Where(pl => gymnastIds.Contains(pl.AthleteId)).ToListAsync();
 
-        // Auto-expand levels that have athletes
-        expandedLevels = athletes.Select(a => a.TeamLevelId).Distinct().ToHashSet();
+        allLevels = gymnasts
+            .Select(g => g.Level ?? "Unassigned")
+            .Distinct()
+            .OrderBy(l => l)
+            .ToList();
 
-        // Load roster for quick-add (exclude already added names)
-        var existingNames = athletes.Select(a => a.Name.ToLower()).ToHashSet();
-        rosterGymnasts = await db.Gymnasts.AsNoTracking()
-            .Where(g => !existingNames.Contains(g.Name.ToLower()))
-            .OrderBy(g => g.Name)
-            .ToListAsync();
+        // Auto-expand levels that have gymnasts
+        expandedLevels = allLevels.ToHashSet();
     }
 
-    private void OnRosterSelect(ChangeEventArgs e)
+    private void ShowInviteForm(int gymnastId)
     {
-        if (int.TryParse(e.Value?.ToString(), out var gymnastId))
-        {
-            var g = rosterGymnasts.FirstOrDefault(r => r.Id == gymnastId);
-            if (g != null)
-            {
-                formName = g.Name;
-                // Try to match roster level to a team level
-                var matchedLevel = teamLevels.FirstOrDefault(t =>
-                    t.Name.Equals(g.Level, StringComparison.OrdinalIgnoreCase));
-                if (matchedLevel != null)
-                    formTeamLevelId = matchedLevel.Id;
-            }
-        }
-    }
-
-    private void ShowAddForm()
-    {
-        editingAthlete = null;
-        formName = "";
-        formTeamLevelId = teamLevels.FirstOrDefault()?.Id ?? 0;
-        showForm = true;
-    }
-
-    private void EditAthlete(Athlete athlete)
-    {
-        editingAthlete = athlete;
-        formName = athlete.Name;
-        formTeamLevelId = athlete.TeamLevelId;
-        showForm = true;
-    }
-
-    private void CancelForm() { showForm = false; editingAthlete = null; }
-
-    private async Task SaveAthlete()
-    {
-        if (string.IsNullOrWhiteSpace(formName) || formTeamLevelId == 0) return;
-        using var db = await DbFactory.CreateDbContextAsync();
-
-        if (editingAthlete != null)
-        {
-            var entity = await db.Athletes.FindAsync(editingAthlete.Id);
-            if (entity != null)
-            {
-                entity.Name = formName.Trim();
-                entity.TeamLevelId = formTeamLevelId;
-                await db.SaveChangesAsync();
-            }
-        }
-        else
-        {
-            db.Athletes.Add(new Athlete { Name = formName.Trim(), TeamLevelId = formTeamLevelId });
-            await db.SaveChangesAsync();
-        }
-
-        showForm = false;
-        editingAthlete = null;
-        await LoadData();
-    }
-
-    private async Task DeleteAthlete(Athlete athlete)
-    {
-        using var db = await DbFactory.CreateDbContextAsync();
-        var entity = await db.Athletes.FindAsync(athlete.Id);
-        if (entity != null)
-        {
-            db.Athletes.Remove(entity);
-            await db.SaveChangesAsync();
-        }
-        await LoadData();
-    }
-
-    private void ShowInviteForm(int athleteId)
-    {
-        inviteAthleteId = athleteId;
+        inviteGymnastId = gymnastId;
         inviteEmail = "";
         showInviteForm = true;
     }
@@ -503,28 +264,28 @@ else
     private void CancelInviteForm()
     {
         showInviteForm = false;
-        inviteAthleteId = 0;
+        inviteGymnastId = 0;
         inviteEmail = "";
     }
 
-    private async Task GenerateCodeOnly(int athleteId)
+    private async Task GenerateCodeOnly(int gymnastId)
     {
         inviteMessage = null;
         inviteError = null;
         using var db = await DbFactory.CreateDbContextAsync();
-        var existing = await db.ParentLinks.FirstOrDefaultAsync(pl => pl.AthleteId == athleteId);
-        if (existing != null) return; // already has a code
+        var existing = await db.ParentLinks.FirstOrDefaultAsync(pl => pl.AthleteId == gymnastId);
+        if (existing != null) return;
 
         var code = ParentLink.GenerateCode();
-        db.ParentLinks.Add(new ParentLink { AthleteId = athleteId, InviteCode = code });
+        db.ParentLinks.Add(new ParentLink { AthleteId = gymnastId, InviteCode = code });
         await db.SaveChangesAsync();
 
-        var athlete = await db.Athletes.FindAsync(athleteId);
-        inviteMessage = $"Code generated for {athlete?.Name ?? "athlete"}: {code}";
+        var gymnast = await db.Gymnasts.FindAsync(gymnastId);
+        inviteMessage = $"Code generated for {gymnast?.Name ?? "athlete"}: {code}";
         await LoadData();
     }
 
-    private async Task SendInviteEmail(Athlete athlete)
+    private async Task SendInviteEmail(Gymnast gymnast)
     {
         if (string.IsNullOrWhiteSpace(inviteEmail)) return;
         inviteMessage = null;
@@ -533,7 +294,7 @@ else
         using var db = await DbFactory.CreateDbContextAsync();
         string inviteCode;
 
-        var existingLink = await db.ParentLinks.FirstOrDefaultAsync(pl => pl.AthleteId == athlete.Id);
+        var existingLink = await db.ParentLinks.FirstOrDefaultAsync(pl => pl.AthleteId == gymnast.Id);
         if (existingLink != null)
         {
             existingLink.InviteCode = ParentLink.GenerateCode();
@@ -548,7 +309,7 @@ else
             inviteCode = ParentLink.GenerateCode();
             db.ParentLinks.Add(new ParentLink
             {
-                AthleteId = athlete.Id,
+                AthleteId = gymnast.Id,
                 InviteCode = inviteCode
             });
             await db.SaveChangesAsync();
@@ -558,7 +319,7 @@ else
         var emailBody = $@"
             <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
                 <h2>You're Invited to Top Notch Training!</h2>
-                <p>You have been invited to manage <strong>{athlete.Name}</strong>'s account on Top Notch Training.</p>
+                <p>You have been invited to manage <strong>{gymnast.Name}</strong>'s account on Top Notch Training.</p>
                 <p>Your invite code is: <strong style='font-size: 1.2em; color: #0d6efd;'>{inviteCode}</strong></p>
                 <p>To get started, create your account by clicking the link below:</p>
                 <p><a href='{registerUrl}' style='display: inline-block; padding: 10px 20px; background-color: #0d6efd; color: #ffffff; text-decoration: none; border-radius: 5px;'>Register Now</a></p>
@@ -570,7 +331,7 @@ else
         try
         {
             await EmailSender.SendEmailAsync(inviteEmail, "You're invited to Top Notch Training", emailBody);
-            inviteMessage = $"Invite sent to {inviteEmail} for {athlete.Name} (Code: {inviteCode})";
+            inviteMessage = $"Invite sent to {inviteEmail} for {gymnast.Name} (Code: {inviteCode})";
         }
         catch (Exception ex)
         {
@@ -578,99 +339,40 @@ else
         }
 
         showInviteForm = false;
-        inviteAthleteId = 0;
+        inviteGymnastId = 0;
         inviteEmail = "";
         await LoadData();
     }
 
-    private async Task GenerateInvite(int athleteId)
-    {
-        using var db = await DbFactory.CreateDbContextAsync();
-        if (!await db.ParentLinks.AnyAsync(pl => pl.AthleteId == athleteId))
-        {
-            db.ParentLinks.Add(new ParentLink
-            {
-                AthleteId = athleteId,
-                InviteCode = ParentLink.GenerateCode()
-            });
-            await db.SaveChangesAsync();
-        }
-        await LoadData();
-    }
-
-    private async Task RegenerateInvite(int linkId)
-    {
-        using var db = await DbFactory.CreateDbContextAsync();
-        var link = await db.ParentLinks.FindAsync(linkId);
-        if (link != null)
-        {
-            link.InviteCode = ParentLink.GenerateCode();
-            link.IsClaimed = false;
-            link.ParentUserId = null;
-            link.ClaimedAt = null;
-            await db.SaveChangesAsync();
-        }
-        await LoadData();
-    }
-
-    private void ToggleProfile(int athleteId)
+    private void ToggleProfile(int gymnastId)
     {
         profileSaveMessage = null;
-        if (profileAthleteId == athleteId)
+        if (profileGymnastId == gymnastId)
         {
-            profileAthleteId = null;
+            profileGymnastId = null;
             return;
         }
-        profileAthleteId = athleteId;
-        var athlete = athletes.FirstOrDefault(a => a.Id == athleteId);
-        if (athlete != null)
+        profileGymnastId = gymnastId;
+        var gymnast = gymnasts?.FirstOrDefault(g => g.Id == gymnastId);
+        if (gymnast != null)
         {
-            profileDob = athlete.DateOfBirth;
-            profileParentPhone = athlete.ParentPhone;
-            profileAddress = athlete.Address;
-            profileEmergencyName = athlete.EmergencyContactName;
-            profileEmergencyPhone = athlete.EmergencyContactPhone;
-            profileEmergencyRelationship = athlete.EmergencyContactRelationship;
-            profileMedicalNotes = athlete.MedicalNotes;
+            profileParentEmail = gymnast.ParentEmail;
         }
     }
 
     private async Task SaveProfile()
     {
-        if (profileAthleteId == null) return;
+        if (profileGymnastId == null) return;
         profileSaveMessage = null;
         using var db = await DbFactory.CreateDbContextAsync();
-        var entity = await db.Athletes.FindAsync(profileAthleteId.Value);
+        var entity = await db.Gymnasts.FindAsync(profileGymnastId.Value);
         if (entity != null)
         {
-            entity.DateOfBirth = profileDob;
-            entity.ParentPhone = profileParentPhone;
-            entity.Address = profileAddress;
-            entity.EmergencyContactName = profileEmergencyName;
-            entity.EmergencyContactPhone = profileEmergencyPhone;
-            entity.EmergencyContactRelationship = profileEmergencyRelationship;
-            entity.MedicalNotes = profileMedicalNotes;
+            entity.ParentEmail = profileParentEmail;
             entity.ModifiedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
         }
         profileSaveMessage = "Profile saved!";
-        await LoadData();
-    }
-
-    private async Task ToggleSelection(int athleteId, int itemId, bool isChecked)
-    {
-        using var db = await DbFactory.CreateDbContextAsync();
-        if (isChecked)
-        {
-            if (!await db.AthleteItemSelections.AnyAsync(s => s.AthleteId == athleteId && s.AthleteItemId == itemId))
-                db.AthleteItemSelections.Add(new AthleteItemSelection { AthleteId = athleteId, AthleteItemId = itemId });
-        }
-        else
-        {
-            var existing = await db.AthleteItemSelections.FirstOrDefaultAsync(s => s.AthleteId == athleteId && s.AthleteItemId == itemId);
-            if (existing != null) db.AthleteItemSelections.Remove(existing);
-        }
-        await db.SaveChangesAsync();
         await LoadData();
     }
 }

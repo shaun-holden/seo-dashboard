@@ -109,11 +109,23 @@
                     <tr>
                         <td><strong>@g.Name</strong></td>
                         <td>@(g.Level ?? "—")</td>
-                        <td class="text-center">@(g.Leotard ? "✓" : "")</td>
-                        <td class="text-center">@(g.Leggings ? "✓" : "")</td>
-                        <td class="text-center">@(g.TeamBag ? "✓" : "")</td>
-                        <td class="text-center">@(g.Jacket ? "✓" : "")</td>
-                        <td class="text-center"><span class="badge bg-danger">Required</span></td>
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input" checked="@g.Leotard"
+                                   @onchange="(e) => ToggleItem(g.Id, nameof(Gymnast.Leotard), (bool)e.Value!)" />
+                        </td>
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input" checked="@g.Leggings"
+                                   @onchange="(e) => ToggleItem(g.Id, nameof(Gymnast.Leggings), (bool)e.Value!)" />
+                        </td>
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input" checked="@g.TeamBag"
+                                   @onchange="(e) => ToggleItem(g.Id, nameof(Gymnast.TeamBag), (bool)e.Value!)" />
+                        </td>
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input" checked="@g.Jacket"
+                                   @onchange="(e) => ToggleItem(g.Id, nameof(Gymnast.Jacket), (bool)e.Value!)" />
+                        </td>
+                        <td class="text-center"><input type="checkbox" class="form-check-input" checked disabled /></td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditGymnast(g)">Edit</button>
                             <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteGymnast(g)">Delete</button>
@@ -247,6 +259,34 @@
         showForm = false;
         editingGymnast = null;
         await LoadData();
+    }
+
+    private async Task ToggleItem(int gymnastId, string field, bool value)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Gymnasts.FindAsync(gymnastId);
+        if (entity == null) return;
+
+        switch (field)
+        {
+            case nameof(Gymnast.Leotard): entity.Leotard = value; break;
+            case nameof(Gymnast.Leggings): entity.Leggings = value; break;
+            case nameof(Gymnast.TeamBag): entity.TeamBag = value; break;
+            case nameof(Gymnast.Jacket): entity.Jacket = value; break;
+        }
+        await db.SaveChangesAsync();
+
+        var local = gymnasts.FirstOrDefault(g => g.Id == gymnastId);
+        if (local != null)
+        {
+            switch (field)
+            {
+                case nameof(Gymnast.Leotard): local.Leotard = value; break;
+                case nameof(Gymnast.Leggings): local.Leggings = value; break;
+                case nameof(Gymnast.TeamBag): local.TeamBag = value; break;
+                case nameof(Gymnast.Jacket): local.Jacket = value; break;
+            }
+        }
     }
 
     private async Task DeleteGymnast(Gymnast g)
