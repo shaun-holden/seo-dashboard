@@ -56,6 +56,23 @@ else
         }
     </div>
 
+    @if (deleteConfirmId != null)
+    {
+        <div class="alert alert-danger mb-3">
+            <h6 class="alert-heading">Delete @deleteConfirmName?</h6>
+            @if (deleteHasLink)
+            {
+                <p class="mb-2"><strong>This athlete is linked to a parent account.</strong> Deleting will remove their parent link, payment history, and all related data. The parent will no longer see this athlete.</p>
+            }
+            else
+            {
+                <p class="mb-2">This will permanently delete this athlete and all related data.</p>
+            }
+            <button class="btn btn-danger me-2" @onclick="DeleteGymnast">Yes, Delete</button>
+            <button class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
+        </div>
+    }
+
     @if (inviteMessage != null)
     {
         <div class="alert alert-success alert-dismissible mb-3">
@@ -161,7 +178,7 @@ else
                                         }
                                         <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => ToggleProfile(gymnast.Id)">Profile</button>
                                         <a class="btn btn-sm btn-outline-primary me-1" href="/roster">Edit</a>
-                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteGymnast(gymnast.Id, gymnast.Name)">Delete</button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDeleteGymnast(gymnast.Id, gymnast.Name)">Delete</button>
                                     </td>
                                 </tr>
                                 @if (profileGymnastId == gymnast.Id)
@@ -448,12 +465,37 @@ else
         await LoadData();
     }
 
-    private async Task DeleteGymnast(int gymnastId, string name)
+    private int? deleteConfirmId;
+    private string? deleteConfirmName;
+    private bool deleteHasLink;
+
+    private async Task ConfirmDeleteGymnast(int gymnastId, string name)
     {
         using var db = await DbFactory.CreateDbContextAsync();
-        // Delete related records first
+        deleteHasLink = await db.ParentLinks.AnyAsync(pl => pl.AthleteId == gymnastId && pl.IsClaimed);
+        deleteConfirmId = gymnastId;
+        deleteConfirmName = name;
+    }
+
+    private void CancelDelete()
+    {
+        deleteConfirmId = null;
+        deleteConfirmName = null;
+    }
+
+    private async Task DeleteGymnast()
+    {
+        if (deleteConfirmId == null) return;
+        var gymnastId = deleteConfirmId.Value;
+        var name = deleteConfirmName ?? "";
+        deleteConfirmId = null;
+        deleteConfirmName = null;
+
+        using var db = await DbFactory.CreateDbContextAsync();
         var links = await db.ParentLinks.Where(pl => pl.AthleteId == gymnastId).ToListAsync();
         db.ParentLinks.RemoveRange(links);
+        var payments = await db.Payments.Where(p => p.AthleteId == gymnastId).ToListAsync();
+        db.Payments.RemoveRange(payments);
         var apparelSels = await db.GymnastApparelSelections.Where(s => s.GymnastId == gymnastId).ToListAsync();
         db.GymnastApparelSelections.RemoveRange(apparelSels);
         var compSels = await db.GymnastCompetitionSelections.Where(s => s.GymnastId == gymnastId).ToListAsync();
