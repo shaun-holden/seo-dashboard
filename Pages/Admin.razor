@@ -9,6 +9,7 @@
 @inject IConfiguration Configuration
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject GymBudgetApp.Services.AuditService AuditService
+@inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 
 <h3>Admin</h3>
 
@@ -34,10 +35,14 @@ else
     <!-- Quick Actions -->
     <div class="card mb-4">
         <div class="card-body d-flex gap-2 align-items-center">
-            <button class="btn btn-warning" @onclick="SelectAllItemsForAllGymnasts">Select All Items for All Athletes</button>
+            <button class="btn btn-warning me-2" @onclick="SelectAllItemsForAllGymnasts">Select All Items for All Athletes</button>
+            <button class="btn btn-primary" @onclick="SendAllInviteCodes" disabled="@isSendingCodes">
+                @if (isSendingCodes) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Send All Invite Codes to Parents
+            </button>
             @if (selectAllMessage != null)
             {
-                <span class="text-success">@selectAllMessage</span>
+                <span class="text-success ms-2">@selectAllMessage</span>
             }
         </div>
     </div>
@@ -699,6 +704,7 @@ else
     }
 
     private string? selectAllMessage;
+    private bool isSendingCodes;
 
     private async Task SelectAllItemsForAllGymnasts()
     {
@@ -739,6 +745,88 @@ else
         }
         await db.SaveChangesAsync();
         selectAllMessage = $"Done! Selected {count} items across {gymnasts.Count} gymnasts.";
+    }
+
+    private async Task SendAllInviteCodes()
+    {
+        isSendingCodes = true;
+        selectAllMessage = null;
+        StateHasChanged();
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var gymnasts = await db.Gymnasts.ToListAsync();
+        var parentLinks = await db.ParentLinks.ToListAsync();
+        var users = UserManager.Users.ToList();
+        var parentUsers = new List<IdentityUser>();
+
+        // Get all users with Parent role
+        foreach (var u in users)
+        {
+            if (await UserManager.IsInRoleAsync(u, "Parent"))
+                parentUsers.Add(u);
+        }
+
+        var sent = 0;
+        var skipped = 0;
+
+        foreach (var gymnast in gymnasts)
+        {
+            var link = parentLinks.FirstOrDefault(pl => pl.AthleteId == gymnast.Id);
+            if (link == null)
+            {
+                // Generate code if missing
+                link = new ParentLink { AthleteId = gymnast.Id, InviteCode = ParentLink.GenerateCode() };
+                db.ParentLinks.Add(link);
+                await db.SaveChangesAsync();
+                parentLinks.Add(link);
+            }
+
+            // Find parent by gymnast's ParentEmail
+            if (!string.IsNullOrEmpty(gymnast.ParentEmail))
+            {
+                var parentUser = parentUsers.FirstOrDefault(u =>
+                    string.Equals(u.Email, gymnast.ParentEmail, StringComparison.OrdinalIgnoreCase));
+
+                if (parentUser != null)
+                {
+                    try
+                    {
+                        var body = $@"
+                            <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
+                                <h2>Your GymHub Invite Code</h2>
+                                <p>Here is your invite code to link <strong>{gymnast.Name}</strong> to your account:</p>
+                                <p style='font-size: 1.5em; font-weight: bold; color: #0d6efd; letter-spacing: 3px;'>{link.InviteCode}</p>
+                                <p>Steps:</p>
+                                <ol>
+                                    <li>Log in at <a href='https://gymbudgetapp-production.up.railway.app'>GymHub</a></li>
+                                    <li>Go to <strong>Link Athlete</strong></li>
+                                    <li>Enter your code: <strong>{link.InviteCode}</strong></li>
+                                </ol>
+                                <p>Your login: <strong>{parentUser.Email}</strong></p>
+                                <hr/>
+                                <p style='color: #6c757d;'>Top Notch Training</p>
+                            </div>";
+                        await EmailSender.SendEmailAsync(parentUser.Email!, "Your GymHub Invite Code", body);
+                        sent++;
+                    }
+                    catch
+                    {
+                        skipped++;
+                    }
+                }
+                else
+                {
+                    skipped++;
+                }
+            }
+            else
+            {
+                skipped++;
+            }
+        }
+
+        selectAllMessage = $"Sent {sent} invite codes. Skipped {skipped} (no matching parent email or email failed).";
+        isSendingCodes = false;
     }
 
     [Inject] private GymBudgetApp.Services.BackupService BackupService { get; set; } = null!;
