@@ -1313,23 +1313,37 @@ else
         if (!profileEdits.TryGetValue(athleteId, out var edits)) return;
 
         using var db = await DbFactory.CreateDbContextAsync();
-        var entity = await db.Athletes.FindAsync(athleteId);
-        if (entity == null) return;
 
-        if (edits.TryGetValue("dob", out var dobStr) && DateTime.TryParse(dobStr, out var dob))
-            entity.DateOfBirth = dob;
-        else if (string.IsNullOrEmpty(dobStr))
-            entity.DateOfBirth = null;
+        // Save to Gymnast record (sizes, emails)
+        var gymnast = await db.Gymnasts.FindAsync(athleteId);
+        if (gymnast != null)
+        {
+            gymnast.ShirtSize = edits.GetValueOrDefault("shirtSize");
+            gymnast.LeotardSize = edits.GetValueOrDefault("leotardSize");
+            gymnast.LeggingsSize = edits.GetValueOrDefault("leggingsSize");
+            gymnast.PantsSize = edits.GetValueOrDefault("pantsSize");
+            gymnast.ModifiedAt = DateTime.UtcNow;
+        }
 
-        entity.ParentPhone = edits.GetValueOrDefault("parentPhone");
-        entity.Address = edits.GetValueOrDefault("address");
-        entity.EmergencyContactName = edits.GetValueOrDefault("emergencyName");
-        entity.EmergencyContactPhone = edits.GetValueOrDefault("emergencyPhone");
-        entity.EmergencyContactRelationship = edits.GetValueOrDefault("emergencyRelationship");
-        entity.MedicalNotes = edits.GetValueOrDefault("medicalNotes");
-        entity.ModifiedAt = DateTime.UtcNow;
+        // Also save to Athlete record if it exists (DOB, emergency info)
+        var athlete = await db.Athletes.FindAsync(athleteId);
+        if (athlete != null)
+        {
+            if (edits.TryGetValue("dob", out var dobStr) && DateTime.TryParse(dobStr, out var dob))
+                athlete.DateOfBirth = dob;
+            else if (string.IsNullOrEmpty(dobStr))
+                athlete.DateOfBirth = null;
+
+            athlete.ParentPhone = edits.GetValueOrDefault("parentPhone");
+            athlete.Address = edits.GetValueOrDefault("address");
+            athlete.EmergencyContactName = edits.GetValueOrDefault("emergencyName");
+            athlete.EmergencyContactPhone = edits.GetValueOrDefault("emergencyPhone");
+            athlete.EmergencyContactRelationship = edits.GetValueOrDefault("emergencyRelationship");
+            athlete.MedicalNotes = edits.GetValueOrDefault("medicalNotes");
+            athlete.ModifiedAt = DateTime.UtcNow;
+        }
+
         await db.SaveChangesAsync();
-
         profileSaveMessages[athleteId] = "Profile saved!";
         await LoadData();
     }
