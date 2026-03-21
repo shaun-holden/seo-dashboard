@@ -394,13 +394,6 @@ else
         await LoadData();
     }
 
-    private List<string> allLevels => gymnasts?
-        .Where(g => !string.IsNullOrWhiteSpace(g.Level))
-        .Select(g => g.Level!)
-        .Distinct()
-        .OrderBy(l => l)
-        .ToList() ?? new();
-
     private async Task UpdateLevel(int gymnastId, string? newLevel)
     {
         if (string.IsNullOrEmpty(newLevel)) return;
