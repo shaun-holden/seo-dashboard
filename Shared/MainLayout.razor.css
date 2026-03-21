@@ -43,6 +43,20 @@ main {
     .top-row a, .top-row .btn-link {
         margin-left: 0;
     }
+
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+        max-height: 100vh;
+        overflow-y: auto;
+    }
+
+    .sidebar .nav-scrollable.collapse {
+        display: none !important;
+    }
 }
 
 @media (min-width: 641px) {
