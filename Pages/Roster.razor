@@ -341,7 +341,8 @@
         .OrderBy(l => l)
         .ToList();
 
-    private List<string> allLevels => levels
+    private List<string> allLevels => savedLevels
+        .Select(l => l.Name)
         .Concat(customLevels)
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(l => l)
@@ -351,17 +352,17 @@
     {
         if (string.IsNullOrWhiteSpace(newManagedLevel)) return;
         var name = newManagedLevel.Trim();
-        if (!levels.Contains(name, StringComparer.OrdinalIgnoreCase))
+        if (!allLevels.Contains(name, StringComparer.OrdinalIgnoreCase))
         {
-            // Create a placeholder gymnast with this level to persist it
             using var db = await DbFactory.CreateDbContextAsync();
-            // Check if any gymnast already has this level
-            var exists = await db.Gymnasts.AnyAsync(g => g.Level == name);
-            if (!exists)
-            {
-                customLevels.Add(name);
-            }
-            levelMessage = $"Level \"{name}\" added. Assign gymnasts to it using the level dropdown.";
+            db.Levels.Add(new Level { Name = name });
+            await db.SaveChangesAsync();
+            savedLevels.Add(new Level { Name = name });
+            levelMessage = $"Level \"{name}\" added permanently.";
+        }
+        else
+        {
+            levelMessage = $"Level \"{name}\" already exists.";
         }
         newManagedLevel = "";
     }
@@ -384,6 +385,8 @@
         var toUpdate = await db.Gymnasts.Where(g => g.Level == oldName).ToListAsync();
         foreach (var g in toUpdate)
             g.Level = renameNewName.Trim();
+        var levelRecord = await db.Levels.FirstOrDefaultAsync(l => l.Name == oldName);
+        if (levelRecord != null) levelRecord.Name = renameNewName.Trim();
         await db.SaveChangesAsync();
         levelMessage = $"Renamed \"{oldName}\" to \"{renameNewName.Trim()}\" ({toUpdate.Count} gymnasts updated).";
         renamingLevel = null;
@@ -396,6 +399,8 @@
         var toUpdate = await db.Gymnasts.Where(g => g.Level == levelName).ToListAsync();
         foreach (var g in toUpdate)
             g.Level = null;
+        var levelRecord = await db.Levels.FirstOrDefaultAsync(l => l.Name == levelName);
+        if (levelRecord != null) db.Levels.Remove(levelRecord);
         await db.SaveChangesAsync();
         levelMessage = $"Deleted level \"{levelName}\". {toUpdate.Count} gymnast(s) now have no level.";
         await LoadData();
@@ -427,12 +432,29 @@
         await LoadData();
     }
 
+    private List<Level> savedLevels = new();
+
     private async Task LoadData()
     {
         using var db = await DbFactory.CreateDbContextAsync();
         gymnasts = await db.Gymnasts.AsNoTracking()
             .OrderBy(g => g.Level).ThenBy(g => g.Name)
             .ToListAsync();
+
+        // Sync levels: ensure all gymnast levels exist in Levels table
+        savedLevels = await db.Levels.OrderBy(l => l.Name).ToListAsync();
+        var gymnastLevelNames = gymnasts.Where(g => !string.IsNullOrEmpty(g.Level)).Select(g => g.Level!).Distinct().ToList();
+        foreach (var name in gymnastLevelNames)
+        {
+            if (!savedLevels.Any(l => l.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            {
+                var newLevel = new Level { Name = name };
+                db.Levels.Add(newLevel);
+                savedLevels.Add(newLevel);
+            }
+        }
+        await db.SaveChangesAsync();
+        customLevels.Clear();
 
         // Calculate cost per gymnast from active season's calculator
         var activeSeason = await db.Seasons.AsNoTracking().FirstOrDefaultAsync(s => s.IsActive);
