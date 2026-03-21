@@ -12,7 +12,7 @@ namespace GymBudgetApp.Services
             _dbFactory = dbFactory;
         }
 
-        public async Task EnsureRoomsExist(int seasonId, List<TeamLevel> levels)
+        public async Task EnsureRoomsExist(int seasonId, List<string> levelNames)
         {
             using var db = await _dbFactory.CreateDbContextAsync();
 
@@ -41,20 +41,31 @@ namespace GymBudgetApp.Services
                 });
             }
 
-            // One room per team level
-            foreach (var level in levels)
+            // One room per roster level
+            foreach (var levelName in levelNames)
             {
                 var levelRoom = await db.ChatRooms
-                    .FirstOrDefaultAsync(r => r.Type == ChatRoomType.Level && r.TeamLevelId == level.Id);
+                    .FirstOrDefaultAsync(r => r.Type == ChatRoomType.Level && r.Name == levelName);
                 if (levelRoom == null)
                 {
                     db.ChatRooms.Add(new ChatRoom
                     {
-                        Name = level.Name,
+                        Name = levelName,
                         Type = ChatRoomType.Level,
-                        SeasonId = seasonId,
-                        TeamLevelId = level.Id
+                        SeasonId = seasonId
                     });
+                }
+            }
+
+            // Remove old level rooms that no longer exist in roster
+            var existingLevelRooms = await db.ChatRooms
+                .Where(r => r.Type == ChatRoomType.Level)
+                .ToListAsync();
+            foreach (var room in existingLevelRooms)
+            {
+                if (!levelNames.Contains(room.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    db.ChatRooms.Remove(room);
                 }
             }
 
@@ -73,17 +84,21 @@ namespace GymBudgetApp.Services
                     .ToListAsync();
             }
 
-            // Parent: get athlete team level IDs
-            var athleteTeamLevelIds = await db.ParentLinks
+            // Parent: get athlete level names from Gymnasts
+            var parentLinks = await db.ParentLinks
                 .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
-                .Join(db.Athletes, pl => pl.AthleteId, a => a.Id, (pl, a) => a.TeamLevelId)
+                .Select(pl => pl.AthleteId)
+                .ToListAsync();
+            var athleteLevelNames = await db.Gymnasts
+                .Where(g => parentLinks.Contains(g.Id) && !string.IsNullOrEmpty(g.Level))
+                .Select(g => g.Level!)
                 .Distinct()
                 .ToListAsync();
 
             return await db.ChatRooms
                 .Include(r => r.Messages.OrderByDescending(m => m.CreatedAt).Take(1))
                 .Where(r => r.Type == ChatRoomType.AllParents
-                    || (r.Type == ChatRoomType.Level && r.TeamLevelId.HasValue && athleteTeamLevelIds.Contains(r.TeamLevelId.Value)))
+                    || (r.Type == ChatRoomType.Level && athleteLevelNames.Contains(r.Name)))
                 .OrderByDescending(r => r.Messages.Max(m => (DateTime?)m.CreatedAt) ?? r.CreatedAt)
                 .ToListAsync();
         }

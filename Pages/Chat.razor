@@ -105,12 +105,17 @@
         currentUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
         currentUserName = authState.User.FindFirst(ClaimTypes.Email)?.Value ?? "Unknown";
 
-        // Ensure rooms exist for active season
+        // Ensure rooms exist for active season using roster levels
         using var db = await DbFactory.CreateDbContextAsync();
-        var activeSeason = await db.Seasons.Include(s => s.TeamLevels).FirstOrDefaultAsync(s => s.IsActive);
+        var activeSeason = await db.Seasons.FirstOrDefaultAsync(s => s.IsActive);
         if (activeSeason != null)
         {
-            await ChatService.EnsureRoomsExist(activeSeason.Id, activeSeason.TeamLevels.ToList());
+            var rosterLevels = await db.Gymnasts
+                .Where(g => !string.IsNullOrEmpty(g.Level))
+                .Select(g => g.Level!)
+                .Distinct()
+                .ToListAsync();
+            await ChatService.EnsureRoomsExist(activeSeason.Id, rosterLevels);
         }
 
         await LoadRooms();
