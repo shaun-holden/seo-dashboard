@@ -46,7 +46,7 @@
             <table class="table table-sm mb-2">
                 <thead><tr><th>Level</th><th>Athletes</th><th>Actions</th></tr></thead>
                 <tbody>
-                    @foreach (var lvl in levels)
+                    @foreach (var lvl in allLevels)
                     {
                         var levelName = lvl;
                         var count = gymnasts.Count(g => g.Level == levelName);
@@ -347,13 +347,20 @@
         .OrderBy(l => l)
         .ToList();
 
-    private void AddManagedLevel()
+    private async Task AddManagedLevel()
     {
         if (string.IsNullOrWhiteSpace(newManagedLevel)) return;
         var name = newManagedLevel.Trim();
-        if (!customLevels.Contains(name, StringComparer.OrdinalIgnoreCase) && !levels.Contains(name, StringComparer.OrdinalIgnoreCase))
+        if (!levels.Contains(name, StringComparer.OrdinalIgnoreCase))
         {
-            customLevels.Add(name);
+            // Create a placeholder gymnast with this level to persist it
+            using var db = await DbFactory.CreateDbContextAsync();
+            // Check if any gymnast already has this level
+            var exists = await db.Gymnasts.AnyAsync(g => g.Level == name);
+            if (!exists)
+            {
+                customLevels.Add(name);
+            }
             levelMessage = $"Level \"{name}\" added. Assign gymnasts to it using the level dropdown.";
         }
         newManagedLevel = "";
