@@ -875,13 +875,9 @@ else
     private async Task VerifyPendingPayments()
     {
         using var db = await DbFactory.CreateDbContextAsync();
-        // Get all pending payments for this user's linked gymnasts
-        var linkedIds = await db.ParentLinks
-            .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
-            .Select(pl => pl.AthleteId)
-            .ToListAsync();
+        // Get ALL pending payments for this user (by PayerUserId)
         var pendingPayments = await db.Payments
-            .Where(p => linkedIds.Contains(p.AthleteId) && p.Status == PaymentStatus.Pending && p.StripeSessionId != null)
+            .Where(p => p.PayerUserId == userId && p.Status == PaymentStatus.Pending && p.StripeSessionId != null)
             .ToListAsync();
 
         if (!pendingPayments.Any()) return;
