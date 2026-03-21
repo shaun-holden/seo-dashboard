@@ -31,6 +31,17 @@ else
                @bind="adminSearchText" @bind:event="oninput" />
     </div>
 
+    <!-- Quick Actions -->
+    <div class="card mb-4">
+        <div class="card-body d-flex gap-2 align-items-center">
+            <button class="btn btn-warning" @onclick="SelectAllItemsForAllGymnasts">Select All Items for All Athletes</button>
+            @if (selectAllMessage != null)
+            {
+                <span class="text-success">@selectAllMessage</span>
+            }
+        </div>
+    </div>
+
     <!-- Database Backup -->
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @onclick="() => ToggleSection(0)">
@@ -685,6 +696,49 @@ else
             SetStatus(string.Join(" ", result.Errors.Select(e => e.Description)), true);
 
         isResetting = false;
+    }
+
+    private string? selectAllMessage;
+
+    private async Task SelectAllItemsForAllGymnasts()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var gymnasts = await db.Gymnasts.ToListAsync();
+        var apparelNames = await db.ApparelItems.Where(a => !a.IsRequired).Select(a => a.Name).Distinct().ToListAsync();
+        var compNames = await db.CompetitionItems.Where(c => !c.IsRequired).Select(c => c.Name).Distinct().ToListAsync();
+        var count = 0;
+
+        foreach (var g in gymnasts)
+        {
+            foreach (var name in apparelNames)
+            {
+                var exists = await db.GymnastApparelSelections.FirstOrDefaultAsync(s => s.GymnastId == g.Id && s.ItemName == name);
+                if (exists != null)
+                {
+                    if (!exists.IsSelected) { exists.IsSelected = true; count++; }
+                }
+                else
+                {
+                    db.GymnastApparelSelections.Add(new GymnastApparelSelection { GymnastId = g.Id, ItemName = name, IsSelected = true });
+                    count++;
+                }
+            }
+            foreach (var name in compNames)
+            {
+                var exists = await db.GymnastCompetitionSelections.FirstOrDefaultAsync(s => s.GymnastId == g.Id && s.ItemName == name);
+                if (exists != null)
+                {
+                    if (!exists.IsSelected) { exists.IsSelected = true; count++; }
+                }
+                else
+                {
+                    db.GymnastCompetitionSelections.Add(new GymnastCompetitionSelection { GymnastId = g.Id, ItemName = name, IsSelected = true });
+                    count++;
+                }
+            }
+        }
+        await db.SaveChangesAsync();
+        selectAllMessage = $"Done! Selected {count} items across {gymnasts.Count} gymnasts.";
     }
 
     [Inject] private GymBudgetApp.Services.BackupService BackupService { get; set; } = null!;
