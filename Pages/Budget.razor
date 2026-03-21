@@ -78,7 +78,7 @@ else
             <div class="card mb-4">
                 <div class="card-body d-flex align-items-center gap-3 flex-wrap">
                     <label class="fw-bold mb-0">Payments Start:</label>
-                    <select class="form-select" style="max-width: 150px;" value="@selectedSeason.PaymentStartMonth"
+                    <select class="form-select" style="max-width: 150px;" value="@(selectedSeason.PaymentStartMonth > 0 ? selectedSeason.PaymentStartMonth : 8)"
                             @onchange="UpdatePaymentStartMonth">
                         @for (int m = 1; m <= 12; m++)
                         {
@@ -93,7 +93,7 @@ else
                             <option value="@m">@m months</option>
                         }
                     </select>
-                    <small class="text-muted">Parents pay starting in @(new DateTime(2026, selectedSeason.PaymentStartMonth, 1).ToString("MMMM")) for @selectedSeason.PaymentMonths months.</small>
+                    <small class="text-muted">Parents pay starting in @(new DateTime(2026, selectedSeason.PaymentStartMonth > 0 ? selectedSeason.PaymentStartMonth : 8, 1).ToString("MMMM")) for @selectedSeason.PaymentMonths months.</small>
                 </div>
             </div>
         }
