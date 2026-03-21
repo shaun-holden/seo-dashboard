@@ -189,6 +189,7 @@ a, .btn-link {
 /* Bottom nav for parent portal on mobile */
 @media (max-width: 640.98px) {
     .parent-portal .sidebar { display: none; }
+    .parent-portal .parent-top-row { display: none; }
 
     .parent-bottom-nav {
         position: fixed;
