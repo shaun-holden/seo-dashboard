@@ -148,7 +148,8 @@ else
                                             </div>
                                         }
                                         <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => ToggleProfile(gymnast.Id)">Profile</button>
-                                        <a class="btn btn-sm btn-outline-primary" href="/roster">Edit</a>
+                                        <a class="btn btn-sm btn-outline-primary me-1" href="/roster">Edit</a>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteGymnast(gymnast.Id, gymnast.Name)">Delete</button>
                                     </td>
                                 </tr>
                                 @if (profileGymnastId == gymnast.Id)
@@ -378,6 +379,23 @@ else
         showInviteForm = false;
         inviteGymnastId = 0;
         inviteEmail = "";
+        await LoadData();
+    }
+
+    private async Task DeleteGymnast(int gymnastId, string name)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        // Delete related records first
+        var links = await db.ParentLinks.Where(pl => pl.AthleteId == gymnastId).ToListAsync();
+        db.ParentLinks.RemoveRange(links);
+        var apparelSels = await db.GymnastApparelSelections.Where(s => s.GymnastId == gymnastId).ToListAsync();
+        db.GymnastApparelSelections.RemoveRange(apparelSels);
+        var compSels = await db.GymnastCompetitionSelections.Where(s => s.GymnastId == gymnastId).ToListAsync();
+        db.GymnastCompetitionSelections.RemoveRange(compSels);
+        var gymnast = await db.Gymnasts.FindAsync(gymnastId);
+        if (gymnast != null) db.Gymnasts.Remove(gymnast);
+        await db.SaveChangesAsync();
+        inviteMessage = $"Deleted {name}.";
         await LoadData();
     }
 
