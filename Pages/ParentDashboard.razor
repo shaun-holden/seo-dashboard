@@ -1611,6 +1611,12 @@ else
                 link.StripeSubscriptionId = null;
             }
             await db.SaveChangesAsync();
+
+            // Notify admin when billing preference changes
+            var gymnast = await db.Gymnasts.FindAsync(athleteId);
+            var athleteName = gymnast?.Name ?? "Unknown";
+            var action = enable ? "iClassPro billing" : "online Stripe payment";
+            _ = NotificationService.NotifyItemChange(athleteName, $"Switched to {action}", 0, true, 0);
         }
         await LoadData();
     }

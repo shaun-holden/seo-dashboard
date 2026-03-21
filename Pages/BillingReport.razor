@@ -1,0 +1,176 @@
+@page "/reports/billing"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+
+<div class="d-flex align-items-center gap-2 mb-2">
+    <a href="/reports" class="btn btn-sm btn-outline-secondary">
+        <span class="oi oi-arrow-left"></span> Back
+    </a>
+    <h3 class="mb-0">Billing Preferences</h3>
+</div>
+
+@if (loading)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="row mb-4">
+        <div class="col-md-3 mb-2">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <h6>Total Athletes</h6>
+                    <h4>@allRows.Count</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <h6>Stripe Auto-Pay</h6>
+                    <h4>@allRows.Count(r => r.BillingType == "Stripe Auto-Pay")</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card text-white bg-info">
+                <div class="card-body">
+                    <h6>iClassPro</h6>
+                    <h4>@allRows.Count(r => r.BillingType == "iClassPro")</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card text-white bg-warning">
+                <div class="card-body">
+                    <h6>Manual / No Preference</h6>
+                    <h4>@allRows.Count(r => r.BillingType == "Manual")</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-3 mb-3">
+        <select class="form-select" style="max-width: 200px;" @bind="filterType">
+            <option value="">All Types</option>
+            <option value="Stripe Auto-Pay">Stripe Auto-Pay</option>
+            <option value="iClassPro">iClassPro</option>
+            <option value="Manual">Manual</option>
+        </select>
+        <button class="btn btn-outline-success btn-sm" @onclick="ExportCsv">
+            <span class="oi oi-data-transfer-download me-1"></span>CSV
+        </button>
+        <button class="btn btn-outline-primary btn-sm" @onclick="ExportPdf">
+            <span class="oi oi-print me-1"></span>PDF
+        </button>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Athlete</th>
+                        <th>Level</th>
+                        <th>Parent Email</th>
+                        <th class="text-center">Billing Type</th>
+                        <th class="text-center">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in filteredRows)
+                    {
+                        <tr>
+                            <td><strong>@row.Name</strong></td>
+                            <td>@row.Level</td>
+                            <td>@row.ParentEmail</td>
+                            <td class="text-center">
+                                @if (row.BillingType == "Stripe Auto-Pay")
+                                {
+                                    <span class="badge bg-success">Stripe Auto-Pay</span>
+                                }
+                                else if (row.BillingType == "iClassPro")
+                                {
+                                    <span class="badge bg-info">iClassPro</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Manual</span>
+                                }
+                            </td>
+                            <td class="text-center">
+                                @if (row.IsLinked)
+                                {
+                                    <span class="badge bg-success">Linked</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-warning text-dark">Not Linked</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private bool loading = true;
+    private List<BillingRow> allRows = new();
+    private string filterType = "";
+
+    private record BillingRow(string Name, string Level, string ParentEmail, string BillingType, bool IsLinked);
+
+    private List<BillingRow> filteredRows => string.IsNullOrEmpty(filterType)
+        ? allRows : allRows.Where(r => r.BillingType == filterType).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var gymnasts = await db.Gymnasts.AsNoTracking().OrderBy(g => g.Name).ToListAsync();
+        var parentLinks = await db.ParentLinks.AsNoTracking().ToListAsync();
+
+        foreach (var g in gymnasts)
+        {
+            var link = parentLinks.FirstOrDefault(pl => pl.AthleteId == g.Id);
+            var billingType = "Manual";
+            if (link != null)
+            {
+                if (link.UseExternalBilling)
+                    billingType = "iClassPro";
+                else if (link.AutoPayEnabled)
+                    billingType = "Stripe Auto-Pay";
+            }
+            allRows.Add(new BillingRow(
+                g.Name,
+                g.Level ?? "",
+                g.ParentEmail ?? "",
+                billingType,
+                link?.IsClaimed == true
+            ));
+        }
+        loading = false;
+    }
+
+    private async Task ExportPdf()
+    {
+        await JS.InvokeVoidAsync("exportPdf");
+    }
+
+    private async Task ExportCsv()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Athlete,Level,Parent Email,Billing Type,Linked");
+        foreach (var r in filteredRows)
+        {
+            sb.AppendLine($"\"{r.Name}\",\"{r.Level}\",\"{r.ParentEmail}\",\"{r.BillingType}\",\"{(r.IsLinked ? "Yes" : "No")}\"");
+        }
+        await JS.InvokeVoidAsync("downloadFile", "billing-preferences.csv", sb.ToString());
+    }
+}
