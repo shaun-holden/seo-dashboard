@@ -14,6 +14,49 @@
 }
 else
 {
+    <!-- Bulk Update by Level -->
+    <div class="card mb-3">
+        <div class="card-header"><h6 class="mb-0">Bulk Update by Level</h6></div>
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Level</label>
+                    <select class="form-select" @bind="bulkLevel">
+                        <option value="">-- Select Level --</option>
+                        @foreach (var lvl in levels)
+                        {
+                            <option value="@lvl">@lvl</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Months</label>
+                    <select class="form-select" @bind="bulkMonths">
+                        @for (int m = 1; m <= 12; m++)
+                        {
+                            <option value="@m">@m</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Start Month</label>
+                    <select class="form-select" @bind="bulkStartMonth">
+                        @for (int m = 1; m <= 12; m++)
+                        {
+                            <option value="@m">@(new DateTime(2026, m, 1).ToString("MMMM"))</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-primary w-100" @onclick="ApplyBulkUpdate"
+                            disabled="@string.IsNullOrEmpty(bulkLevel)">
+                        Apply to Level
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row mb-3">
         <div class="col-md-4">
             <input type="text" class="form-control" placeholder="Search athlete..." @bind="searchText" @bind:event="oninput" />
@@ -50,7 +93,7 @@ else
                     {
                         var gId = g.Id;
                         var months = g.PaymentPlanMonths ?? seasonPaymentMonths;
-                        var startMonth = g.PaymentStartMonth ?? DateTime.Today.Month;
+                        var startMonth = g.PaymentStartMonth ?? seasonStartMonth;
                         var monthlyAmt = months > 0 ? Math.Round(costPerGymnast / months, 2) : 0;
                         <tr>
                             <td><strong>@g.Name</strong></td>
@@ -105,15 +148,18 @@ else
 @code {
     private bool loading = true;
     private List<Gymnast> gymnasts = new();
+    private List<string> levels = new();
+    private int seasonPaymentMonths = 8;
+    private int seasonStartMonth = 8;
+    private decimal costPerGymnast;
     private string searchText = "";
     private string filterLevel = "";
-    private decimal costPerGymnast;
-    private int seasonPaymentMonths = 8;
     private string? successMessage;
 
-    private List<string> levels => gymnasts
-        .Where(g => !string.IsNullOrWhiteSpace(g.Level))
-        .Select(g => g.Level!).Distinct().OrderBy(l => l).ToList();
+    // Bulk update
+    private string bulkLevel = "";
+    private int bulkMonths = 8;
+    private int bulkStartMonth = 6;
 
     private List<Gymnast> filteredGymnasts
     {
@@ -132,11 +178,13 @@ else
     {
         using var db = await DbFactory.CreateDbContextAsync();
         gymnasts = await db.Gymnasts.OrderBy(g => g.Name).ToListAsync();
+        levels = gymnasts.Where(g => !string.IsNullOrEmpty(g.Level)).Select(g => g.Level!).Distinct().OrderBy(l => l).ToList();
 
         var activeSeason = await db.Seasons.FirstOrDefaultAsync(s => s.IsActive);
         if (activeSeason != null)
         {
             seasonPaymentMonths = activeSeason.PaymentMonths > 0 ? activeSeason.PaymentMonths : 8;
+            seasonStartMonth = activeSeason.PaymentStartMonth > 0 ? activeSeason.PaymentStartMonth : 8;
             var calcTotal = await db.BudgetCalculatorEntries
                 .Where(e => e.SeasonId == activeSeason.Id)
                 .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
@@ -144,6 +192,31 @@ else
             costPerGymnast = athleteCount > 0 ? Math.Round(calcTotal / athleteCount, 2) : 0;
         }
         loading = false;
+    }
+
+    private async Task ApplyBulkUpdate()
+    {
+        if (string.IsNullOrEmpty(bulkLevel)) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var levelGymnasts = await db.Gymnasts.Where(g => g.Level == bulkLevel).ToListAsync();
+        var count = 0;
+        foreach (var g in levelGymnasts)
+        {
+            g.PaymentPlanMonths = bulkMonths;
+            g.PaymentStartMonth = bulkStartMonth;
+            count++;
+        }
+        await db.SaveChangesAsync();
+
+        // Update local list
+        foreach (var g in gymnasts.Where(g => g.Level == bulkLevel))
+        {
+            g.PaymentPlanMonths = bulkMonths;
+            g.PaymentStartMonth = bulkStartMonth;
+        }
+
+        var monthName = new DateTime(2026, bulkStartMonth, 1).ToString("MMMM");
+        successMessage = $"Updated {count} athletes in {bulkLevel}: {bulkMonths} months starting {monthName}.";
     }
 
     private async Task UpdateMonths(int gymnastId, ChangeEventArgs e)
