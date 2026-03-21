@@ -53,10 +53,17 @@ else
                         </select>
                     </div>
                 </div>
-                <div class="mb-2">
-                    <label>Applies To (leave blank for all levels)</label>
-                    <input class="form-control" @bind="formAppliesTo" placeholder="e.g. NGA 6, 7, 8, USA Level 9, 10 (comma-separated)" />
-                    <small class="text-muted">Comma-separated level names. Blank = all levels.</small>
+                <div class="row">
+                    <div class="col-md-8 mb-2">
+                        <label>Applies To (leave blank for all levels)</label>
+                        <input class="form-control" @bind="formAppliesTo" placeholder="e.g. NGA 6, 7, 8, USA Level 9, 10 (comma-separated)" />
+                        <small class="text-muted">Comma-separated level names. Blank = all levels.</small>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <label>Selection Deadline</label>
+                        <input type="date" class="form-control" @bind="formDeadline" />
+                        <small class="text-muted">After this date, parents can't change selection.</small>
+                    </div>
                 </div>
                 <div>
                     <button class="btn btn-success me-2" @onclick="SaveItem">Save</button>
@@ -76,6 +83,7 @@ else
                                 <th class="text-end">Price</th>
                                 <th>Type</th>
                                 <th>Applies To</th>
+                                <th>Deadline</th>
                                 <th class="text-end">Actions</th>
                             </tr>
                         </thead>
@@ -96,6 +104,17 @@ else
                                         }
                                     </td>
                                     <td><small class="text-muted">@(string.IsNullOrEmpty(item.AppliesTo) ? "All Levels" : item.AppliesTo)</small></td>
+                                    <td>
+                                        @if (item.SelectionDeadline.HasValue)
+                                        {
+                                            var isPast = item.SelectionDeadline.Value < DateTime.Today;
+                                            <span class="badge bg-@(isPast ? "danger" : "warning") text-@(isPast ? "white" : "dark")">@item.SelectionDeadline.Value.ToString("MMM dd, yyyy")</span>
+                                        }
+                                        else
+                                        {
+                                            <small class="text-muted">No deadline</small>
+                                        }
+                                    </td>
                                     <td class="text-end">
                                         <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditItem(item)">Edit</button>
                                         <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteItem(item)">Delete</button>
@@ -124,6 +143,7 @@ else
     private decimal formPrice;
     private string formIsRequired = "false";
     private string formAppliesTo = "";
+    private DateTime? formDeadline;
 
     protected override async Task OnInitializedAsync()
     {
@@ -153,6 +173,7 @@ else
         formPrice = 0;
         formIsRequired = "false";
         formAppliesTo = "";
+        formDeadline = null;
         showForm = true;
     }
 
@@ -163,6 +184,7 @@ else
         formPrice = item.Price;
         formIsRequired = item.IsRequired.ToString().ToLower();
         formAppliesTo = item.AppliesTo ?? "";
+        formDeadline = item.SelectionDeadline;
         showForm = true;
     }
 
@@ -183,6 +205,7 @@ else
                 entity.Price = formPrice;
                 entity.IsRequired = isReq;
                 entity.AppliesTo = string.IsNullOrWhiteSpace(formAppliesTo) ? null : formAppliesTo.Trim();
+                entity.SelectionDeadline = formDeadline;
                 await db.SaveChangesAsync();
             }
         }
@@ -194,6 +217,7 @@ else
                 Price = formPrice,
                 IsRequired = isReq,
                 AppliesTo = string.IsNullOrWhiteSpace(formAppliesTo) ? null : formAppliesTo.Trim(),
+                SelectionDeadline = formDeadline,
                 SeasonId = selectedSeasonId
             });
             await db.SaveChangesAsync();

@@ -18,6 +18,8 @@ namespace GymBudgetApp.Models
         [StringLength(500)]
         public string? AppliesTo { get; set; }
 
+        public DateTime? SelectionDeadline { get; set; }
+
         public int SeasonId { get; set; }
         public Season Season { get; set; } = null!;
 

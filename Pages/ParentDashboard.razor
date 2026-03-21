@@ -152,6 +152,8 @@ else
                             if (!appApplies) continue;
                             var appPrice = GetApparelPrice(col.Name, athleteLevel);
                             var appSelected = IsParentApparelSelected(athlete.Id, col.Name);
+                            var appDeadline = GetApparelDeadline(col.Name);
+                            var appLocked = appDeadline.HasValue && appDeadline.Value < DateTime.Today;
                             var appAthId = athlete.Id;
                             var appName = col.Name;
                             if (col.IsRequired)
@@ -167,8 +169,17 @@ else
                                 <tr class="@(appSelected ? "" : "table-secondary")">
                                     <td>
                                         <input type="checkbox" class="form-check-input me-2" checked="@appSelected"
+                                               disabled="@appLocked"
                                                @onchange="(e) => ToggleApparelSelection(appAthId, appName, (bool)e.Value!)" />
                                         @col.Name
+                                        @if (appLocked)
+                                        {
+                                            <small class="text-danger ms-1">Locked</small>
+                                        }
+                                        else if (appDeadline.HasValue)
+                                        {
+                                            <small class="text-warning ms-1">Due @appDeadline.Value.ToString("MMM dd")</small>
+                                        }
                                     </td>
                                     <td><span class="badge bg-info">Optional</span></td>
                                     <td class="text-end">@(appSelected ? $"${appPrice:N2}" : "—")</td>
@@ -183,6 +194,8 @@ else
                             if (!compApplies2) continue;
                             var compPrice2 = GetCompPrice2(col.Name, athleteLevel);
                             var compSelected2 = IsParentCompSelected(athlete.Id, col.Name);
+                            var compDeadline = GetCompDeadline(col.Name);
+                            var compLocked = compDeadline.HasValue && compDeadline.Value < DateTime.Today;
                             var compAthId = athlete.Id;
                             var compName = col.Name;
                             if (col.IsRequired)
@@ -198,8 +211,17 @@ else
                                 <tr class="@(compSelected2 ? "" : "table-secondary")">
                                     <td>
                                         <input type="checkbox" class="form-check-input me-2" checked="@compSelected2"
+                                               disabled="@compLocked"
                                                @onchange="(e) => ToggleCompSelection(compAthId, compName, (bool)e.Value!)" />
                                         @col.Name
+                                        @if (compLocked)
+                                        {
+                                            <small class="text-danger ms-1">Locked</small>
+                                        }
+                                        else if (compDeadline.HasValue)
+                                        {
+                                            <small class="text-warning ms-1">Due @compDeadline.Value.ToString("MMM dd")</small>
+                                        }
                                     </td>
                                     <td><span class="badge bg-info">Optional</span></td>
                                     <td class="text-end">@(compSelected2 ? $"${compPrice2:N2}" : "—")</td>
@@ -1074,6 +1096,22 @@ else
                 cost += GetApparelPrice(col.Name, level);
         }
         return cost;
+    }
+
+    private DateTime? GetApparelDeadline(string itemName)
+    {
+        return parentApparelItems
+            .Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase) && a.SelectionDeadline.HasValue)
+            .Select(a => a.SelectionDeadline)
+            .FirstOrDefault();
+    }
+
+    private DateTime? GetCompDeadline(string itemName)
+    {
+        return parentCompetitionItems
+            .Where(c => c.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase) && c.SelectionDeadline.HasValue)
+            .Select(c => c.SelectionDeadline)
+            .FirstOrDefault();
     }
 
     private async Task ToggleApparelSelection(int athleteId, string itemName, bool isChecked)
