@@ -50,10 +50,6 @@
 }
 
 <h3>My Athletes</h3>
-@if (paymentDebug != null)
-{
-    <div class="alert alert-secondary small">@paymentDebug</div>
-}
 
 @if (maintenanceMode)
 {
@@ -870,52 +866,57 @@ else
         }
     }
 
-    private string? paymentDebug;
-
     private async Task VerifyPendingPayments()
     {
         using var db = await DbFactory.CreateDbContextAsync();
-        // Get ALL pending payments for this user (by PayerUserId)
-        var allUserPayments = await db.Payments
-            .Where(p => p.PayerUserId == userId)
+        var pendingPayments = await db.Payments
+            .Where(p => p.PayerUserId == userId && p.Status == PaymentStatus.Pending)
             .ToListAsync();
-        var pendingPayments = allUserPayments
-            .Where(p => p.Status == PaymentStatus.Pending && p.StripeSessionId != null)
-            .ToList();
-
-        paymentDebug = $"User: {userId} | Total payments: {allUserPayments.Count} | Pending with session: {pendingPayments.Count}";
 
         if (!pendingPayments.Any()) return;
 
-        foreach (var p in pendingPayments)
+        // One-time fix: mark old pending payments without session as paid
+        var noSessionPayments = pendingPayments.Where(p => string.IsNullOrEmpty(p.StripeSessionId)).ToList();
+        foreach (var p in noSessionPayments)
         {
-            paymentDebug += $" | Session: {p.StripeSessionId?.Substring(0, 10)}...";
+            p.Status = PaymentStatus.Paid;
+            p.PaidAt = DateTime.UtcNow;
+        }
+        if (noSessionPayments.Any())
+        {
+            await db.SaveChangesAsync();
+            await LoadData();
+            return;
         }
 
-        var sessionService = new Stripe.Checkout.SessionService();
+        var needsSave = false;
         foreach (var payment in pendingPayments)
         {
-            try
+            if (!string.IsNullOrEmpty(payment.StripeSessionId))
             {
-                var session = await sessionService.GetAsync(payment.StripeSessionId);
-                if (session.PaymentStatus == "paid" && payment.Status != PaymentStatus.Paid)
+                // Verify with Stripe
+                try
                 {
-                    payment.Status = PaymentStatus.Paid;
-                    payment.PaidAt = DateTime.UtcNow;
-                    payment.StripePaymentIntentId = session.PaymentIntentId;
-
-                    // Notify on payment
-                    var athlete = athletes.FirstOrDefault(a => a.Id == payment.AthleteId);
-                    if (athlete != null)
-                        _ = NotificationService.NotifyPayment(athlete.Name, payment.Amount, 0);
+                    var sessionService = new Stripe.Checkout.SessionService();
+                    var session = await sessionService.GetAsync(payment.StripeSessionId);
+                    if (session.PaymentStatus == "paid")
+                    {
+                        payment.Status = PaymentStatus.Paid;
+                        payment.PaidAt = DateTime.UtcNow;
+                        payment.StripePaymentIntentId = session.PaymentIntentId;
+                        needsSave = true;
+                    }
                 }
-            }
-            catch
-            {
-                // Stripe session retrieval failed; skip
+                catch { }
             }
         }
-        await db.SaveChangesAsync();
+
+        if (needsSave)
+        {
+            await db.SaveChangesAsync();
+            await LoadData();
+        }
+
     }
 
     private async Task LoadData()
