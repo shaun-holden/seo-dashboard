@@ -272,7 +272,7 @@ a, .btn-link {
 .roster-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid #dee2e6; border-radius: 8px; }
 .roster-table-wrap table { font-size: 0.75rem; min-width: 100%; margin: 0; }
 .roster-table-wrap th, .roster-table-wrap td { white-space: nowrap; padding: 3px 6px !important; vertical-align: middle; }
-.roster-table-wrap th:first-child, .roster-table-wrap td:first-child { position: sticky; left: 0; background: white; z-index: 1; min-width: 120px; border-right: 2px solid #dee2e6; }
+.roster-table-wrap th:first-child, .roster-table-wrap td:first-child { position: sticky; left: 0; background: white; z-index: 1; min-width: 140px; padding-left: 10px !important; border-right: 2px solid #dee2e6; }
 .roster-table-wrap thead th:first-child { background: #f8f9fa; }
 .roster-table-wrap tfoot td:first-child { background: #f8f9fa; }
 .roster-table-wrap .form-check-input { margin: 0; }
