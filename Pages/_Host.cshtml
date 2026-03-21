@@ -35,7 +35,8 @@
     <script>
         window.printPage = () => window.print();
         window.downloadFile = (filename, content) => {
-            const blob = new Blob([content], { type: 'text/csv' });
+            const type = filename.endsWith('.csv') ? 'text/csv' : 'application/octet-stream';
+            const blob = new Blob([content], { type: type });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -44,6 +45,9 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+        };
+        window.exportPdf = () => {
+            window.print();
         };
 
         // Register service worker for PWA

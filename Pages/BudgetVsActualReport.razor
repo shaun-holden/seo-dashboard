@@ -35,7 +35,7 @@
     {
         <div class="col-auto ms-auto">
             <button class="btn btn-outline-success btn-sm" @onclick="ExportCsv">
-                <span class="oi oi-data-transfer-download me-1"></span>Export CSV
+                <span class="oi oi-data-transfer-download me-1"></span>CSV
             </button>
         </div>
     }
@@ -182,6 +182,11 @@
         "BankFees" => "Bank / Processing Fees",
         _ => category
     };
+
+    private async Task ExportPdf()
+    {
+        await JS.InvokeVoidAsync("exportPdf");
+    }
 
     private async Task ExportCsv()
     {

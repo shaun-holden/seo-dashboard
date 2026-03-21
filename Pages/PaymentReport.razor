@@ -373,6 +373,11 @@ else if (selectedSeasonId == 0)
         return value;
     }
 
+    private async Task ExportPdf()
+    {
+        await JS.InvokeVoidAsync("exportPdf");
+    }
+
     private async Task ExportCsv()
     {
         var sb = new StringBuilder();
