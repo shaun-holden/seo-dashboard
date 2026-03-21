@@ -31,9 +31,66 @@
                 <option value="@lvl" selected="@(lvl == filterLevel)">@lvl</option>
             }
         </select>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="() => showLevelManager = !showLevelManager">
+            <span class="oi oi-cog me-1"></span> Manage Levels
+        </button>
     }
     <span class="text-muted">@filteredGymnasts.Count gymnast(s)</span>
 </div>
+
+@if (showLevelManager)
+{
+    <div class="card mb-3 p-3">
+        <h6>Manage Levels</h6>
+        <div class="table-responsive">
+            <table class="table table-sm mb-2">
+                <thead><tr><th>Level</th><th>Athletes</th><th>Actions</th></tr></thead>
+                <tbody>
+                    @foreach (var lvl in levels)
+                    {
+                        var levelName = lvl;
+                        var count = gymnasts.Count(g => g.Level == levelName);
+                        <tr>
+                            <td>
+                                @if (renamingLevel == levelName)
+                                {
+                                    <div class="input-group input-group-sm">
+                                        <input class="form-control" @bind="renameNewName" />
+                                        <button class="btn btn-success" @onclick="() => ConfirmRename(levelName)">Save</button>
+                                        <button class="btn btn-secondary" @onclick="() => renamingLevel = null">X</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span>@levelName</span>
+                                }
+                            </td>
+                            <td>@count</td>
+                            <td>
+                                @if (renamingLevel != levelName)
+                                {
+                                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => StartRename(levelName)">Rename</button>
+                                    @if (count == 0)
+                                    {
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteLevel(levelName)">Delete</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteLevel(levelName)" title="Removes level from all @count gymnasts">Delete (@count)</button>
+                                    }
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (levelMessage != null)
+        {
+            <div class="alert alert-success py-1 mb-0">@levelMessage</div>
+        }
+    </div>
+}
 
 @if (showForm)
 {
@@ -265,6 +322,10 @@
     private bool formTeamCamp = true;
     private string newLevelName = "";
     private List<string> customLevels = new();
+    private bool showLevelManager;
+    private string? renamingLevel;
+    private string renameNewName = "";
+    private string? levelMessage;
     private string? filterLevel;
     private string? successMessage;
 
@@ -280,6 +341,41 @@
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(l => l)
         .ToList();
+
+    private void StartRename(string level)
+    {
+        renamingLevel = level;
+        renameNewName = level;
+        levelMessage = null;
+    }
+
+    private async Task ConfirmRename(string oldName)
+    {
+        if (string.IsNullOrWhiteSpace(renameNewName) || renameNewName.Trim() == oldName)
+        {
+            renamingLevel = null;
+            return;
+        }
+        using var db = await DbFactory.CreateDbContextAsync();
+        var toUpdate = await db.Gymnasts.Where(g => g.Level == oldName).ToListAsync();
+        foreach (var g in toUpdate)
+            g.Level = renameNewName.Trim();
+        await db.SaveChangesAsync();
+        levelMessage = $"Renamed \"{oldName}\" to \"{renameNewName.Trim()}\" ({toUpdate.Count} gymnasts updated).";
+        renamingLevel = null;
+        await LoadData();
+    }
+
+    private async Task DeleteLevel(string levelName)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var toUpdate = await db.Gymnasts.Where(g => g.Level == levelName).ToListAsync();
+        foreach (var g in toUpdate)
+            g.Level = null;
+        await db.SaveChangesAsync();
+        levelMessage = $"Deleted level \"{levelName}\". {toUpdate.Count} gymnast(s) now have no level.";
+        await LoadData();
+    }
 
     private void AddNewLevel()
     {
