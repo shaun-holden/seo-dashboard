@@ -875,26 +875,14 @@ else
 
         if (!pendingPayments.Any()) return;
 
-        // One-time fix: mark old pending payments without session as paid
-        var noSessionPayments = pendingPayments.Where(p => string.IsNullOrEmpty(p.StripeSessionId)).ToList();
-        foreach (var p in noSessionPayments)
-        {
-            p.Status = PaymentStatus.Paid;
-            p.PaidAt = DateTime.UtcNow;
-        }
-        if (noSessionPayments.Any())
-        {
-            await db.SaveChangesAsync();
-            await LoadData();
-            return;
-        }
-
         var needsSave = false;
+        var expireCutoff = DateTime.UtcNow.AddMinutes(-30);
+
         foreach (var payment in pendingPayments)
         {
+            // Try to verify with Stripe if session exists
             if (!string.IsNullOrEmpty(payment.StripeSessionId))
             {
-                // Verify with Stripe
                 try
                 {
                     var sessionService = new Stripe.Checkout.SessionService();
@@ -905,9 +893,18 @@ else
                         payment.PaidAt = DateTime.UtcNow;
                         payment.StripePaymentIntentId = session.PaymentIntentId;
                         needsSave = true;
+                        continue;
                     }
                 }
                 catch { }
+            }
+
+            // Expire pending payments older than 30 minutes
+            if (payment.CreatedAt < expireCutoff)
+            {
+                payment.Status = PaymentStatus.Failed;
+                payment.Description = (payment.Description ?? "") + " (Expired)";
+                needsSave = true;
             }
         }
 
@@ -916,7 +913,6 @@ else
             await db.SaveChangesAsync();
             await LoadData();
         }
-
     }
 
     private async Task LoadData()

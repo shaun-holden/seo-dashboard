@@ -15,6 +15,8 @@ builder.Services.AddScoped<GymBudgetApp.Services.PermissionService>();
 builder.Services.AddScoped<GymBudgetApp.Services.NotificationService>();
 builder.Services.AddScoped<GymBudgetApp.Services.ChatService>();
 builder.Services.AddScoped<GymBudgetApp.Services.AuditService>();
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<GymBudgetApp.Services.PushNotificationService>();
 builder.Services.AddSingleton<GymBudgetApp.Services.BackupService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GymBudgetApp.Services.BackupService>());
 
@@ -201,6 +203,64 @@ app.MapPost("/api/backup/create", (HttpContext context) =>
     return Results.Ok("Backup created");
 }).RequireAuthorization();
 
+// Push notification subscribe/unsubscribe
+app.MapPost("/api/push/subscribe", async (HttpContext context) =>
+{
+    var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    if (userId == null) return Results.Unauthorized();
+
+    var body = await context.Request.ReadFromJsonAsync<PushSubscribeRequest>();
+    if (body == null || string.IsNullOrEmpty(body.Endpoint)) return Results.BadRequest();
+
+    var dbFactory = context.RequestServices.GetRequiredService<IDbContextFactory<AppDbContext>>();
+    using var db = await dbFactory.CreateDbContextAsync();
+
+    var existing = await db.PushSubscriptions.FirstOrDefaultAsync(
+        s => s.UserId == userId && s.Endpoint == body.Endpoint);
+    if (existing == null)
+    {
+        db.PushSubscriptions.Add(new GymBudgetApp.Models.PushSubscriptionRecord
+        {
+            UserId = userId,
+            Endpoint = body.Endpoint,
+            P256dh = body.P256dh ?? "",
+            Auth = body.Auth ?? ""
+        });
+        await db.SaveChangesAsync();
+    }
+    return Results.Ok();
+}).RequireAuthorization();
+
+app.MapPost("/api/push/unsubscribe", async (HttpContext context) =>
+{
+    var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    if (userId == null) return Results.Unauthorized();
+
+    var body = await context.Request.ReadFromJsonAsync<PushSubscribeRequest>();
+    if (body == null) return Results.BadRequest();
+
+    var dbFactory = context.RequestServices.GetRequiredService<IDbContextFactory<AppDbContext>>();
+    using var db = await dbFactory.CreateDbContextAsync();
+
+    var sub = await db.PushSubscriptions.FirstOrDefaultAsync(
+        s => s.UserId == userId && s.Endpoint == body.Endpoint);
+    if (sub != null)
+    {
+        db.PushSubscriptions.Remove(sub);
+        await db.SaveChangesAsync();
+    }
+    return Results.Ok();
+}).RequireAuthorization();
+
+app.MapGet("/api/push/vapid-key", (HttpContext context) =>
+{
+    var config = context.RequestServices.GetRequiredService<IConfiguration>();
+    var key = config["VAPID:PublicKey"] ?? config["VAPID_PUBLIC_KEY"] ?? "";
+    return Results.Ok(new { key });
+});
+
 app.MapFallbackToPage("/_Host");
 
 app.Run();
+
+record PushSubscribeRequest(string? Endpoint, string? P256dh, string? Auth);

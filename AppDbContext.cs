@@ -79,6 +79,8 @@ namespace GymBudgetApp
         public DbSet<CommitmentSignature> CommitmentSignatures { get; set; }
         public DbSet<Resource> Resources { get; set; }
         public DbSet<BudgetCalculatorEntry> BudgetCalculatorEntries { get; set; }
+        public DbSet<UserProfile> UserProfiles { get; set; }
+        public DbSet<PushSubscriptionRecord> PushSubscriptions { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -169,6 +171,14 @@ namespace GymBudgetApp
             builder.Entity<Payment>()
                 .Property(p => p.Amount)
                 .HasColumnType("decimal(18,2)");
+
+            builder.Entity<UserProfile>()
+                .HasIndex(up => up.UserId)
+                .IsUnique();
+
+            builder.Entity<PushSubscriptionRecord>()
+                .HasIndex(ps => new { ps.UserId, ps.Endpoint })
+                .IsUnique();
         }
     }
 }

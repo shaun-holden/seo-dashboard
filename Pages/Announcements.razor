@@ -9,6 +9,7 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IEmailSender EmailSender
+@inject GymBudgetApp.Services.PushNotificationService PushService
 
 <h3>Announcements</h3>
 
@@ -208,6 +209,21 @@ else
                 Email = userEmails.GetValueOrDefault(r.UserId, "Unknown"),
                 ReadAt = r.ReadAt
             }).OrderByDescending(r => r.ReadAt).ToList());
+
+        // Mark all announcements as read for the current admin user
+        if (userId != null)
+        {
+            var myReadIds = receipts.Where(r => r.UserId == userId).Select(r => r.AnnouncementId).ToHashSet();
+            var unread = announcements.Where(a => !myReadIds.Contains(a.Id)).ToList();
+            if (unread.Any())
+            {
+                foreach (var a in unread)
+                {
+                    db.AnnouncementReadReceipts.Add(new AnnouncementReadReceipt { AnnouncementId = a.Id, UserId = userId });
+                }
+                await db.SaveChangesAsync();
+            }
+        }
     }
 
     private void ToggleForm()
@@ -269,6 +285,13 @@ else
                 db.Announcements.Add(announcement);
                 await db.SaveChangesAsync();
                 saveMessage = "Announcement posted.";
+
+                // Send push notifications to all parents
+                _ = Task.Run(async () =>
+                {
+                    try { await PushService.SendToAllParentsAsync("New Announcement", announcement.Title, "/parent/announcements"); }
+                    catch { }
+                });
 
                 // Send email notifications if requested
                 if (formSendEmail)

@@ -27,7 +27,8 @@
                 </div>
                 @if (lastMsg != null)
                 {
-                    <div class="text-muted small text-truncate" style="max-width: 220px;">@lastMsg.SenderName: @lastMsg.Content</div>
+                    var previewName = profileNames.ContainsKey(lastMsg.SenderUserId) ? profileNames[lastMsg.SenderUserId] : lastMsg.SenderName;
+                    <div class="text-muted small text-truncate" style="max-width: 220px;">@previewName: @lastMsg.Content</div>
                     <div class="text-muted" style="font-size: 0.7rem;">@lastMsg.CreatedAt.ToLocalTime().ToString("MMM d, h:mm tt")</div>
                 }
             </div>
@@ -57,10 +58,18 @@
                 @foreach (var msg in messages)
                 {
                     var isMine = msg.SenderUserId == currentUserId;
+                    var senderDisplay = profileNames.ContainsKey(msg.SenderUserId) ? profileNames[msg.SenderUserId] : msg.SenderName;
+                    var senderPic = profilePictures.ContainsKey(msg.SenderUserId) ? profilePictures[msg.SenderUserId] : null;
                     <div class="chat-bubble @(isMine ? "mine" : "other")">
                         @if (!isMine)
                         {
-                            <div class="sender">@msg.SenderName</div>
+                            <div class="d-flex align-items-center gap-1 mb-1">
+                                @if (!string.IsNullOrEmpty(senderPic))
+                                {
+                                    <img src="@senderPic" alt="" class="rounded-circle" style="width: 22px; height: 22px; object-fit: cover;" />
+                                }
+                                <div class="sender">@senderDisplay</div>
+                            </div>
                         }
                         <div>@msg.Content</div>
                         @if (!string.IsNullOrEmpty(msg.ImageData))
@@ -99,14 +108,30 @@
     private bool hasMoreMessages;
     private System.Threading.Timer? refreshTimer;
 
+    private Dictionary<string, string> profileNames = new();
+    private Dictionary<string, string?> profilePictures = new();
+
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         currentUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
         currentUserName = authState.User.FindFirst(ClaimTypes.Email)?.Value ?? "Unknown";
 
-        // Ensure rooms exist for active season using roster levels
+        // Load user profile for display name
         using var db = await DbFactory.CreateDbContextAsync();
+        var myProfile = await db.UserProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == currentUserId);
+        if (myProfile != null)
+            currentUserName = myProfile.DisplayName;
+
+        // Load all profiles for display
+        var profiles = await db.UserProfiles.AsNoTracking().ToListAsync();
+        foreach (var p in profiles)
+        {
+            profileNames[p.UserId] = p.DisplayName;
+            profilePictures[p.UserId] = p.ProfilePictureData;
+        }
+
+        // Ensure rooms exist for active season using roster levels
         var activeSeason = await db.Seasons.FirstOrDefaultAsync(s => s.IsActive);
         if (activeSeason != null)
         {

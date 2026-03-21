@@ -1,0 +1,139 @@
+@page "/profile"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<div class="d-flex align-items-center gap-2 mb-3">
+    <h3 class="mb-0">My Profile</h3>
+</div>
+
+@if (loading)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="card" style="max-width: 500px;">
+        <div class="card-body">
+            <div class="text-center mb-4">
+                @if (!string.IsNullOrEmpty(profilePicture))
+                {
+                    <img src="@profilePicture" alt="Profile" class="rounded-circle" style="width: 100px; height: 100px; object-fit: cover;" />
+                }
+                else
+                {
+                    <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center mx-auto" style="width: 100px; height: 100px;">
+                        <span class="text-white" style="font-size: 2.5rem;">@(string.IsNullOrEmpty(displayName) ? "?" : displayName[0].ToString().ToUpper())</span>
+                    </div>
+                }
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Display Name</label>
+                <input type="text" class="form-control" @bind="displayName" placeholder="Enter your name" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Profile Picture</label>
+                <InputFile OnChange="OnFileSelected" class="form-control" accept="image/*" />
+                <small class="text-muted">Max 500KB. JPEG or PNG recommended.</small>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label text-muted">Email</label>
+                <input type="text" class="form-control" value="@userEmail" disabled />
+            </div>
+
+            <button class="btn btn-primary w-100" @onclick="SaveProfile" disabled="@saving">
+                @(saving ? "Saving..." : "Save Profile")
+            </button>
+
+            @if (message != null)
+            {
+                <div class="alert @(isError ? "alert-danger" : "alert-success") mt-3 mb-0">@message</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool loading = true;
+    private bool saving;
+    private string? userId;
+    private string? userEmail;
+    private string displayName = "";
+    private string? profilePicture;
+    private string? message;
+    private bool isError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? authState.User.FindFirst("email")?.Value;
+
+        if (userId != null)
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            var profile = await db.UserProfiles.FirstOrDefaultAsync(p => p.UserId == userId);
+            if (profile != null)
+            {
+                displayName = profile.DisplayName;
+                profilePicture = profile.ProfilePictureData;
+            }
+        }
+        loading = false;
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file.Size > 512000)
+        {
+            message = "Image must be under 500KB.";
+            isError = true;
+            return;
+        }
+
+        using var stream = file.OpenReadStream(512000);
+        using var ms = new System.IO.MemoryStream();
+        await stream.CopyToAsync(ms);
+        var base64 = Convert.ToBase64String(ms.ToArray());
+        profilePicture = $"data:{file.ContentType};base64,{base64}";
+        message = null;
+    }
+
+    private async Task SaveProfile()
+    {
+        if (userId == null || string.IsNullOrWhiteSpace(displayName))
+        {
+            message = "Please enter a display name.";
+            isError = true;
+            return;
+        }
+
+        saving = true;
+        message = null;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var profile = await db.UserProfiles.FirstOrDefaultAsync(p => p.UserId == userId);
+        if (profile == null)
+        {
+            profile = new UserProfile { UserId = userId };
+            db.UserProfiles.Add(profile);
+        }
+        profile.DisplayName = displayName.Trim();
+        profile.ProfilePictureData = profilePicture;
+        profile.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        message = "Profile saved!";
+        isError = false;
+        saving = false;
+    }
+}
