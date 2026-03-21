@@ -29,6 +29,12 @@ namespace GymBudgetApp.Models
         [StringLength(20)]
         public string? LeotardSize { get; set; }
 
+        [StringLength(20)]
+        public string? LeggingsSize { get; set; }
+
+        [StringLength(20)]
+        public string? PantsSize { get; set; }
+
         // Payment plan
         public int? PaymentPlanMonths { get; set; }
         public int? PaymentStartMonth { get; set; } // 1-12

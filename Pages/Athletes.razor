@@ -188,6 +188,41 @@ else
                                                             <input type="text" class="form-control" value="@gymnast.Level" disabled />
                                                         </div>
                                                     </div>
+                                                    <h6 class="mt-2">Sizes</h6>
+                                                    <div class="row">
+                                                        <div class="col-md-3 mb-3">
+                                                            <label class="form-label">Leotard Size</label>
+                                                            <select class="form-select" @bind="profileLeotardSize">
+                                                                <option value="">-- Select --</option>
+                                                                <option value="CXS">Child XS</option><option value="CS">Child S</option><option value="CM">Child M</option><option value="CL">Child L</option><option value="CXL">Child XL</option>
+                                                                <option value="AXS">Adult XS</option><option value="AS">Adult S</option><option value="AM">Adult M</option><option value="AL">Adult L</option><option value="AXL">Adult XL</option>
+                                                            </select>
+                                                        </div>
+                                                        <div class="col-md-3 mb-3">
+                                                            <label class="form-label">Leggings Size</label>
+                                                            <select class="form-select" @bind="profileLeggingsSize">
+                                                                <option value="">-- Select --</option>
+                                                                <option value="YXS">Youth XS</option><option value="YS">Youth S</option><option value="YM">Youth M</option><option value="YL">Youth L</option><option value="YXL">Youth XL</option>
+                                                                <option value="AS">Adult S</option><option value="AM">Adult M</option><option value="AL">Adult L</option><option value="AXL">Adult XL</option>
+                                                            </select>
+                                                        </div>
+                                                        <div class="col-md-3 mb-3">
+                                                            <label class="form-label">Pants Size</label>
+                                                            <select class="form-select" @bind="profilePantsSize">
+                                                                <option value="">-- Select --</option>
+                                                                <option value="YXS">Youth XS</option><option value="YS">Youth S</option><option value="YM">Youth M</option><option value="YL">Youth L</option><option value="YXL">Youth XL</option>
+                                                                <option value="AS">Adult S</option><option value="AM">Adult M</option><option value="AL">Adult L</option><option value="AXL">Adult XL</option>
+                                                            </select>
+                                                        </div>
+                                                        <div class="col-md-3 mb-3">
+                                                            <label class="form-label">Shirt Size</label>
+                                                            <select class="form-select" @bind="profileShirtSize">
+                                                                <option value="">-- Select --</option>
+                                                                <option value="YXS">Youth XS</option><option value="YS">Youth S</option><option value="YM">Youth M</option><option value="YL">Youth L</option><option value="YXL">Youth XL</option>
+                                                                <option value="AS">Adult S</option><option value="AM">Adult M</option><option value="AL">Adult L</option><option value="AXL">Adult XL</option><option value="AXXL">Adult XXL</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
                                                     <button class="btn btn-success" @onclick="SaveProfile">Save Profile</button>
                                                     @if (profileSaveMessage != null)
                                                     {
@@ -228,6 +263,10 @@ else
     private int? profileGymnastId;
     private string? profileParentEmail;
     private string? profileParentEmail2;
+    private string? profileLeotardSize;
+    private string? profileLeggingsSize;
+    private string? profilePantsSize;
+    private string? profileShirtSize;
     private string? profileSaveMessage;
 
     private void OnFilterLevelChanged(ChangeEventArgs e) { filterLevel = e.Value?.ToString() ?? ""; }
@@ -440,6 +479,10 @@ else
         {
             profileParentEmail = gymnast.ParentEmail;
             profileParentEmail2 = gymnast.ParentEmail2;
+            profileLeotardSize = gymnast.LeotardSize;
+            profileLeggingsSize = gymnast.LeggingsSize;
+            profilePantsSize = gymnast.PantsSize;
+            profileShirtSize = gymnast.ShirtSize;
         }
     }
 
@@ -453,6 +496,10 @@ else
         {
             entity.ParentEmail = profileParentEmail;
             entity.ParentEmail2 = profileParentEmail2;
+            entity.LeotardSize = profileLeotardSize;
+            entity.LeggingsSize = profileLeggingsSize;
+            entity.PantsSize = profilePantsSize;
+            entity.ShirtSize = profileShirtSize;
             entity.ModifiedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
         }

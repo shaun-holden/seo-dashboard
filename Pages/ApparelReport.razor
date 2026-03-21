@@ -101,16 +101,22 @@
                                 <td class="text-end">@row.SelectedCount</td>
                                 <td class="text-end">$@row.TotalRevenue.ToString("N2")</td>
                             </tr>
-                            @if (isExpanded && row.GymnastNames.Any())
+                            @if (isExpanded && row.Gymnasts.Any())
                             {
                                 <tr>
                                     <td colspan="4" class="bg-light ps-4">
-                                        <div class="d-flex flex-wrap gap-2 py-1">
-                                            @foreach (var name in row.GymnastNames)
-                                            {
-                                                <span class="badge bg-secondary">@name</span>
-                                            }
-                                        </div>
+                                        <table class="table table-sm mb-0">
+                                            <thead><tr><th>Gymnast</th><th>Size</th></tr></thead>
+                                            <tbody>
+                                                @foreach (var gi in row.Gymnasts)
+                                                {
+                                                    <tr>
+                                                        <td>@gi.Name</td>
+                                                        <td>@(gi.Size ?? "Not set")</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
                                     </td>
                                 </tr>
                             }
@@ -164,7 +170,8 @@
     private List<ApparelRow> reportRows = new();
     private List<SizeRow> sizeBreakdowns = new();
 
-    private record ApparelRow(string ItemName, decimal Price, bool IsRequired, int SelectedCount, decimal TotalRevenue, List<string> GymnastNames);
+    private record ApparelRow(string ItemName, decimal Price, bool IsRequired, int SelectedCount, decimal TotalRevenue, List<GymnastInfo> Gymnasts);
+    private record GymnastInfo(string Name, string? Size);
     private record SizeRow(string SizeType, string Size, int Count);
     private HashSet<string> expandedItems = new();
 
@@ -172,6 +179,16 @@
     {
         using var db = await DbFactory.CreateDbContextAsync();
         seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
+    }
+
+    private string? GetSizeForItem(Gymnast g, string itemName)
+    {
+        var lower = itemName.ToLower();
+        if (lower.Contains("leotard")) return g.LeotardSize;
+        if (lower.Contains("legging")) return g.LeggingsSize;
+        if (lower.Contains("pant")) return g.PantsSize;
+        if (lower.Contains("shirt") || lower.Contains("jacket")) return g.ShirtSize;
+        return null;
     }
 
     private void ToggleItem(string itemName)
@@ -207,17 +224,14 @@
         foreach (var item in apparelItems)
         {
             var selectedGymnastIds = selections.Where(s => s.ItemName == item.Name).Select(s => s.GymnastId).ToHashSet();
-            List<string> names;
+            List<Gymnast> matchedGymnasts;
             if (item.IsRequired)
-            {
-                names = gymnasts.Select(g => g.Name).ToList();
-            }
+                matchedGymnasts = gymnasts;
             else
-            {
-                names = gymnasts.Where(g => selectedGymnastIds.Contains(g.Id)).Select(g => g.Name).ToList();
-            }
-            var count = names.Count;
-            reportRows.Add(new ApparelRow(item.Name, item.Price, item.IsRequired, count, item.Price * count, names));
+                matchedGymnasts = gymnasts.Where(g => selectedGymnastIds.Contains(g.Id)).ToList();
+
+            var infos = matchedGymnasts.Select(g => new GymnastInfo(g.Name, GetSizeForItem(g, item.Name))).ToList();
+            reportRows.Add(new ApparelRow(item.Name, item.Price, item.IsRequired, infos.Count, item.Price * infos.Count, infos));
         }
 
         var shirtSizes = gymnasts

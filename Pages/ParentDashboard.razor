@@ -596,6 +596,8 @@ else
                         var fMed = "medicalNotes";
                         var fShirt = "shirtSize";
                         var fLeoSize = "leotardSize";
+                        var fLeggSize = "leggingsSize";
+                        var fPantsSize = "pantsSize";
                         <div class="card mt-2 border-secondary">
                             <div class="card-body">
                                 <div class="row">
@@ -655,6 +657,26 @@ else
                                             <option value="AM">Adult M</option>
                                             <option value="AL">Adult L</option>
                                             <option value="AXL">Adult XL</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label fw-bold">Leggings Size</label>
+                                        <select class="form-select"
+                                                value="@(GetProfileValue(profId, fLeggSize))"
+                                                @onchange="(e) => SetProfileValue(profId, fLeggSize, e.Value?.ToString())">
+                                            <option value="">-- Select --</option>
+                                            <option value="YXS">Youth XS</option><option value="YS">Youth S</option><option value="YM">Youth M</option><option value="YL">Youth L</option><option value="YXL">Youth XL</option>
+                                            <option value="AS">Adult S</option><option value="AM">Adult M</option><option value="AL">Adult L</option><option value="AXL">Adult XL</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label fw-bold">Pants Size</label>
+                                        <select class="form-select"
+                                                value="@(GetProfileValue(profId, fPantsSize))"
+                                                @onchange="(e) => SetProfileValue(profId, fPantsSize, e.Value?.ToString())">
+                                            <option value="">-- Select --</option>
+                                            <option value="YXS">Youth XS</option><option value="YS">Youth S</option><option value="YM">Youth M</option><option value="YL">Youth L</option><option value="YXL">Youth XL</option>
+                                            <option value="AS">Adult S</option><option value="AM">Adult M</option><option value="AL">Adult L</option><option value="AXL">Adult XL</option>
                                         </select>
                                     </div>
                                 </div>
