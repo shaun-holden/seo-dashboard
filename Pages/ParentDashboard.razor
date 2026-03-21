@@ -95,7 +95,7 @@ else
 
     @foreach (var athlete in athletes)
     {
-        var athleteLevel = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "";
+        var athleteLevel = parentGymnasts.FirstOrDefault(g => g.Id == athlete.Id)?.Level ?? teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "";
         var sharedFeeCost = parentCostPerGymnast;
         var apparelCost = GetParentApparelCost(athlete.Id, athleteLevel);
         var compCost = GetParentCompCost(athlete.Id, athleteLevel);
