@@ -260,7 +260,8 @@ else
                     var seasonPayMonths = seasons.FirstOrDefault()?.PaymentMonths ?? 8;
                     var planMonths = gymnastRecord?.PaymentPlanMonths ?? seasonPayMonths;
                     if (planMonths <= 0) planMonths = 8;
-                    var startMonthNum = gymnastRecord?.PaymentStartMonth ?? DateTime.Today.Month;
+                    var seasonStartMonth = seasons.FirstOrDefault()?.PaymentStartMonth ?? 8;
+                    var startMonthNum = gymnastRecord?.PaymentStartMonth ?? seasonStartMonth;
                     var monthlyAmount = Math.Round(balance / planMonths, 2);
                     var scheduleYear = startMonthNum >= DateTime.Today.Month ? DateTime.Today.Year : DateTime.Today.Year + 1;
                     var scheduleStart = new DateTime(scheduleYear, startMonthNum, 15);

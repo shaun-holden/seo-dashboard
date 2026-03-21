@@ -76,8 +76,16 @@ else
         @if (selectedSeason != null)
         {
             <div class="card mb-4">
-                <div class="card-body d-flex align-items-center gap-3">
-                    <label class="fw-bold mb-0">Payment Months:</label>
+                <div class="card-body d-flex align-items-center gap-3 flex-wrap">
+                    <label class="fw-bold mb-0">Payments Start:</label>
+                    <select class="form-select" style="max-width: 150px;" value="@selectedSeason.PaymentStartMonth"
+                            @onchange="UpdatePaymentStartMonth">
+                        @for (int m = 1; m <= 12; m++)
+                        {
+                            <option value="@m">@(new DateTime(2026, m, 1).ToString("MMMM"))</option>
+                        }
+                    </select>
+                    <label class="fw-bold mb-0 ms-3">For:</label>
                     <select class="form-select" style="max-width: 120px;" value="@selectedSeason.PaymentMonths"
                             @onchange="UpdatePaymentMonths">
                         @for (int m = 1; m <= 12; m++)
@@ -85,7 +93,7 @@ else
                             <option value="@m">@m months</option>
                         }
                     </select>
-                    <small class="text-muted">Parents will see this many monthly installments.</small>
+                    <small class="text-muted">Parents pay starting in @(new DateTime(2026, selectedSeason.PaymentStartMonth, 1).ToString("MMMM")) for @selectedSeason.PaymentMonths months.</small>
                 </div>
             </div>
         }
@@ -387,6 +395,21 @@ else
             .ToList();
 
         StateHasChanged();
+    }
+
+    private async Task UpdatePaymentStartMonth(ChangeEventArgs e)
+    {
+        if (selectedSeason != null && int.TryParse(e.Value?.ToString(), out var month) && month >= 1 && month <= 12)
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            var season = await db.Seasons.FindAsync(selectedSeason.Id);
+            if (season != null)
+            {
+                season.PaymentStartMonth = month;
+                await db.SaveChangesAsync();
+                selectedSeason.PaymentStartMonth = month;
+            }
+        }
     }
 
     private async Task UpdatePaymentMonths(ChangeEventArgs e)

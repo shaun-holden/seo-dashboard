@@ -38,6 +38,7 @@ namespace GymBudgetApp.Models
 
         // Payment settings
         public int PaymentMonths { get; set; } = 8;
+        public int PaymentStartMonth { get; set; } = 8; // 1-12 (default August)
 
         // Audit timestamps
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
