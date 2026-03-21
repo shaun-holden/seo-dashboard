@@ -1042,8 +1042,18 @@ else
         if (!items.Any()) return 0;
         if (!string.IsNullOrEmpty(level))
         {
-            var match = items.FirstOrDefault(a => !string.IsNullOrEmpty(a.AppliesTo) && LevelMatchesKeywords(level, a.AppliesTo));
-            if (match != null) return match.Price;
+            // Find the best match — prefer the one with the longest matching keyword
+            var matches = items.Where(a => !string.IsNullOrEmpty(a.AppliesTo) && LevelMatchesKeywords(level, a.AppliesTo)).ToList();
+            if (matches.Count == 1) return matches[0].Price;
+            if (matches.Count > 1)
+            {
+                // Pick the one with the most specific (longest) matching keyword
+                var best = matches.OrderByDescending(a => a.AppliesTo!.Split(',')
+                    .Select(k => k.Trim())
+                    .Where(k => level.Contains(k, StringComparison.OrdinalIgnoreCase) || k.Contains(level, StringComparison.OrdinalIgnoreCase))
+                    .Max(k => k.Length)).First();
+                return best.Price;
+            }
         }
         return items.FirstOrDefault(a => string.IsNullOrEmpty(a.AppliesTo))?.Price ?? 0;
     }
