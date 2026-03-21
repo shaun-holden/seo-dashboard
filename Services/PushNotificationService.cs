@@ -105,7 +105,12 @@ public class PushNotificationService
             .Distinct()
             .ToListAsync();
 
-        var allIds = parentUserIds.Union(subscribedUserIds).Distinct().ToList();
+        var allIds = parentUserIds
+            .Union(subscribedUserIds)
+            .Where(id => id != null)
+            .Select(id => id!)
+            .Distinct()
+            .ToList();
         await SendToUsersAsync(allIds, title, body, url);
     }
 
