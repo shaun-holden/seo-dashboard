@@ -85,9 +85,13 @@
                 </tbody>
             </table>
         </div>
+        <div class="input-group input-group-sm mt-2" style="max-width: 350px;">
+            <input class="form-control" @bind="newManagedLevel" placeholder="New level name" />
+            <button class="btn btn-primary" @onclick="AddManagedLevel">Add Level</button>
+        </div>
         @if (levelMessage != null)
         {
-            <div class="alert alert-success py-1 mb-0">@levelMessage</div>
+            <div class="alert alert-success py-1 mt-2 mb-0">@levelMessage</div>
         }
     </div>
 }
@@ -326,6 +330,7 @@
     private string? renamingLevel;
     private string renameNewName = "";
     private string? levelMessage;
+    private string newManagedLevel = "";
     private string? filterLevel;
     private string? successMessage;
 
@@ -341,6 +346,18 @@
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(l => l)
         .ToList();
+
+    private void AddManagedLevel()
+    {
+        if (string.IsNullOrWhiteSpace(newManagedLevel)) return;
+        var name = newManagedLevel.Trim();
+        if (!customLevels.Contains(name, StringComparer.OrdinalIgnoreCase) && !levels.Contains(name, StringComparer.OrdinalIgnoreCase))
+        {
+            customLevels.Add(name);
+            levelMessage = $"Level \"{name}\" added. Assign gymnasts to it using the level dropdown.";
+        }
+        newManagedLevel = "";
+    }
 
     private void StartRename(string level)
     {
