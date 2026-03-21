@@ -100,11 +100,6 @@ else
                         <thead class="table-light">
                             <tr>
                                 <th>Name</th>
-                                <th class="text-center">Leotard</th>
-                                <th class="text-center">Leggings</th>
-                                <th class="text-center">Team Bag</th>
-                                <th class="text-center">Jacket</th>
-                                <th class="text-center">Team Camp</th>
                                 <th>Invite Code</th>
                                 <th class="text-end">Actions</th>
                             </tr>
@@ -114,11 +109,6 @@ else
                             {
                                 <tr>
                                     <td><strong>@gymnast.Name</strong></td>
-                                    <td class="text-center">@(gymnast.Leotard ? "\u2713" : "")</td>
-                                    <td class="text-center">@(gymnast.Leggings ? "\u2713" : "")</td>
-                                    <td class="text-center">@(gymnast.TeamBag ? "\u2713" : "")</td>
-                                    <td class="text-center">@(gymnast.Jacket ? "\u2713" : "")</td>
-                                    <td class="text-center">@(gymnast.TeamCamp ? "\u2713" : "")</td>
                                     <td>
                                         @{
                                             var link = parentLinks.FirstOrDefault(pl => pl.AthleteId == gymnast.Id);
