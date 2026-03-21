@@ -752,7 +752,9 @@ else
         userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
                     ?? authState.User.FindFirst("email")?.Value;
 
-        maintenanceMode = Configuration.GetValue<bool>("MaintenanceMode");
+        var adminEmails = Configuration.GetSection("AdminEmails").Get<List<string>>() ?? new() { Configuration["AdminEmail"] ?? "deshaun@tntgym.org" };
+        var isAdmin = adminEmails.Any(ae => string.Equals(userEmail, ae, StringComparison.OrdinalIgnoreCase));
+        maintenanceMode = Configuration.GetValue<bool>("MaintenanceMode") && !isAdmin;
         if (maintenanceMode) { loading = false; return; }
 
         var stripeKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY")
