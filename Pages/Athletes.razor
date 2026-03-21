@@ -100,6 +100,7 @@ else
                         <thead class="table-light">
                             <tr>
                                 <th>Name</th>
+                                <th>Level</th>
                                 <th>Invite Code</th>
                                 <th class="text-end">Actions</th>
                             </tr>
@@ -109,6 +110,17 @@ else
                             {
                                 <tr>
                                     <td><strong>@gymnast.Name</strong></td>
+                                    <td>
+                                        <select class="form-select form-select-sm d-inline-block" style="width: 150px;"
+                                                value="@gymnast.Level"
+                                                @onchange="(e) => UpdateLevel(gymnast.Id, e.Value?.ToString())">
+                                            <option value="">-- Select --</option>
+                                            @foreach (var lvl in allLevels)
+                                            {
+                                                <option value="@lvl">@lvl</option>
+                                            }
+                                        </select>
+                                    </td>
                                     <td>
                                         @if (!string.IsNullOrEmpty(gymnast.ParentEmail))
                                         {
@@ -379,6 +391,26 @@ else
         showInviteForm = false;
         inviteGymnastId = 0;
         inviteEmail = "";
+        await LoadData();
+    }
+
+    private List<string> allLevels => gymnasts?
+        .Where(g => !string.IsNullOrWhiteSpace(g.Level))
+        .Select(g => g.Level!)
+        .Distinct()
+        .OrderBy(l => l)
+        .ToList() ?? new();
+
+    private async Task UpdateLevel(int gymnastId, string? newLevel)
+    {
+        if (string.IsNullOrEmpty(newLevel)) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Gymnasts.FindAsync(gymnastId);
+        if (entity != null)
+        {
+            entity.Level = newLevel;
+            await db.SaveChangesAsync();
+        }
         await LoadData();
     }
 
