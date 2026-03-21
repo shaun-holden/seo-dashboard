@@ -110,6 +110,10 @@ else
                                 <tr>
                                     <td><strong>@gymnast.Name</strong></td>
                                     <td>
+                                        @if (!string.IsNullOrEmpty(gymnast.ParentEmail))
+                                        {
+                                            <small class="text-muted me-2">@gymnast.ParentEmail</small>
+                                        }
                                         @{
                                             var link = parentLinks.FirstOrDefault(pl => pl.AthleteId == gymnast.Id);
                                         }
@@ -396,7 +400,7 @@ else
             entity.ModifiedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
         }
-        profileSaveMessage = "Profile saved!";
+        profileGymnastId = null;
         await LoadData();
     }
 }
