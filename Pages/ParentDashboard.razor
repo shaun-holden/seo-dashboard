@@ -50,6 +50,10 @@
 }
 
 <h3>My Athletes</h3>
+@if (paymentDebug != null)
+{
+    <div class="alert alert-secondary small">@paymentDebug</div>
+}
 
 @if (maintenanceMode)
 {
@@ -872,15 +876,27 @@ else
         }
     }
 
+    private string? paymentDebug;
+
     private async Task VerifyPendingPayments()
     {
         using var db = await DbFactory.CreateDbContextAsync();
         // Get ALL pending payments for this user (by PayerUserId)
-        var pendingPayments = await db.Payments
-            .Where(p => p.PayerUserId == userId && p.Status == PaymentStatus.Pending && p.StripeSessionId != null)
+        var allUserPayments = await db.Payments
+            .Where(p => p.PayerUserId == userId)
             .ToListAsync();
+        var pendingPayments = allUserPayments
+            .Where(p => p.Status == PaymentStatus.Pending && p.StripeSessionId != null)
+            .ToList();
+
+        paymentDebug = $"User: {userId} | Total payments: {allUserPayments.Count} | Pending with session: {pendingPayments.Count}";
 
         if (!pendingPayments.Any()) return;
+
+        foreach (var p in pendingPayments)
+        {
+            paymentDebug += $" | Session: {p.StripeSessionId?.Substring(0, 10)}...";
+        }
 
         var sessionService = new Stripe.Checkout.SessionService();
         foreach (var payment in pendingPayments)
