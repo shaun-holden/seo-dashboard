@@ -24,6 +24,8 @@ namespace GymBudgetApp.Models
 
         public decimal CalculatedTotal { get; set; } // Auto-calculated
 
+        public decimal ActualAmount { get; set; } // Actual cost tracking
+
         // For team entry - which level
         public int? TeamLevelId { get; set; }
 

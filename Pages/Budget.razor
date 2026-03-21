@@ -53,6 +53,18 @@ else
                     </div>
                 </div>
             }
+            @if (calculatorActualTotal > 0)
+            {
+                <div class="col-md-3">
+                    <div class="card text-white bg-success">
+                        <div class="card-body">
+                            <h6>Actual Spent</h6>
+                            <h4>$@calculatorActualTotal.ToString("N2")</h4>
+                            <small class="text-white-50">Variance: $@((calculatorTotal - calculatorActualTotal).ToString("N2"))</small>
+                        </div>
+                    </div>
+                </div>
+            }
             <div class="col-md-3">
                 <div class="card text-white bg-warning">
                     <div class="card-body">
@@ -116,14 +128,17 @@ else
                 {
                 <div class="card-body p-0">
                     <table class="table table-sm mb-0">
-                        <thead><tr><th>Category</th><th class="text-end">Total</th><th class="text-end">Per Gymnast</th></tr></thead>
+                        <thead><tr><th>Category</th><th class="text-end">Budgeted</th><th class="text-end">Actual</th><th class="text-end">Variance</th><th class="text-end">Per Gymnast</th></tr></thead>
                         <tbody>
                             @foreach (var cat in calculatorCategories)
                             {
                                 var perGymnast = totalAthletes > 0 ? cat.Total / totalAthletes : 0;
+                                var catVariance = cat.Total - cat.Actual;
                                 <tr>
                                     <td>@cat.Label</td>
                                     <td class="text-end">$@cat.Total.ToString("N2")</td>
+                                    <td class="text-end">$@cat.Actual.ToString("N2")</td>
+                                    <td class="text-end @(catVariance >= 0 ? "text-success" : "text-danger")">$@catVariance.ToString("N2")</td>
                                     <td class="text-end fw-bold text-primary">$@perGymnast.ToString("N2")</td>
                                 </tr>
                             }
@@ -132,6 +147,8 @@ else
                             <tr class="fw-bold">
                                 <td>Total Budget</td>
                                 <td class="text-end">$@calculatorTotal.ToString("N2")</td>
+                                <td class="text-end">$@calculatorActualTotal.ToString("N2")</td>
+                                <td class="text-end @(calculatorTotal - calculatorActualTotal >= 0 ? "text-success" : "text-danger")">$@((calculatorTotal - calculatorActualTotal).ToString("N2"))</td>
                                 <td class="text-end text-primary">$@avgCostPerAthlete.ToString("N2")</td>
                             </tr>
                         </tfoot>
@@ -219,7 +236,8 @@ else
     private decimal calculatorTotal;
     private bool showCalculatorBreakdown = true;
     private List<CalcCategory> calculatorCategories = new();
-    private record CalcCategory(string Label, decimal Total);
+    private decimal calculatorActualTotal;
+    private record CalcCategory(string Label, decimal Total, decimal Actual);
     private decimal budgetTotal => calculatorTotal > 0 ? calculatorTotal : (sharedFeesTotal + athleteItemsTotal);
     private int totalAthletes => selectedSeason?.AthleteCount ?? 0;
     private decimal avgCostPerAthlete => totalAthletes > 0 ? budgetTotal / totalAthletes : 0;
@@ -387,10 +405,11 @@ else
             .Where(e => e.SeasonId == selectedSeasonId)
             .ToListAsync();
         calculatorTotal = calcEntries.Sum(e => e.CalculatedTotal);
+        calculatorActualTotal = calcEntries.Sum(e => e.ActualAmount);
         calculatorCategories = calcEntries
             .GroupBy(e => e.Category)
-            .Where(g => g.Sum(e => e.CalculatedTotal) != 0)
-            .Select(g => new CalcCategory(GetCalcLabel(g.Key), g.Sum(e => e.CalculatedTotal)))
+            .Where(g => g.Sum(e => e.CalculatedTotal) != 0 || g.Sum(e => e.ActualAmount) != 0)
+            .Select(g => new CalcCategory(GetCalcLabel(g.Key), g.Sum(e => e.CalculatedTotal), g.Sum(e => e.ActualAmount)))
             .OrderByDescending(c => c.Total)
             .ToList();
 

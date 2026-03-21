@@ -1,0 +1,200 @@
+@page "/reports/budget-vs-actual"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using GymBudgetApp.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Text
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+
+<h3 class="mb-3">Budget vs Actual Report</h3>
+
+<div class="row g-2 align-items-center mb-3">
+    <div class="col-auto">
+        <label class="col-form-label fw-semibold">Season</label>
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @if (seasons != null)
+            {
+                @foreach (var s in seasons)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            }
+        </select>
+    </div>
+    @if (reportRows.Any())
+    {
+        <div class="col-auto ms-auto">
+            <button class="btn btn-outline-success btn-sm" @onclick="ExportCsv">
+                <span class="oi oi-data-transfer-download me-1"></span>Export CSV
+            </button>
+        </div>
+    }
+</div>
+
+@if (selectedSeasonId > 0)
+{
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <h6>Total Budget</h6>
+                    <h4>$@reportRows.Sum(r => r.Budgeted).ToString("N2")</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <h6>Total Actual</h6>
+                    <h4>$@reportRows.Sum(r => r.Actual).ToString("N2")</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            @{
+                var totalVariance = reportRows.Sum(r => r.Budgeted) - reportRows.Sum(r => r.Actual);
+            }
+            <div class="card text-white @(totalVariance >= 0 ? "bg-info" : "bg-danger")">
+                <div class="card-body">
+                    <h6>Total Variance</h6>
+                    <h4>$@totalVariance.ToString("N2")</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            @{
+                var totalBudget = reportRows.Sum(r => r.Budgeted);
+                var totalPctSpent = totalBudget > 0 ? reportRows.Sum(r => r.Actual) / totalBudget * 100 : 0;
+            }
+            <div class="card text-white @(totalPctSpent <= 100 ? "bg-warning" : "bg-danger")">
+                <div class="card-body">
+                    <h6>% Spent</h6>
+                    <h4>@totalPctSpent.ToString("F1")%</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!reportRows.Any())
+    {
+        <p class="text-muted">No budget calculator entries found for this season.</p>
+    }
+    else
+    {
+        <div class="card mb-4">
+            <div class="card-body p-0">
+                <table class="table table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th class="text-end">Budgeted</th>
+                            <th class="text-end">Actual</th>
+                            <th class="text-end">Variance</th>
+                            <th class="text-end">% Spent</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in reportRows)
+                        {
+                            var variance = row.Budgeted - row.Actual;
+                            var pctSpent = row.Budgeted > 0 ? row.Actual / row.Budgeted * 100 : 0;
+                            <tr>
+                                <td>@row.Category</td>
+                                <td class="text-end">$@row.Budgeted.ToString("N2")</td>
+                                <td class="text-end">$@row.Actual.ToString("N2")</td>
+                                <td class="text-end @(variance >= 0 ? "text-success" : "text-danger")">$@variance.ToString("N2")</td>
+                                <td class="text-end @(pctSpent <= 100 ? "text-success" : "text-danger")">@pctSpent.ToString("F1")%</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr class="fw-bold">
+                            <td>Total</td>
+                            <td class="text-end">$@reportRows.Sum(r => r.Budgeted).ToString("N2")</td>
+                            <td class="text-end">$@reportRows.Sum(r => r.Actual).ToString("N2")</td>
+                            <td class="text-end @(totalVariance >= 0 ? "text-success" : "text-danger")">$@totalVariance.ToString("N2")</td>
+                            <td class="text-end">@totalPctSpent.ToString("F1")%</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<Season>? seasons;
+    private int selectedSeasonId;
+    private List<BudgetActualRow> reportRows = new();
+
+    private record BudgetActualRow(string Category, decimal Budgeted, decimal Actual);
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        reportRows.Clear();
+        if (selectedSeasonId <= 0) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var entries = await db.BudgetCalculatorEntries
+            .Where(e => e.SeasonId == selectedSeasonId)
+            .ToListAsync();
+
+        reportRows = entries
+            .GroupBy(e => e.Category)
+            .Where(g => g.Sum(e => e.CalculatedTotal) != 0 || g.Sum(e => e.ActualAmount) != 0)
+            .Select(g => new BudgetActualRow(
+                GetCategoryLabel(g.Key),
+                g.Sum(e => e.CalculatedTotal),
+                g.Sum(e => e.ActualAmount)
+            ))
+            .OrderByDescending(r => r.Budgeted)
+            .ToList();
+    }
+
+    private string GetCategoryLabel(string category) => category switch
+    {
+        "TeamEntry" => "Team Entry",
+        "SessionCost" => "Session Cost",
+        "CarRental" => "Car Rental",
+        "BankFees" => "Bank / Processing Fees",
+        _ => category
+    };
+
+    private async Task ExportCsv()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Category,Budgeted,Actual,Variance,% Spent");
+        foreach (var row in reportRows)
+        {
+            var variance = row.Budgeted - row.Actual;
+            var pct = row.Budgeted > 0 ? (row.Actual / row.Budgeted * 100).ToString("F1") : "0.0";
+            sb.AppendLine($"{EscapeCsv(row.Category)},{row.Budgeted:F2},{row.Actual:F2},{variance:F2},{pct}%");
+        }
+        await JS.InvokeVoidAsync("downloadFile", "budget-vs-actual-report.csv", sb.ToString());
+    }
+
+    private string EscapeCsv(string val)
+    {
+        if (val.Contains(',') || val.Contains('"'))
+            return $"\"{val.Replace("\"", "\"\"")}\"";
+        return val;
+    }
+}

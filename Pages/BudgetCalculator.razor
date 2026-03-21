@@ -62,7 +62,15 @@ else
                                     <input type="number" class="form-control form-control-sm" value="@entry.Quantity1"
                                            @onchange="@(e => UpdateTeamEntry(entry, e, "q1"))" />
                                 </div>
-                                <div class="col-md-3 text-muted">Total: $@entry.CalculatedTotal.ToString("N2")</div>
+                                <div class="col-md-2 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
+                                <div class="col-md-2">
+                                    <label class="form-label mb-0 small">Actual</label>
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" step="0.01" value="@entry.ActualAmount"
+                                               @onchange="@(e => UpdateActual(entry, e))" />
+                                    </div>
+                                </div>
                             </div>
                         }
                     }
@@ -70,7 +78,7 @@ else
                     {
                         <p class="text-muted">No gymnasts in roster yet. Add gymnasts on the Roster page.</p>
                     }
-                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("TeamEntry").ToString("N2")</div>
+                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("TeamEntry").ToString("N2") | Actual: $@GetCategoryActual("TeamEntry").ToString("N2")</div>
                 }
                 else if (activeTab == "SessionCost")
                 {
@@ -100,7 +108,15 @@ else
                                 <input type="number" class="form-control form-control-sm" value="@entry.Quantity2"
                                        @onchange="@(e => UpdateSessionCost(entry, e, "q2"))" />
                             </div>
-                            <div class="col-md-2 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-1 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-2">
+                                <label class="form-label mb-0 small">Actual</label>
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" step="0.01" value="@entry.ActualAmount"
+                                           @onchange="@(e => UpdateActual(entry, e))" />
+                                </div>
+                            </div>
                             <div class="col-md-1">
                                 <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
                                     <span class="oi oi-clipboard"></span>
@@ -114,7 +130,7 @@ else
                     <button class="btn btn-outline-primary btn-sm mt-2" @onclick="@(() => AddLineItem("SessionCost"))">
                         <span class="oi oi-plus me-1"></span>Add Session Type
                     </button>
-                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("SessionCost").ToString("N2")</div>
+                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("SessionCost").ToString("N2") | Actual: $@GetCategoryActual("SessionCost").ToString("N2")</div>
                 }
                 else if (activeTab == "Mileage")
                 {
@@ -149,7 +165,15 @@ else
                                 <input type="number" class="form-control form-control-sm" value="@entry.Quantity3"
                                        @onchange="@(e => UpdateMileage(entry, e, "q3"))" />
                             </div>
-                            <div class="col-md-2 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-1 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-2">
+                                <label class="form-label mb-0 small">Actual</label>
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" step="0.01" value="@entry.ActualAmount"
+                                           @onchange="@(e => UpdateActual(entry, e))" />
+                                </div>
+                            </div>
                             <div class="col-md-1">
                                 <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
                                     <span class="oi oi-clipboard"></span>
@@ -163,7 +187,7 @@ else
                     <button class="btn btn-outline-primary btn-sm mt-2" @onclick="() => AddMileageItem()">
                         <span class="oi oi-plus me-1"></span>Add Mileage Entry
                     </button>
-                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("Mileage").ToString("N2")</div>
+                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("Mileage").ToString("N2") | Actual: $@GetCategoryActual("Mileage").ToString("N2")</div>
                 }
                 else if (activeTab == "Flights")
                 {
@@ -188,7 +212,15 @@ else
                                 <input type="number" class="form-control form-control-sm" value="@entry.Quantity1"
                                        @onchange="@(e => UpdateTwoField(entry, e, "q1"))" />
                             </div>
-                            <div class="col-md-2 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-1 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-2">
+                                <label class="form-label mb-0 small">Actual</label>
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" step="0.01" value="@entry.ActualAmount"
+                                           @onchange="@(e => UpdateActual(entry, e))" />
+                                </div>
+                            </div>
                             <div class="col-md-1">
                                 <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
                                     <span class="oi oi-clipboard"></span>
@@ -202,7 +234,7 @@ else
                     <button class="btn btn-outline-primary btn-sm mt-2" @onclick="@(() => AddLineItem("Flights"))">
                         <span class="oi oi-plus me-1"></span>Add Flight
                     </button>
-                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("Flights").ToString("N2")</div>
+                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("Flights").ToString("N2") | Actual: $@GetCategoryActual("Flights").ToString("N2")</div>
                 }
                 else if (activeTab == "Hotel")
                 {
@@ -232,7 +264,15 @@ else
                                 <input type="number" class="form-control form-control-sm" value="@entry.Quantity2"
                                        @onchange="@(e => UpdateThreeField(entry, e, "q2"))" />
                             </div>
-                            <div class="col-md-2 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-1 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-2">
+                                <label class="form-label mb-0 small">Actual</label>
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" step="0.01" value="@entry.ActualAmount"
+                                           @onchange="@(e => UpdateActual(entry, e))" />
+                                </div>
+                            </div>
                             <div class="col-md-1">
                                 <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
                                     <span class="oi oi-clipboard"></span>
@@ -246,7 +286,7 @@ else
                     <button class="btn btn-outline-primary btn-sm mt-2" @onclick="@(() => AddLineItem("Hotel"))">
                         <span class="oi oi-plus me-1"></span>Add Hotel
                     </button>
-                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("Hotel").ToString("N2")</div>
+                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("Hotel").ToString("N2") | Actual: $@GetCategoryActual("Hotel").ToString("N2")</div>
                 }
                 else if (activeTab == "CarRental")
                 {
@@ -276,7 +316,15 @@ else
                                 <input type="number" class="form-control form-control-sm" value="@entry.Quantity2"
                                        @onchange="@(e => UpdateThreeField(entry, e, "q2"))" />
                             </div>
-                            <div class="col-md-2 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-1 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-2">
+                                <label class="form-label mb-0 small">Actual</label>
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" step="0.01" value="@entry.ActualAmount"
+                                           @onchange="@(e => UpdateActual(entry, e))" />
+                                </div>
+                            </div>
                             <div class="col-md-1">
                                 <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
                                     <span class="oi oi-clipboard"></span>
@@ -290,7 +338,7 @@ else
                     <button class="btn btn-outline-primary btn-sm mt-2" @onclick="@(() => AddLineItem("CarRental"))">
                         <span class="oi oi-plus me-1"></span>Add Vehicle
                     </button>
-                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("CarRental").ToString("N2")</div>
+                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("CarRental").ToString("N2") | Actual: $@GetCategoryActual("CarRental").ToString("N2")</div>
                 }
                 else if (activeTab == "Coaches")
                 {
@@ -315,7 +363,15 @@ else
                                 <input type="number" class="form-control form-control-sm" value="@entry.Quantity1"
                                        @onchange="@(e => UpdateTwoField(entry, e, "q1"))" />
                             </div>
-                            <div class="col-md-2 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-1 text-muted">= $@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-2">
+                                <label class="form-label mb-0 small">Actual</label>
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" step="0.01" value="@entry.ActualAmount"
+                                           @onchange="@(e => UpdateActual(entry, e))" />
+                                </div>
+                            </div>
                             <div class="col-md-1">
                                 <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
                                     <span class="oi oi-clipboard"></span>
@@ -329,7 +385,7 @@ else
                     <button class="btn btn-outline-primary btn-sm mt-2" @onclick="@(() => AddLineItem("Coaches"))">
                         <span class="oi oi-plus me-1"></span>Add Coach Entry
                     </button>
-                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("Coaches").ToString("N2")</div>
+                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("Coaches").ToString("N2") | Actual: $@GetCategoryActual("Coaches").ToString("N2")</div>
                 }
                 else if (activeTab == "Miscellaneous")
                 {
@@ -348,7 +404,14 @@ else
                                            @onchange="@(e => UpdateMiscItem(entry, e))" />
                                 </div>
                             </div>
-                            <div class="col-md-2 text-muted">$@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-1 text-muted">$@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-2">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" step="0.01" placeholder="Actual" value="@entry.ActualAmount"
+                                           @onchange="@(e => UpdateActual(entry, e))" />
+                                </div>
+                            </div>
                             <div class="col-md-1">
                                 <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
                                     <span class="oi oi-clipboard"></span>
@@ -362,7 +425,7 @@ else
                     <button class="btn btn-outline-primary btn-sm mt-2" @onclick="@(() => AddLineItem("Miscellaneous"))">
                         <span class="oi oi-plus me-1"></span>Add Item
                     </button>
-                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("Miscellaneous").ToString("N2")</div>
+                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("Miscellaneous").ToString("N2") | Actual: $@GetCategoryActual("Miscellaneous").ToString("N2")</div>
                 }
                 else if (activeTab == "BankFees")
                 {
@@ -406,7 +469,17 @@ else
                             <div class="col-md-4 text-muted">Fee: $@BankFeesEntry.CalculatedTotal.ToString("N2")</div>
                         </div>
                     }
-                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("BankFees").ToString("N2")</div>
+                    <div class="row mb-2 align-items-center">
+                        <div class="col-md-3">
+                            <label class="form-label mb-0 small">Actual</label>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" step="0.01" value="@BankFeesEntry.ActualAmount"
+                                       @onchange="@(e => UpdateActual(BankFeesEntry, e))" />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal("BankFees").ToString("N2") | Actual: $@GetCategoryActual("BankFees").ToString("N2")</div>
                 }
                 else if (activeTab == addCategoryTab)
                 {
@@ -443,7 +516,14 @@ else
                                            @onchange="@(e => UpdateMiscItem(entry, e))" />
                                 </div>
                             </div>
-                            <div class="col-md-2 text-muted">$@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-1 text-muted">$@entry.CalculatedTotal.ToString("N2")</div>
+                            <div class="col-md-2">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" step="0.01" placeholder="Actual" value="@entry.ActualAmount"
+                                           @onchange="@(e => UpdateActual(entry, e))" />
+                                </div>
+                            </div>
                             <div class="col-md-1">
                                 <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => DuplicateEntry(entry)" title="Copy">
                                     <span class="oi oi-clipboard"></span>
@@ -457,7 +537,7 @@ else
                     <button class="btn btn-outline-primary btn-sm mt-2" @onclick="() => AddLineItem(activeTab)">
                         <span class="oi oi-plus me-1"></span>Add Item
                     </button>
-                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal(activeTab).ToString("N2")</div>
+                    <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal(activeTab).ToString("N2") | Actual: $@GetCategoryActual(activeTab).ToString("N2")</div>
                 }
             </div>
         </div>
@@ -478,7 +558,8 @@ else
                     </div>
                 </div>
                 <div class="col-md-4 text-end">
-                    <div style="font-size: 1.25rem; font-weight: bold;">Total Budget: $@grandTotal.ToString("N2")</div>
+                    <div style="font-size: 1.25rem; font-weight: bold;">Total Budget: $@grandTotal.ToString("N2") | Actual: $@grandActual.ToString("N2")</div>
+                    <div class="@(grandTotal - grandActual >= 0 ? "text-white-50" : "text-warning")">Variance: $@((grandTotal - grandActual).ToString("N2"))</div>
                     @if (seasonAthleteCount > 0)
                     {
                         <div class="text-white-50">Cost Per Gymnast: $@((grandTotal / seasonAthleteCount).ToString("N2")) (@seasonAthleteCount gymnasts)</div>
@@ -497,6 +578,7 @@ else
     private List<BudgetCalculatorEntry> entries = new();
     private int seasonAthleteCount;
     private decimal grandTotal;
+    private decimal grandActual;
     private string newCustomCategoryName = string.Empty;
     private List<string> customCategories = new();
     private const string addCategoryTab = "AddCategory";
@@ -851,6 +933,11 @@ else
         return entries.Where(e => e.Category == category).Sum(e => e.CalculatedTotal);
     }
 
+    private decimal GetCategoryActual(string category)
+    {
+        return entries.Where(e => e.Category == category).Sum(e => e.ActualAmount);
+    }
+
     private void RecalcGrandTotal()
     {
         // Recalc bank fees based on current subtotal
@@ -860,6 +947,17 @@ else
             RecalcBankFee(bankEntry);
         }
         grandTotal = entries.Sum(e => e.CalculatedTotal);
+        grandActual = entries.Sum(e => e.ActualAmount);
+    }
+
+    private async Task UpdateActual(BudgetCalculatorEntry entry, ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), out var val))
+        {
+            entry.ActualAmount = val;
+            await SaveEntry(entry);
+            RecalcGrandTotal();
+        }
     }
 
     private async Task SaveEntry(BudgetCalculatorEntry entry)

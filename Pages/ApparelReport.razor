@@ -1,0 +1,227 @@
+@page "/reports/apparel"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using GymBudgetApp.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Text
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+
+<h3 class="mb-3">Apparel Report</h3>
+
+<div class="row g-2 align-items-center mb-3">
+    <div class="col-auto">
+        <label class="col-form-label fw-semibold">Season</label>
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @if (seasons != null)
+            {
+                @foreach (var s in seasons)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            }
+        </select>
+    </div>
+    @if (reportRows.Any())
+    {
+        <div class="col-auto ms-auto">
+            <button class="btn btn-outline-success btn-sm" @onclick="ExportCsv">
+                <span class="oi oi-data-transfer-download me-1"></span>Export CSV
+            </button>
+        </div>
+    }
+</div>
+
+@if (selectedSeasonId > 0)
+{
+    @if (!reportRows.Any())
+    {
+        <p class="text-muted">No apparel items found for this season.</p>
+    }
+    else
+    {
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card text-white bg-primary">
+                    <div class="card-body">
+                        <h6>Total Items</h6>
+                        <h4>@reportRows.Count</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-success">
+                    <div class="card-body">
+                        <h6>Total Selections</h6>
+                        <h4>@reportRows.Sum(r => r.SelectedCount)</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-info">
+                    <div class="card-body">
+                        <h6>Total Revenue</h6>
+                        <h4>$@reportRows.Sum(r => r.TotalRevenue).ToString("N2")</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body p-0">
+                <table class="table table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th class="text-end">Price</th>
+                            <th class="text-end">Selected Count</th>
+                            <th class="text-end">Total Revenue</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in reportRows)
+                        {
+                            <tr>
+                                <td>@row.ItemName @(row.IsRequired ? "(Required)" : "")</td>
+                                <td class="text-end">$@row.Price.ToString("N2")</td>
+                                <td class="text-end">@row.SelectedCount</td>
+                                <td class="text-end">$@row.TotalRevenue.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr class="fw-bold">
+                            <td>Total</td>
+                            <td></td>
+                            <td class="text-end">@reportRows.Sum(r => r.SelectedCount)</td>
+                            <td class="text-end">$@reportRows.Sum(r => r.TotalRevenue).ToString("N2")</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        @if (sizeBreakdowns.Any())
+        {
+            <div class="card mb-4">
+                <div class="card-header"><h5 class="mb-0">Size Breakdown</h5></div>
+                <div class="card-body p-0">
+                    <table class="table table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>Size Type</th>
+                                <th>Size</th>
+                                <th class="text-end">Count</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var sb in sizeBreakdowns)
+                            {
+                                <tr>
+                                    <td>@sb.SizeType</td>
+                                    <td>@sb.Size</td>
+                                    <td class="text-end">@sb.Count</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<Season>? seasons;
+    private int selectedSeasonId;
+    private List<ApparelRow> reportRows = new();
+    private List<SizeRow> sizeBreakdowns = new();
+
+    private record ApparelRow(string ItemName, decimal Price, bool IsRequired, int SelectedCount, decimal TotalRevenue);
+    private record SizeRow(string SizeType, string Size, int Count);
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        reportRows.Clear();
+        sizeBreakdowns.Clear();
+        if (selectedSeasonId <= 0) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var apparelItems = await db.ApparelItems
+            .Where(a => a.SeasonId == selectedSeasonId)
+            .ToListAsync();
+
+        var selections = await db.GymnastApparelSelections
+            .Where(s => s.IsSelected)
+            .ToListAsync();
+
+        foreach (var item in apparelItems)
+        {
+            var count = selections.Count(s => s.ItemName == item.Name);
+            reportRows.Add(new ApparelRow(item.Name, item.Price, item.IsRequired, count, item.Price * count));
+        }
+
+        // Size breakdowns from Gymnast table
+        var gymnasts = await db.Gymnasts.ToListAsync();
+
+        var shirtSizes = gymnasts
+            .Where(g => !string.IsNullOrWhiteSpace(g.ShirtSize))
+            .GroupBy(g => g.ShirtSize!)
+            .Select(g => new SizeRow("Shirt", g.Key, g.Count()))
+            .OrderBy(s => s.Size)
+            .ToList();
+
+        var leotardSizes = gymnasts
+            .Where(g => !string.IsNullOrWhiteSpace(g.LeotardSize))
+            .GroupBy(g => g.LeotardSize!)
+            .Select(g => new SizeRow("Leotard", g.Key, g.Count()))
+            .OrderBy(s => s.Size)
+            .ToList();
+
+        sizeBreakdowns = shirtSizes.Concat(leotardSizes).ToList();
+    }
+
+    private async Task ExportCsv()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Item,Price,Required,Selected Count,Total Revenue");
+        foreach (var row in reportRows)
+        {
+            sb.AppendLine($"{EscapeCsv(row.ItemName)},{row.Price:F2},{row.IsRequired},{row.SelectedCount},{row.TotalRevenue:F2}");
+        }
+        if (sizeBreakdowns.Any())
+        {
+            sb.AppendLine();
+            sb.AppendLine("Size Type,Size,Count");
+            foreach (var s in sizeBreakdowns)
+            {
+                sb.AppendLine($"{s.SizeType},{EscapeCsv(s.Size)},{s.Count}");
+            }
+        }
+        await JS.InvokeVoidAsync("downloadFile", "apparel-report.csv", sb.ToString());
+    }
+
+    private string EscapeCsv(string val)
+    {
+        if (val.Contains(',') || val.Contains('"'))
+            return $"\"{val.Replace("\"", "\"\"")}\"";
+        return val;
+    }
+}
