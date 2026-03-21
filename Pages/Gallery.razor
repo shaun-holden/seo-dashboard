@@ -105,7 +105,7 @@
             <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" @onclick="() => ToggleAlbum(album.Id)">
                 <div>
                     <strong>@album.Name</strong>
-                    <span class="badge bg-secondary ms-2">@album.Photos.Count photo(s)</span>
+                    <span class="badge bg-secondary ms-2">@(albumPhotoCounts.GetValueOrDefault(album.Id, 0)) photo(s)</span>
                     @if (album.TeamLevelId.HasValue)
                     {
                         var levelName = teamLevels.FirstOrDefault(t => t.Id == album.TeamLevelId)?.Name ?? "Level";
@@ -161,10 +161,11 @@
                         </div>
                     </div>
 
-                    @if (album.Photos.Any())
+                    @{ var photos = albumPhotos.GetValueOrDefault(album.Id, new()); }
+                    @if (photos.Any())
                     {
                         <div class="row">
-                            @foreach (var photo in album.Photos.OrderByDescending(p => p.UploadedAt))
+                            @foreach (var photo in photos)
                             {
                                 <div class="col-md-3 mb-3">
                                     <div class="card h-100">
@@ -200,6 +201,7 @@
     private List<TeamLevel> teamLevels = new();
     private List<Meet> meets = new();
     private List<PhotoAlbum> albums = new();
+    private Dictionary<int, int> albumPhotoCounts = new();
     private int selectedSeasonId;
     private int? expandedAlbumId;
     private bool showCreateForm;
@@ -255,15 +257,38 @@
         teamLevels = await db.TeamLevels.Where(t => t.SeasonId == selectedSeasonId).OrderBy(t => t.Name).ToListAsync();
         meets = await db.Meets.Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Name).ToListAsync();
         albums = await db.PhotoAlbums
-            .Include(a => a.Photos)
             .Where(a => a.SeasonId == selectedSeasonId)
             .OrderByDescending(a => a.CreatedAt)
             .ToListAsync();
+        // Load photo counts (lightweight — no image data)
+        var albumIds = albums.Select(a => a.Id).ToList();
+        albumPhotoCounts = await db.Photos
+            .Where(p => albumIds.Contains(p.AlbumId))
+            .GroupBy(p => p.AlbumId)
+            .ToDictionaryAsync(g => g.Key, g => g.Count());
+        albumPhotos.Clear(); // Clear cached photos when switching seasons
     }
 
-    private void ToggleAlbum(int albumId)
+    private Dictionary<int, List<Photo>> albumPhotos = new();
+
+    private async Task ToggleAlbum(int albumId)
     {
-        expandedAlbumId = expandedAlbumId == albumId ? null : albumId;
+        if (expandedAlbumId == albumId)
+        {
+            expandedAlbumId = null;
+        }
+        else
+        {
+            expandedAlbumId = albumId;
+            if (!albumPhotos.ContainsKey(albumId))
+            {
+                using var db = await DbFactory.CreateDbContextAsync();
+                albumPhotos[albumId] = await db.Photos.AsNoTracking()
+                    .Where(p => p.AlbumId == albumId)
+                    .OrderByDescending(p => p.UploadedAt)
+                    .ToListAsync();
+            }
+        }
         uploadFileData = null;
         uploadFileName = null;
         uploadCaption = null;
@@ -315,19 +340,33 @@
         var file = e.File;
         if (file == null) return;
 
-        if (file.Size > 2 * 1024 * 1024)
+        if (file.Size > 10 * 1024 * 1024)
         {
-            errorMessage = "File size exceeds 2MB limit.";
+            errorMessage = "File size exceeds 10MB limit.";
             uploadFileData = null;
             uploadFileName = null;
             return;
         }
 
-        var buffer = new byte[file.Size];
-        await file.OpenReadStream(2 * 1024 * 1024).ReadAsync(buffer);
-        var base64 = Convert.ToBase64String(buffer);
-        uploadFileData = $"data:{file.ContentType};base64,{base64}";
-        uploadFileName = file.Name;
+        try
+        {
+            // Resize to max 1200px wide to reduce storage and improve load times
+            var resized = await file.RequestImageFileAsync("image/jpeg", 1200, 1200);
+            var buffer = new byte[resized.Size];
+            await resized.OpenReadStream(10 * 1024 * 1024).ReadAsync(buffer);
+            var base64 = Convert.ToBase64String(buffer);
+            uploadFileData = $"data:image/jpeg;base64,{base64}";
+            uploadFileName = file.Name;
+        }
+        catch
+        {
+            // Fallback if resize fails (e.g., non-image file)
+            var buffer = new byte[file.Size];
+            await file.OpenReadStream(10 * 1024 * 1024).ReadAsync(buffer);
+            var base64 = Convert.ToBase64String(buffer);
+            uploadFileData = $"data:{file.ContentType};base64,{base64}";
+            uploadFileName = file.Name;
+        }
     }
 
     private async Task UploadPhoto(int albumId)
@@ -353,7 +392,16 @@
             uploadFileData = null;
             uploadFileName = null;
             uploadCaption = null;
+            albumPhotos.Remove(albumId); // Force reload of this album's photos
             await LoadSeasonData();
+            // Reload photos for expanded album
+            if (expandedAlbumId == albumId)
+            {
+                albumPhotos[albumId] = await db.Photos.AsNoTracking()
+                    .Where(p => p.AlbumId == albumId)
+                    .OrderByDescending(p => p.UploadedAt)
+                    .ToListAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -374,7 +422,15 @@
             db.Photos.Remove(photo);
             await db.SaveChangesAsync();
             successMessage = "Photo deleted.";
+            albumPhotos.Remove(albumId);
             await LoadSeasonData();
+            if (expandedAlbumId == albumId)
+            {
+                albumPhotos[albumId] = await db.Photos.AsNoTracking()
+                    .Where(p => p.AlbumId == albumId)
+                    .OrderByDescending(p => p.UploadedAt)
+                    .ToListAsync();
+            }
         }
     }
 }

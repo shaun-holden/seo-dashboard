@@ -1,0 +1,137 @@
+@page "/payment-plan-requests"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+<h3 class="mb-3">Payment Plan Requests</h3>
+
+@if (loading)
+{
+    <p>Loading...</p>
+}
+else if (!requests.Any())
+{
+    <div class="text-center py-5 text-muted">No payment plan requests.</div>
+}
+else
+{
+    <div class="mb-3">
+        <select class="form-select" style="max-width: 200px;" @bind="filterStatus">
+            <option value="">All</option>
+            <option value="Pending">Pending</option>
+            <option value="Approved">Approved</option>
+            <option value="Denied">Denied</option>
+        </select>
+    </div>
+
+    @foreach (var r in filtered)
+    {
+        var athlete = gymnasts.FirstOrDefault(g => g.Id == r.AthleteId);
+        var parentEmail = parentEmails.GetValueOrDefault(r.ParentUserId, "Unknown");
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h5 class="mb-1">@(athlete?.Name ?? "Unknown Athlete")</h5>
+                        <div class="text-muted small">Requested by: @parentEmail</div>
+                        <div class="mt-2">
+                            <strong>@r.RequestedMonths months</strong> starting
+                            <strong>@System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(r.RequestedStartMonth)</strong>
+                        </div>
+                        @if (!string.IsNullOrEmpty(r.Notes))
+                        {
+                            <div class="mt-1 fst-italic text-muted">"@r.Notes"</div>
+                        }
+                        <div class="small text-muted mt-1">Submitted @r.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy h:mm tt")</div>
+                    </div>
+                    <span class="badge @(r.Status == "Approved" ? "bg-success" : r.Status == "Denied" ? "bg-danger" : "bg-warning text-dark") fs-6">@r.Status</span>
+                </div>
+
+                @if (r.Status == "Pending")
+                {
+                    <hr />
+                    <div class="mb-2">
+                        <input type="text" class="form-control form-control-sm" placeholder="Response note (optional)"
+                               @bind="responseNotes[r.Id]" />
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-success btn-sm" @onclick="() => ReviewRequest(r.Id, true)">
+                            Approve & Apply
+                        </button>
+                        <button class="btn btn-danger btn-sm" @onclick="() => ReviewRequest(r.Id, false)">
+                            Deny
+                        </button>
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(r.AdminResponse))
+                {
+                    <div class="mt-2 small"><strong>Response:</strong> @r.AdminResponse</div>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool loading = true;
+    private List<PaymentPlanRequest> requests = new();
+    private List<Gymnast> gymnasts = new();
+    private Dictionary<string, string> parentEmails = new();
+    private Dictionary<int, string> responseNotes = new();
+    private string filterStatus = "";
+
+    private List<PaymentPlanRequest> filtered => string.IsNullOrEmpty(filterStatus)
+        ? requests : requests.Where(r => r.Status == filterStatus).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        loading = false;
+    }
+
+    private async Task LoadData()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        requests = await db.PaymentPlanRequests.AsNoTracking()
+            .OrderByDescending(r => r.Status == "Pending")
+            .ThenByDescending(r => r.CreatedAt)
+            .ToListAsync();
+
+        gymnasts = await db.Gymnasts.AsNoTracking().ToListAsync();
+
+        var userIds = requests.Select(r => r.ParentUserId).Distinct().ToList();
+        parentEmails = await db.Users.AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.Email ?? "Unknown");
+
+        responseNotes = requests.Where(r => r.Status == "Pending")
+            .ToDictionary(r => r.Id, _ => "");
+    }
+
+    private async Task ReviewRequest(int requestId, bool approve)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var request = await db.PaymentPlanRequests.FindAsync(requestId);
+        if (request == null) return;
+
+        request.Status = approve ? "Approved" : "Denied";
+        request.AdminResponse = responseNotes.GetValueOrDefault(requestId, "");
+        request.ReviewedAt = DateTime.UtcNow;
+
+        if (approve)
+        {
+            // Apply the plan to the gymnast
+            var gymnast = await db.Gymnasts.FindAsync(request.AthleteId);
+            if (gymnast != null)
+            {
+                gymnast.PaymentPlanMonths = request.RequestedMonths;
+                gymnast.PaymentStartMonth = request.RequestedStartMonth;
+            }
+        }
+
+        await db.SaveChangesAsync();
+        await LoadData();
+    }
+}

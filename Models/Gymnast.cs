@@ -45,6 +45,19 @@ namespace GymBudgetApp.Models
         [StringLength(200)]
         public string? ParentEmail2 { get; set; }
 
+        // Emergency Contact
+        [StringLength(100)]
+        public string? EmergencyContactName { get; set; }
+
+        [StringLength(50)]
+        public string? EmergencyContactPhone { get; set; }
+
+        [StringLength(100)]
+        public string? EmergencyContactRelationship { get; set; }
+
+        [StringLength(1000)]
+        public string? MedicalNotes { get; set; }
+
         [Required]
         public string UserId { get; set; } = string.Empty;
 

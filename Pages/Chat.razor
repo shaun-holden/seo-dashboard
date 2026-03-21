@@ -83,7 +83,21 @@
                 }
             </div>
             <div class="chat-input-bar">
-                <input class="form-control" placeholder="Type a message..." @bind="newMessage" @onkeydown="HandleKeyDown" />
+                <div class="position-relative flex-grow-1">
+                    <input class="form-control" placeholder="Type a message..." @bind="newMessage" @bind:event="oninput" @onkeydown="HandleKeyDown" />
+                </div>
+                <div class="position-relative">
+                    <button class="btn btn-outline-secondary" @onclick="() => showEmoji = !showEmoji" title="Emoji">😀</button>
+                    @if (showEmoji)
+                    {
+                        <div class="emoji-picker">
+                            @foreach (var emoji in emojis)
+                            {
+                                <span class="emoji-item" @onclick="() => AddEmoji(emoji)">@emoji</span>
+                            }
+                        </div>
+                    }
+                </div>
                 <button class="btn btn-primary" @onclick="SendMessage" disabled="@string.IsNullOrWhiteSpace(newMessage)">Send</button>
             </div>
         }
@@ -218,6 +232,21 @@
         {
             await SendMessage();
         }
+    }
+
+    private bool showEmoji;
+    private static readonly string[] emojis = new[]
+    {
+        "😀", "😂", "🥰", "😍", "😊", "🤗", "😎", "🤔", "😮", "😢",
+        "👍", "👎", "👏", "🙌", "💪", "🎉", "🔥", "❤️", "💛", "💙",
+        "⭐", "✅", "❌", "⚠️", "📢", "💬", "🏆", "🤸", "🤸‍♀️", "🎯",
+        "📅", "⏰", "🙏", "😤", "💯", "🎊", "👋", "✨", "💐", "🥇"
+    };
+
+    private void AddEmoji(string emoji)
+    {
+        newMessage += emoji;
+        showEmoji = false;
     }
 
     private void BackToRooms()

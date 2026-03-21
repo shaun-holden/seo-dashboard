@@ -71,6 +71,11 @@
                 </NavLink>
             </div>
         }
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="emergency-contacts">
+                <span class="oi oi-phone" aria-hidden="true"></span> Emergency Contacts
+            </NavLink>
+        </div>
         @if (labels.EnableTeamLevels && PermissionService.CanManageRoster)
         {
             <div class="nav-item px-3">
@@ -136,6 +141,15 @@
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="payment-plans">
                     <span class="oi oi-spreadsheet" aria-hidden="true"></span> Payment Plans
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="payment-plan-requests">
+                    <span class="oi oi-inbox" aria-hidden="true"></span> Plan Requests
+                    @if (pendingPlanRequests > 0)
+                    {
+                        <span class="badge bg-danger ms-1">@pendingPlanRequests</span>
+                    }
                 </NavLink>
             </div>
         }
@@ -209,6 +223,7 @@
     private int unreadMessageCount;
     private int unreadChatCount;
     private int newAnnouncementCount;
+    private int pendingPlanRequests;
 
     protected override async Task OnInitializedAsync()
     {
@@ -243,6 +258,8 @@
                     .ToListAsync();
                 newAnnouncementCount = announcementIds.Count(id => !readIds.Contains(id));
             }
+
+            pendingPlanRequests = await Db.PaymentPlanRequests.CountAsync(r => r.Status == "Pending");
         }
     }
 

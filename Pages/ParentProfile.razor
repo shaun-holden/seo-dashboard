@@ -17,6 +17,7 @@
 }
 else
 {
+    <!-- Parent Profile -->
     <div class="card mb-3" style="max-width: 500px;">
         <div class="card-body">
             <div class="text-center mb-4">
@@ -59,8 +60,136 @@ else
         </div>
     </div>
 
+    <!-- Child Profiles -->
+    @if (gymnasts.Any())
+    {
+        <h4 class="mt-4 mb-3">My Athletes</h4>
+        @foreach (var g in gymnasts)
+        {
+            <div class="card mb-3" style="max-width: 500px;">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>@g.Name</strong>
+                        @if (!string.IsNullOrEmpty(g.Level))
+                        {
+                            <span class="badge bg-primary ms-2">@g.Level</span>
+                        }
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary" @onclick="() => ToggleChild(g.Id)">
+                        @(expandedChildId == g.Id ? "Close" : "Edit Info")
+                    </button>
+                </div>
+                @if (expandedChildId == g.Id)
+                {
+                    <div class="card-body">
+                        <h6 class="text-muted mb-3">Emergency Contact</h6>
+                        <div class="mb-2">
+                            <label class="form-label">Contact Name</label>
+                            <input type="text" class="form-control" value="@g.EmergencyContactName"
+                                   @onchange="(e) => g.EmergencyContactName = e.Value?.ToString()" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Contact Phone</label>
+                            <input type="tel" class="form-control" value="@g.EmergencyContactPhone"
+                                   @onchange="(e) => g.EmergencyContactPhone = e.Value?.ToString()" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Relationship</label>
+                            <input type="text" class="form-control" placeholder="e.g. Grandmother, Uncle"
+                                   value="@g.EmergencyContactRelationship"
+                                   @onchange="(e) => g.EmergencyContactRelationship = e.Value?.ToString()" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Medical Notes</label>
+                            <textarea class="form-control" rows="2" placeholder="Allergies, conditions, medications..."
+                                      @onchange="(e) => g.MedicalNotes = e.Value?.ToString()">@g.MedicalNotes</textarea>
+                        </div>
+                        <button class="btn btn-success w-100" @onclick="() => SaveChildInfo(g)">Save</button>
+                        @if (childSaveMessage == g.Id)
+                        {
+                            <div class="alert alert-success mt-2 mb-0 small">Saved!</div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    }
+
+    <!-- Payment Plan Request -->
+    <h4 class="mt-4 mb-3">Request Alternate Payment Plan</h4>
+    <div class="card mb-3" style="max-width: 500px;">
+        <div class="card-body">
+            @if (gymnasts.Any())
+            {
+                <div class="mb-2">
+                    <label class="form-label">Athlete</label>
+                    <select class="form-select" @bind="requestAthleteId">
+                        <option value="0">-- Select Athlete --</option>
+                        @foreach (var g in gymnasts)
+                        {
+                            <option value="@g.Id">@g.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <label class="form-label">Number of Months</label>
+                        <input type="number" class="form-control" min="1" max="12" @bind="requestMonths" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Start Month</label>
+                        <select class="form-select" @bind="requestStartMonth">
+                            @for (int m = 1; m <= 12; m++)
+                            {
+                                <option value="@m">@System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(m)</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Notes <span class="text-muted">(optional)</span></label>
+                    <textarea class="form-control" rows="2" placeholder="Explain your request..."
+                              @bind="requestNotes"></textarea>
+                </div>
+                <button class="btn btn-primary w-100" @onclick="SubmitPlanRequest"
+                        disabled="@(requestAthleteId == 0 || requestMonths < 1)">
+                    Submit Request
+                </button>
+                @if (requestMessage != null)
+                {
+                    <div class="alert alert-success mt-2 mb-0 small">@requestMessage</div>
+                }
+            }
+            else
+            {
+                <p class="text-muted mb-0">Link an athlete first to request a payment plan.</p>
+            }
+
+            @if (existingRequests.Any())
+            {
+                <hr />
+                <h6>My Requests</h6>
+                @foreach (var r in existingRequests)
+                {
+                    var athleteName = gymnasts.FirstOrDefault(g => g.Id == r.AthleteId)?.Name ?? "Unknown";
+                    <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2">
+                        <div>
+                            <strong>@athleteName</strong> — @r.RequestedMonths months
+                            <div class="small text-muted">@r.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy")</div>
+                        </div>
+                        <span class="badge @(r.Status == "Approved" ? "bg-success" : r.Status == "Denied" ? "bg-danger" : "bg-warning text-dark")">@r.Status</span>
+                    </div>
+                    @if (!string.IsNullOrEmpty(r.AdminResponse))
+                    {
+                        <div class="small text-muted ms-2 mb-2">Response: @r.AdminResponse</div>
+                    }
+                }
+            }
+        </div>
+    </div>
+
     <!-- Push Notifications -->
-    <div class="card" style="max-width: 500px;">
+    <div class="card mb-4" style="max-width: 500px;">
         <div class="card-body">
             <h5 class="mb-3">Push Notifications</h5>
             @if (!pushSupported)
@@ -103,6 +232,19 @@ else
     private string? message;
     private bool isError;
 
+    private List<Gymnast> gymnasts = new();
+    private int? expandedChildId;
+    private int? childSaveMessage;
+
+    // Payment plan request
+    private int requestAthleteId;
+    private int requestMonths = 6;
+    private int requestStartMonth = DateTime.Now.Month;
+    private string requestNotes = "";
+    private string? requestMessage;
+    private List<PaymentPlanRequest> existingRequests = new();
+
+    // Push notification state
     private bool pushSupported;
     private string pushPermission = "default";
     private bool pushSubscribed;
@@ -125,6 +267,19 @@ else
                 displayName = profile.DisplayName;
                 profilePicture = profile.ProfilePictureData;
             }
+
+            // Load linked athletes
+            var parentLinks = await db.ParentLinks.AsNoTracking()
+                .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
+                .ToListAsync();
+            var athleteIds = parentLinks.Select(l => l.AthleteId).ToList();
+            gymnasts = await db.Gymnasts.Where(g => athleteIds.Contains(g.Id)).ToListAsync();
+
+            // Load existing payment plan requests
+            existingRequests = await db.PaymentPlanRequests.AsNoTracking()
+                .Where(r => r.ParentUserId == userId)
+                .OrderByDescending(r => r.CreatedAt)
+                .ToListAsync();
         }
         loading = false;
     }
@@ -143,6 +298,52 @@ else
         }
     }
 
+    private void ToggleChild(int id)
+    {
+        expandedChildId = expandedChildId == id ? null : id;
+        childSaveMessage = null;
+    }
+
+    private async Task SaveChildInfo(Gymnast g)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var dbGymnast = await db.Gymnasts.FindAsync(g.Id);
+        if (dbGymnast != null)
+        {
+            dbGymnast.EmergencyContactName = g.EmergencyContactName;
+            dbGymnast.EmergencyContactPhone = g.EmergencyContactPhone;
+            dbGymnast.EmergencyContactRelationship = g.EmergencyContactRelationship;
+            dbGymnast.MedicalNotes = g.MedicalNotes;
+            await db.SaveChangesAsync();
+            childSaveMessage = g.Id;
+        }
+    }
+
+    private async Task SubmitPlanRequest()
+    {
+        if (userId == null || requestAthleteId == 0 || requestMonths < 1) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        db.PaymentPlanRequests.Add(new PaymentPlanRequest
+        {
+            ParentUserId = userId,
+            AthleteId = requestAthleteId,
+            RequestedMonths = requestMonths,
+            RequestedStartMonth = requestStartMonth,
+            Notes = string.IsNullOrWhiteSpace(requestNotes) ? null : requestNotes.Trim()
+        });
+        await db.SaveChangesAsync();
+
+        requestMessage = "Request submitted! You'll be notified when it's reviewed.";
+        requestAthleteId = 0;
+        requestNotes = "";
+
+        existingRequests = await db.PaymentPlanRequests.AsNoTracking()
+            .Where(r => r.ParentUserId == userId)
+            .OrderByDescending(r => r.CreatedAt)
+            .ToListAsync();
+    }
+
     private async Task TogglePush()
     {
         pushMessage = null;
@@ -159,7 +360,6 @@ else
         {
             if (string.IsNullOrEmpty(vapidKey))
             {
-                // Fetch VAPID key from server
                 vapidKey = await JS.InvokeAsync<string>("eval",
                     "fetch('/api/push/vapid-key').then(r=>r.json()).then(d=>d.key)");
             }

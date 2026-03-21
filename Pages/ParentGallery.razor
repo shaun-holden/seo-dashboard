@@ -26,7 +26,7 @@ else
             <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" @onclick="() => ToggleAlbum(album.Id)">
                 <div>
                     <strong>@album.Name</strong>
-                    <span class="badge bg-secondary ms-2">@album.Photos.Count photo(s)</span>
+                    <span class="badge bg-secondary ms-2">@(albumPhotoCounts.GetValueOrDefault(album.Id, 0)) photo(s)</span>
                     @if (album.TeamLevelId.HasValue)
                     {
                         var levelName = levelNames.GetValueOrDefault(album.TeamLevelId.Value, "Level");
@@ -52,10 +52,11 @@ else
                         <p class="text-muted">@album.Description</p>
                     }
 
-                    @if (album.Photos.Any())
+                    @{ var photos = albumPhotos.GetValueOrDefault(album.Id, new()); }
+                    @if (photos.Any())
                     {
                         <div class="row">
-                            @foreach (var photo in album.Photos.OrderByDescending(p => p.UploadedAt))
+                            @foreach (var photo in photos)
                             {
                                 <div class="col-md-4 mb-3">
                                     <div class="card h-100">
@@ -85,6 +86,8 @@ else
     private List<PhotoAlbum> albums = new();
     private Dictionary<int, string> levelNames = new();
     private Dictionary<int, string> meetNames = new();
+    private Dictionary<int, int> albumPhotoCounts = new();
+    private Dictionary<int, List<Photo>> albumPhotos = new();
     private int? expandedAlbumId;
     private bool loaded;
 
@@ -96,26 +99,26 @@ else
 
         using var db = await DbFactory.CreateDbContextAsync();
 
-        // Find parent's linked athletes
-        var parentLinks = await db.ParentLinks
-            .Include(pl => pl.Athlete)
-                .ThenInclude(a => a.TeamLevel)
-            .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
+        // Find published seasons
+        var seasonIds = await db.Seasons.AsNoTracking()
+            .Where(s => s.IsPublished)
+            .Select(s => s.Id)
             .ToListAsync();
 
-        if (!parentLinks.Any()) { loaded = true; return; }
+        if (!seasonIds.Any()) { loaded = true; return; }
 
-        var seasonIds = parentLinks.Select(pl => pl.Athlete.TeamLevel.SeasonId).Distinct().ToList();
-        var teamLevelIds = parentLinks.Select(pl => pl.Athlete.TeamLevelId).Distinct().ToList();
-
-        // Get albums that are either for "All Levels" (TeamLevelId == null) within the athlete's seasons,
-        // or specifically for the athlete's team level
+        // Get albums without loading photos
         albums = await db.PhotoAlbums
-            .Include(a => a.Photos)
-            .Where(a => seasonIds.Contains(a.SeasonId)
-                && (a.TeamLevelId == null || teamLevelIds.Contains(a.TeamLevelId.Value)))
+            .Where(a => seasonIds.Contains(a.SeasonId))
             .OrderByDescending(a => a.CreatedAt)
             .ToListAsync();
+
+        // Load photo counts
+        var albumIds = albums.Select(a => a.Id).ToList();
+        albumPhotoCounts = await db.Photos
+            .Where(p => albumIds.Contains(p.AlbumId))
+            .GroupBy(p => p.AlbumId)
+            .ToDictionaryAsync(g => g.Key, g => g.Count());
 
         // Load level and meet names for badges
         var allLevelIds = albums.Where(a => a.TeamLevelId.HasValue).Select(a => a.TeamLevelId!.Value).Distinct().ToList();
@@ -138,8 +141,23 @@ else
         loaded = true;
     }
 
-    private void ToggleAlbum(int albumId)
+    private async Task ToggleAlbum(int albumId)
     {
-        expandedAlbumId = expandedAlbumId == albumId ? null : albumId;
+        if (expandedAlbumId == albumId)
+        {
+            expandedAlbumId = null;
+        }
+        else
+        {
+            expandedAlbumId = albumId;
+            if (!albumPhotos.ContainsKey(albumId))
+            {
+                using var db = await DbFactory.CreateDbContextAsync();
+                albumPhotos[albumId] = await db.Photos.AsNoTracking()
+                    .Where(p => p.AlbumId == albumId)
+                    .OrderByDescending(p => p.UploadedAt)
+                    .ToListAsync();
+            }
+        }
     }
 }

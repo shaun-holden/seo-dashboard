@@ -81,6 +81,7 @@ namespace GymBudgetApp
         public DbSet<BudgetCalculatorEntry> BudgetCalculatorEntries { get; set; }
         public DbSet<UserProfile> UserProfiles { get; set; }
         public DbSet<PushSubscriptionRecord> PushSubscriptions { get; set; }
+        public DbSet<PaymentPlanRequest> PaymentPlanRequests { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {

@@ -12,6 +12,14 @@
 @inject NavigationManager Navigation
 @inject GymBudgetApp.Services.NotificationService NotificationService
 
+@if (!loading && !hasProfile)
+{
+    <div class="alert alert-info d-flex justify-content-between align-items-center mb-3">
+        <span>Set up your profile so coaches can see your name in chat!</span>
+        <a href="parent/profile" class="btn btn-sm btn-primary">Set Up Profile</a>
+    </div>
+}
+
 @if (!loading && announcements.Any())
 {
     <div class="mb-4">
@@ -725,6 +733,7 @@ else
 
 @code {
     private bool loading = true;
+    private bool hasProfile;
     private string? userId;
     private List<Athlete> athletes = new();
     private List<TeamLevel> teamLevels = new();
@@ -806,6 +815,12 @@ else
         var stripeKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY")
             ?? Configuration["Stripe:SecretKey"] ?? "";
         stripeEnabled = !string.IsNullOrEmpty(stripeKey);
+
+        // Check if profile exists
+        using (var dbCheck = await DbFactory.CreateDbContextAsync())
+        {
+            hasProfile = await dbCheck.UserProfiles.AnyAsync(p => p.UserId == userId);
+        }
 
         await LoadData();
 

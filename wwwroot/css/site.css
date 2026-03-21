@@ -250,9 +250,12 @@ a, .btn-link {
 .chat-bubble.other { align-self: flex-start; background: #e9ecef; color: #212529; border-bottom-left-radius: 4px; }
 .chat-bubble .sender { font-size: 0.75rem; font-weight: bold; margin-bottom: 2px; }
 .chat-bubble .time { font-size: 0.65rem; opacity: 0.7; margin-top: 2px; }
-.chat-input-bar { padding: 12px 16px; border-top: 1px solid #dee2e6; background: #fff; display: flex; gap: 8px; }
+.chat-input-bar { padding: 12px 16px; border-top: 1px solid #dee2e6; background: #fff; display: flex; gap: 8px; align-items: center; }
 .chat-input-bar input { flex: 1; border-radius: 20px; padding: 8px 16px; }
-.chat-input-bar button { border-radius: 20px; min-width: 80px; }
+.chat-input-bar button { border-radius: 20px; min-width: 60px; }
+.emoji-picker { position: absolute; bottom: 50px; right: 0; background: #fff; border: 1px solid #dee2e6; border-radius: 12px; padding: 10px; display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; width: 320px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; }
+.emoji-item { font-size: 1.4rem; cursor: pointer; text-align: center; padding: 4px; border-radius: 6px; }
+.emoji-item:hover { background: #e9ecef; }
 
 @media (max-width: 768px) {
     .chat-rooms { width: 100%; }
