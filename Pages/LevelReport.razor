@@ -8,24 +8,14 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject IJSRuntime JS
 
-<h3 class="mb-3">Level Summary Report</h3>
+<div class="d-flex align-items-center gap-2 mb-2">
+    <a href="/reports" class="btn btn-sm btn-outline-secondary">
+        <span class="oi oi-arrow-left"></span> Back
+    </a>
+    <h3 class="mb-0">Level Summary Report</h3>
+</div>
 
 <div class="row g-2 align-items-center mb-3">
-    <div class="col-auto">
-        <label class="col-form-label fw-semibold">Season</label>
-    </div>
-    <div class="col-auto">
-        <select class="form-select" @onchange="OnSeasonChanged">
-            <option value="">-- Select Season --</option>
-            @if (seasons != null)
-            {
-                @foreach (var s in seasons)
-                {
-                    <option value="@s.Id">@s.Name</option>
-                }
-            }
-        </select>
-    </div>
     @if (reportRows.Any())
     {
         <div class="col-auto ms-auto">
@@ -36,135 +26,140 @@
     }
 </div>
 
-@if (selectedSeasonId > 0)
+@if (loading)
 {
-    @if (!reportRows.Any())
-    {
-        <p class="text-muted">No levels found for this season.</p>
-    }
-    else
-    {
-        <div class="card mb-4">
-            <div class="card-body p-0">
-                <table class="table table-striped mb-0">
-                    <thead>
+    <p class="text-muted">Loading...</p>
+}
+else if (!reportRows.Any())
+{
+    <p class="text-muted">No gymnast data found.</p>
+}
+else
+{
+    <div class="card mb-4">
+        <div class="card-body p-0">
+            <table class="table table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Level</th>
+                        <th class="text-end">Gymnast Count</th>
+                        <th class="text-end">Cost Per Gymnast</th>
+                        <th class="text-end">Total Fees</th>
+                        <th class="text-end">Total Paid</th>
+                        <th class="text-end">Collection Rate</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in reportRows)
+                    {
                         <tr>
-                            <th>Level</th>
-                            <th class="text-end">Gymnast Count</th>
-                            <th class="text-end">Cost Per Gymnast</th>
-                            <th class="text-end">Total Fees</th>
-                            <th class="text-end">Total Paid</th>
-                            <th class="text-end">Collection Rate</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var row in reportRows)
-                        {
-                            <tr>
-                                <td>@row.LevelName</td>
-                                <td class="text-end">@row.GymnastCount</td>
-                                <td class="text-end">$@row.CostPerGymnast.ToString("N2")</td>
-                                <td class="text-end">$@row.TotalFees.ToString("N2")</td>
-                                <td class="text-end">$@row.TotalPaid.ToString("N2")</td>
-                                <td class="text-end">
-                                    @if (row.TotalFees > 0)
-                                    {
-                                        var rate = row.TotalPaid / row.TotalFees * 100;
-                                        <span class="@(rate >= 80 ? "text-success" : rate >= 50 ? "text-warning" : "text-danger")">@rate.ToString("F1")%</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted">--</span>
-                                    }
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                    <tfoot>
-                        <tr class="fw-bold">
-                            <td>Total</td>
-                            <td class="text-end">@reportRows.Sum(r => r.GymnastCount)</td>
-                            <td></td>
-                            <td class="text-end">$@reportRows.Sum(r => r.TotalFees).ToString("N2")</td>
-                            <td class="text-end">$@reportRows.Sum(r => r.TotalPaid).ToString("N2")</td>
+                            <td>@row.LevelName</td>
+                            <td class="text-end">@row.GymnastCount</td>
+                            <td class="text-end">$@row.CostPerGymnast.ToString("N2")</td>
+                            <td class="text-end">$@row.TotalFees.ToString("N2")</td>
+                            <td class="text-end">$@row.TotalPaid.ToString("N2")</td>
                             <td class="text-end">
-                                @if (reportRows.Sum(r => r.TotalFees) > 0)
+                                @if (row.TotalFees > 0)
                                 {
-                                    var totalRate = reportRows.Sum(r => r.TotalPaid) / reportRows.Sum(r => r.TotalFees) * 100;
-                                    <span>@totalRate.ToString("F1")%</span>
+                                    var rate = row.TotalPaid / row.TotalFees * 100;
+                                    <span class="@(rate >= 80 ? "text-success" : rate >= 50 ? "text-warning" : "text-danger")">@rate.ToString("F1")%</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">--</span>
                                 }
                             </td>
                         </tr>
-                    </tfoot>
-                </table>
-            </div>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold">
+                        <td>Total</td>
+                        <td class="text-end">@reportRows.Sum(r => r.GymnastCount)</td>
+                        <td></td>
+                        <td class="text-end">$@reportRows.Sum(r => r.TotalFees).ToString("N2")</td>
+                        <td class="text-end">$@reportRows.Sum(r => r.TotalPaid).ToString("N2")</td>
+                        <td class="text-end">
+                            @if (reportRows.Sum(r => r.TotalFees) > 0)
+                            {
+                                var totalRate = reportRows.Sum(r => r.TotalPaid) / reportRows.Sum(r => r.TotalFees) * 100;
+                                <span>@totalRate.ToString("F1")%</span>
+                            }
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
         </div>
-    }
+    </div>
 }
 
 @code {
-    private List<Season>? seasons;
-    private int selectedSeasonId;
+    private bool loading = true;
     private List<LevelRow> reportRows = new();
 
     private record LevelRow(string LevelName, int GymnastCount, decimal CostPerGymnast, decimal TotalFees, decimal TotalPaid);
 
     protected override async Task OnInitializedAsync()
     {
-        using var db = await DbFactory.CreateDbContextAsync();
-        seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
-    }
-
-    private async Task OnSeasonChanged(ChangeEventArgs e)
-    {
-        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         await LoadData();
     }
 
     private async Task LoadData()
     {
+        loading = true;
         reportRows.Clear();
-        if (selectedSeasonId <= 0) return;
 
         using var db = await DbFactory.CreateDbContextAsync();
 
-        var season = await db.Seasons.FindAsync(selectedSeasonId);
-        if (season == null) return;
+        // Get active published season for cost-per-gymnast calculation
+        var season = await db.Seasons
+            .Where(s => s.IsActive)
+            .OrderByDescending(s => s.Name)
+            .FirstOrDefaultAsync();
 
-        var teamLevels = await db.TeamLevels
-            .Where(t => t.SeasonId == selectedSeasonId)
-            .ToListAsync();
+        decimal costPerGymnast = 0;
+        if (season != null)
+        {
+            var calcTotal = await db.BudgetCalculatorEntries
+                .Where(e => e.SeasonId == season.Id)
+                .SumAsync(e => e.CalculatedTotal);
+            costPerGymnast = season.AthleteCount > 0 ? calcTotal / season.AthleteCount : 0;
+        }
 
-        // Calculate cost per gymnast from budget calculator
-        var calcTotal = await db.BudgetCalculatorEntries
-            .Where(e => e.SeasonId == selectedSeasonId)
-            .SumAsync(e => e.CalculatedTotal);
-        var costPerGymnast = season.AthleteCount > 0 ? calcTotal / season.AthleteCount : 0;
+        // Load all gymnasts
+        var gymnasts = await db.Gymnasts.ToListAsync();
 
-        var athletes = await db.Athletes
-            .Where(a => a.TeamLevel.SeasonId == selectedSeasonId)
-            .ToListAsync();
-
+        // Load athletes for payment matching (payments reference AthleteId)
+        var athletes = await db.Athletes.ToListAsync();
         var athleteIds = athletes.Select(a => a.Id).ToList();
         var payments = await db.Payments
-            .Where(p => athleteIds.Contains(p.AthleteId) && p.Status == PaymentStatus.Paid)
+            .Where(p => athleteIds.Contains(p.AthleteId) && p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment)
             .ToListAsync();
 
-        var rows = new List<LevelRow>();
-        foreach (var level in teamLevels)
-        {
-            var levelAthletes = athletes.Where(a => a.TeamLevelId == level.Id).ToList();
-            var athleteCount = levelAthletes.Count > 0 ? levelAthletes.Count : level.AthleteCount;
-            var totalFees = costPerGymnast * athleteCount;
-            var levelAthleteIds = levelAthletes.Select(a => a.Id).ToHashSet();
-            var totalPaid = payments
-                .Where(p => levelAthleteIds.Contains(p.AthleteId) && p.Type == PaymentType.Payment)
-                .Sum(p => p.Amount);
+        // Build a name-to-paid lookup from athletes/payments
+        var athletePaidMap = athletes.ToDictionary(
+            a => a.Name,
+            a => payments.Where(p => p.AthleteId == a.Id).Sum(p => p.Amount),
+            StringComparer.OrdinalIgnoreCase
+        );
 
-            rows.Add(new LevelRow(level.Name, athleteCount, costPerGymnast, totalFees, totalPaid));
+        // Group gymnasts by Level
+        var groups = gymnasts
+            .GroupBy(g => string.IsNullOrWhiteSpace(g.Level) ? "Unassigned" : g.Level)
+            .OrderBy(g => g.Key);
+
+        var rows = new List<LevelRow>();
+        foreach (var group in groups)
+        {
+            var count = group.Count();
+            var totalFees = costPerGymnast * count;
+            var totalPaid = group.Sum(g => athletePaidMap.GetValueOrDefault(g.Name, 0));
+
+            rows.Add(new LevelRow(group.Key, count, costPerGymnast, totalFees, totalPaid));
         }
 
         reportRows = rows;
+        loading = false;
     }
 
     private async Task ExportCsv()

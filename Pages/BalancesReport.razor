@@ -8,35 +8,25 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject IJSRuntime JS
 
-<h3 class="mb-3">Outstanding Balances Report</h3>
+<div class="d-flex align-items-center gap-2 mb-2">
+    <a href="/reports" class="btn btn-sm btn-outline-secondary">
+        <span class="oi oi-arrow-left"></span> Back
+    </a>
+    <h3 class="mb-0">Outstanding Balances Report</h3>
+</div>
 
 <div class="row g-2 align-items-center mb-3">
-    <div class="col-auto">
-        <label class="col-form-label fw-semibold">Season</label>
-    </div>
-    <div class="col-auto">
-        <select class="form-select" @onchange="OnSeasonChanged">
-            <option value="">-- Select Season --</option>
-            @if (seasons != null)
-            {
-                @foreach (var s in seasons)
-                {
-                    <option value="@s.Id">@s.Name</option>
-                }
-            }
-        </select>
-    </div>
-    @if (teamLevels.Any())
+    @if (levels.Any())
     {
         <div class="col-auto">
             <label class="col-form-label fw-semibold">Level</label>
         </div>
         <div class="col-auto">
             <select class="form-select" @onchange="OnLevelChanged">
-                <option value="0">All Levels</option>
-                @foreach (var level in teamLevels)
+                <option value="">All Levels</option>
+                @foreach (var level in levels)
                 {
-                    <option value="@level.Id">@level.Name</option>
+                    <option value="@level">@level</option>
                 }
             </select>
         </div>
@@ -51,7 +41,11 @@
     }
 </div>
 
-@if (selectedSeasonId > 0)
+@if (loading)
+{
+    <p class="text-muted">Loading...</p>
+}
+else
 {
     <div class="row mb-4">
         <div class="col-md-3">
@@ -89,7 +83,7 @@
 
     @if (!filteredRows.Any())
     {
-        <p class="text-muted">No gymnast data found for this season.</p>
+        <p class="text-muted">No gymnast data found.</p>
     }
     else
     {
@@ -128,95 +122,107 @@
 }
 
 @code {
-    private List<Season>? seasons;
-    private int selectedSeasonId;
-    private int filterLevelId;
-    private List<TeamLevel> teamLevels = new();
+    private bool loading = true;
+    private string filterLevel = "";
+    private List<string> levels = new();
     private List<BalanceRow> balanceRows = new();
 
     private List<BalanceRow> filteredRows =>
-        filterLevelId > 0
-            ? balanceRows.Where(r => r.TeamLevelId == filterLevelId).ToList()
+        !string.IsNullOrEmpty(filterLevel)
+            ? balanceRows.Where(r => r.Level == filterLevel).ToList()
             : balanceRows;
 
-    private record BalanceRow(string Name, string Level, int TeamLevelId, decimal TotalFees, decimal Paid, decimal Credits, decimal Balance, string ParentEmail);
+    private record BalanceRow(string Name, string Level, decimal TotalFees, decimal Paid, decimal Credits, decimal Balance, string ParentEmail);
 
     protected override async Task OnInitializedAsync()
     {
-        using var db = await DbFactory.CreateDbContextAsync();
-        seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
-    }
-
-    private async Task OnSeasonChanged(ChangeEventArgs e)
-    {
-        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
-        filterLevelId = 0;
         await LoadData();
     }
 
     private void OnLevelChanged(ChangeEventArgs e)
     {
-        filterLevelId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        filterLevel = e.Value?.ToString() ?? "";
     }
 
     private async Task LoadData()
     {
+        loading = true;
         balanceRows.Clear();
-        teamLevels.Clear();
-        if (selectedSeasonId <= 0) return;
+        levels.Clear();
 
         using var db = await DbFactory.CreateDbContextAsync();
 
-        var season = await db.Seasons.FindAsync(selectedSeasonId);
-        if (season == null) return;
+        // Get active published season for cost-per-gymnast calculation
+        var season = await db.Seasons
+            .Where(s => s.IsActive)
+            .OrderByDescending(s => s.Name)
+            .FirstOrDefaultAsync();
 
-        teamLevels = await db.TeamLevels
-            .Where(t => t.SeasonId == selectedSeasonId)
-            .ToListAsync();
+        decimal costPerGymnast = 0;
+        if (season != null)
+        {
+            var calcTotal = await db.BudgetCalculatorEntries
+                .Where(e => e.SeasonId == season.Id)
+                .SumAsync(e => e.CalculatedTotal);
+            costPerGymnast = season.AthleteCount > 0 ? calcTotal / season.AthleteCount : 0;
+        }
 
-        // Calculate cost per gymnast from budget calculator
-        var calcTotal = await db.BudgetCalculatorEntries
-            .Where(e => e.SeasonId == selectedSeasonId)
-            .SumAsync(e => e.CalculatedTotal);
-        var costPerGymnast = season.AthleteCount > 0 ? calcTotal / season.AthleteCount : 0;
+        // Load all gymnasts
+        var gymnasts = await db.Gymnasts.ToListAsync();
 
-        var athletes = await db.Athletes
-            .Include(a => a.TeamLevel)
-            .Where(a => a.TeamLevel.SeasonId == selectedSeasonId)
-            .ToListAsync();
-
+        // Load athletes for payment matching (payments reference AthleteId)
+        var athletes = await db.Athletes.ToListAsync();
         var athleteIds = athletes.Select(a => a.Id).ToList();
         var payments = await db.Payments
             .Where(p => athleteIds.Contains(p.AthleteId) && p.Status == PaymentStatus.Paid)
             .ToListAsync();
 
-        // Also pull gymnast data for parent emails
-        var gymnasts = await db.Gymnasts.ToListAsync();
+        // Build name-to-payments lookup
+        var athleteByName = athletes
+            .GroupBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
 
         var rows = new List<BalanceRow>();
-        foreach (var athlete in athletes)
+        foreach (var gymnast in gymnasts)
         {
-            var athletePayments = payments.Where(p => p.AthleteId == athlete.Id).ToList();
-            var paid = athletePayments.Where(p => p.Type == PaymentType.Payment).Sum(p => p.Amount);
-            var credits = athletePayments.Where(p => p.Type == PaymentType.Credit).Sum(p => p.Amount);
+            var level = string.IsNullOrWhiteSpace(gymnast.Level) ? "Unassigned" : gymnast.Level;
+
+            // Find matching athlete(s) for payment lookup
+            decimal paid = 0;
+            decimal credits = 0;
+            if (athleteByName.TryGetValue(gymnast.Name, out var matchedAthletes))
+            {
+                var matchedIds = matchedAthletes.Select(a => a.Id).ToHashSet();
+                paid = payments
+                    .Where(p => matchedIds.Contains(p.AthleteId) && p.Type == PaymentType.Payment)
+                    .Sum(p => p.Amount);
+                credits = payments
+                    .Where(p => matchedIds.Contains(p.AthleteId) && p.Type == PaymentType.Credit)
+                    .Sum(p => p.Amount);
+            }
+
             var totalFees = costPerGymnast;
             var balance = totalFees - paid - credits;
-            var parentEmail = gymnasts.FirstOrDefault(g =>
-                string.Equals(g.Name, athlete.Name, StringComparison.OrdinalIgnoreCase))?.ParentEmail ?? "";
 
             rows.Add(new BalanceRow(
-                athlete.Name,
-                athlete.TeamLevel?.Name ?? "",
-                athlete.TeamLevelId,
+                gymnast.Name,
+                level,
                 totalFees,
                 paid,
                 credits,
                 balance,
-                parentEmail
+                gymnast.ParentEmail ?? ""
             ));
         }
 
         balanceRows = rows.OrderByDescending(r => r.Balance).ToList();
+        levels = balanceRows
+            .Select(r => r.Level)
+            .Distinct()
+            .OrderBy(l => l)
+            .ToList();
+
+        loading = false;
     }
 
     private async Task ExportCsv()
