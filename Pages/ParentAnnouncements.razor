@@ -96,13 +96,12 @@ else
             .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
             .ToListAsync();
         var athleteIds = parentLinks.Select(l => l.AthleteId).ToList();
-        var athletes = await db.Athletes.AsNoTracking().Where(a => athleteIds.Contains(a.Id)).ToListAsync();
-        var levelIds = athletes.Select(a => a.TeamLevelId).Distinct().ToList();
-        teamLevels = await db.TeamLevels.AsNoTracking().Where(t => levelIds.Contains(t.Id)).ToListAsync();
-        var seasonIds = teamLevels.Select(t => t.SeasonId).Distinct().ToList();
+        var gymnasts = await db.Gymnasts.AsNoTracking().Where(g => athleteIds.Contains(g.Id)).ToListAsync();
+        teamLevels = new();
+        var seasonIds = await db.Seasons.AsNoTracking().Where(s => s.IsPublished).Select(s => s.Id).ToListAsync();
 
         announcements = await db.Announcements.AsNoTracking()
-            .Where(a => seasonIds.Contains(a.SeasonId) && (a.TeamLevelId == null || levelIds.Contains(a.TeamLevelId.Value)))
+            .Where(a => seasonIds.Contains(a.SeasonId) && a.TeamLevelId == null)
             .OrderByDescending(a => a.IsPinned)
             .ThenByDescending(a => a.CreatedAt)
             .ToListAsync();
