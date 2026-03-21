@@ -275,9 +275,11 @@ else
         var gymnastIds = gymnasts.Select(g => g.Id).ToList();
         parentLinks = await db.ParentLinks.AsNoTracking().Where(pl => gymnastIds.Contains(pl.AthleteId)).ToListAsync();
 
+        var savedLevels = await db.Levels.AsNoTracking().Select(l => l.Name).ToListAsync();
         allLevels = gymnasts
             .Select(g => g.Level ?? "Unassigned")
-            .Distinct()
+            .Concat(savedLevels)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(l => l)
             .ToList();
 
