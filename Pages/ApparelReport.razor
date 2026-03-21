@@ -90,12 +90,30 @@
                     <tbody>
                         @foreach (var row in reportRows)
                         {
-                            <tr>
-                                <td>@row.ItemName @(row.IsRequired ? "(Required)" : "")</td>
+                            var itemKey = row.ItemName;
+                            var isExpanded = expandedItems.Contains(itemKey);
+                            <tr style="cursor: pointer;" @onclick="() => ToggleItem(itemKey)">
+                                <td>
+                                    <span class="oi @(isExpanded ? "oi-chevron-bottom" : "oi-chevron-right") me-1" style="font-size: 0.7rem;"></span>
+                                    @row.ItemName @(row.IsRequired ? "(Required)" : "")
+                                </td>
                                 <td class="text-end">$@row.Price.ToString("N2")</td>
                                 <td class="text-end">@row.SelectedCount</td>
                                 <td class="text-end">$@row.TotalRevenue.ToString("N2")</td>
                             </tr>
+                            @if (isExpanded && row.GymnastNames.Any())
+                            {
+                                <tr>
+                                    <td colspan="4" class="bg-light ps-4">
+                                        <div class="d-flex flex-wrap gap-2 py-1">
+                                            @foreach (var name in row.GymnastNames)
+                                            {
+                                                <span class="badge bg-secondary">@name</span>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
                         }
                     </tbody>
                     <tfoot>
@@ -146,13 +164,20 @@
     private List<ApparelRow> reportRows = new();
     private List<SizeRow> sizeBreakdowns = new();
 
-    private record ApparelRow(string ItemName, decimal Price, bool IsRequired, int SelectedCount, decimal TotalRevenue);
+    private record ApparelRow(string ItemName, decimal Price, bool IsRequired, int SelectedCount, decimal TotalRevenue, List<string> GymnastNames);
     private record SizeRow(string SizeType, string Size, int Count);
+    private HashSet<string> expandedItems = new();
 
     protected override async Task OnInitializedAsync()
     {
         using var db = await DbFactory.CreateDbContextAsync();
         seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
+    }
+
+    private void ToggleItem(string itemName)
+    {
+        if (!expandedItems.Remove(itemName))
+            expandedItems.Add(itemName);
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)
@@ -177,14 +202,23 @@
             .Where(s => s.IsSelected)
             .ToListAsync();
 
+        var gymnasts = await db.Gymnasts.AsNoTracking().OrderBy(g => g.Name).ToListAsync();
+
         foreach (var item in apparelItems)
         {
-            var count = selections.Count(s => s.ItemName == item.Name);
-            reportRows.Add(new ApparelRow(item.Name, item.Price, item.IsRequired, count, item.Price * count));
+            var selectedGymnastIds = selections.Where(s => s.ItemName == item.Name).Select(s => s.GymnastId).ToHashSet();
+            List<string> names;
+            if (item.IsRequired)
+            {
+                names = gymnasts.Select(g => g.Name).ToList();
+            }
+            else
+            {
+                names = gymnasts.Where(g => selectedGymnastIds.Contains(g.Id)).Select(g => g.Name).ToList();
+            }
+            var count = names.Count;
+            reportRows.Add(new ApparelRow(item.Name, item.Price, item.IsRequired, count, item.Price * count, names));
         }
-
-        // Size breakdowns from Gymnast table
-        var gymnasts = await db.Gymnasts.ToListAsync();
 
         var shirtSizes = gymnasts
             .Where(g => !string.IsNullOrWhiteSpace(g.ShirtSize))
