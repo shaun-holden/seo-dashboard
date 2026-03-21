@@ -346,7 +346,7 @@ else
     {
         using var db = await DbFactory.CreateDbContextAsync();
         var count = 0;
-        foreach (var g in gymnasts)
+        foreach (var g in gymnasts ?? [])
         {
             if (!await db.ParentLinks.AnyAsync(pl => pl.AthleteId == g.Id))
             {
