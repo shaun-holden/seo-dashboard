@@ -143,6 +143,17 @@ else
             </div>
         }
 
+        <div class="d-flex gap-3 mb-3 flex-wrap">
+            <input type="text" class="form-control" style="max-width: 200px;" placeholder="Search name..." @bind="paymentSearchText" @bind:event="oninput" />
+            <select class="form-select" style="max-width: 200px;" @bind="paymentFilterLevel">
+                <option value="">All Levels</option>
+                @foreach (var lvl in gymnasts.Where(g => !string.IsNullOrEmpty(g.Level)).Select(g => g.Level!).Distinct().OrderBy(l => l))
+                {
+                    <option value="@lvl">@lvl</option>
+                }
+            </select>
+        </div>
+
         <div class="card">
             <div class="card-header"><h5 class="mb-0">Athlete Payment Status</h5></div>
             <div class="card-body p-0">
@@ -159,7 +170,7 @@ else
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var athlete in gymnasts)
+                        @foreach (var athlete in filteredGymnasts)
                         {
                             var fees = costPerGymnast;
                             var paid = payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment).Sum(p => p.Amount);
@@ -226,6 +237,21 @@ else
     private List<Payment> payments = new();
     private List<ParentLink> parentLinks = new();
     private decimal costPerGymnast;
+    private string paymentSearchText = "";
+    private string paymentFilterLevel = "";
+
+    private List<Gymnast> filteredGymnasts
+    {
+        get
+        {
+            var list = gymnasts.AsEnumerable();
+            if (!string.IsNullOrWhiteSpace(paymentSearchText))
+                list = list.Where(g => g.Name.Contains(paymentSearchText, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrEmpty(paymentFilterLevel))
+                list = list.Where(g => g.Level == paymentFilterLevel);
+            return list.ToList();
+        }
+    }
     private int selectedSeasonId;
     private string? userId;
     private string? userEmail;

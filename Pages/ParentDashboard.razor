@@ -1057,12 +1057,11 @@ else
         foreach (var a in athletes)
             customAmounts.TryAdd(a.Id, 0);
 
-        // Load announcements for this parent's levels
-        if (levelIds.Any() && seasonIds.Any())
+        // Load announcements for published seasons
+        if (seasonIds.Any())
         {
             announcements = await db.Announcements.AsNoTracking()
-                .Where(a => seasonIds.Contains(a.SeasonId)
-                    && (a.TeamLevelId == null || levelIds.Contains(a.TeamLevelId.Value)))
+                .Where(a => seasonIds.Contains(a.SeasonId) && a.TeamLevelId == null)
                 .OrderByDescending(a => a.IsPinned)
                 .ThenByDescending(a => a.CreatedAt)
                 .ToListAsync();
@@ -1523,8 +1522,8 @@ else
                     },
                 },
                 Mode = "subscription",
-                SuccessUrl = Navigation.BaseUri + "parent?autopay=enabled",
-                CancelUrl = Navigation.BaseUri + "parent?autopay=cancelled",
+                SuccessUrl = "https://gymbudgetapp-production.up.railway.app/parent?autopay=enabled",
+                CancelUrl = "https://gymbudgetapp-production.up.railway.app/parent?autopay=cancelled",
                 SubscriptionData = new Stripe.Checkout.SessionSubscriptionDataOptions
                 {
                     BillingCycleAnchor = GetNext15th(),
@@ -1711,8 +1710,8 @@ else
                     },
                 },
                 Mode = "payment",
-                SuccessUrl = Navigation.BaseUri + "parent?payment=success",
-                CancelUrl = Navigation.BaseUri + "parent?payment=cancelled",
+                SuccessUrl = "https://gymbudgetapp-production.up.railway.app/parent?payment=success",
+                CancelUrl = "https://gymbudgetapp-production.up.railway.app/parent?payment=cancelled",
             };
 
             var service = new Stripe.Checkout.SessionService();
