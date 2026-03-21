@@ -813,14 +813,8 @@ else
 
         await LoadData();
 
-        // Verify pending payments on return from Stripe
-        var uri = new Uri(Navigation.Uri);
-        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
-        if (query["payment"] == "success" && stripeEnabled)
-        {
-            await VerifyPendingPayments();
-            await LoadData();
-        }
+        // Always verify pending payments
+        await VerifyPendingPayments();
 
         loading = false;
     }
