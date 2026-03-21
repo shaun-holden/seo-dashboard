@@ -36,6 +36,9 @@ namespace GymBudgetApp.Models
         [StringLength(200)]
         public string? ParentEmail { get; set; }
 
+        [StringLength(200)]
+        public string? ParentEmail2 { get; set; }
+
         [Required]
         public string UserId { get; set; } = string.Empty;
 

@@ -114,6 +114,10 @@ else
                                         {
                                             <small class="text-muted me-2">@gymnast.ParentEmail</small>
                                         }
+                                        @if (!string.IsNullOrEmpty(gymnast.ParentEmail2))
+                                        {
+                                            <small class="text-muted me-2">| @gymnast.ParentEmail2</small>
+                                        }
                                         @{
                                             var link = parentLinks.FirstOrDefault(pl => pl.AthleteId == gymnast.Id);
                                         }
@@ -159,8 +163,12 @@ else
                                                 <div class="card-body">
                                                     <div class="row">
                                                         <div class="col-md-4 mb-3">
-                                                            <label class="form-label fw-bold">Parent Email</label>
-                                                            <input type="email" class="form-control" @bind="profileParentEmail" placeholder="parent@example.com" />
+                                                            <label class="form-label fw-bold">Parent 1 Email</label>
+                                                            <input type="email" class="form-control" @bind="profileParentEmail" placeholder="parent1@example.com" />
+                                                        </div>
+                                                        <div class="col-md-4 mb-3">
+                                                            <label class="form-label fw-bold">Parent 2 Email</label>
+                                                            <input type="email" class="form-control" @bind="profileParentEmail2" placeholder="parent2@example.com" />
                                                         </div>
                                                         <div class="col-md-4 mb-3">
                                                             <label class="form-label fw-bold">Level</label>
@@ -206,6 +214,7 @@ else
     // Profile state
     private int? profileGymnastId;
     private string? profileParentEmail;
+    private string? profileParentEmail2;
     private string? profileSaveMessage;
 
     private void OnFilterLevelChanged(ChangeEventArgs e) { filterLevel = e.Value?.ToString() ?? ""; }
@@ -385,6 +394,7 @@ else
         if (gymnast != null)
         {
             profileParentEmail = gymnast.ParentEmail;
+            profileParentEmail2 = gymnast.ParentEmail2;
         }
     }
 
@@ -397,6 +407,7 @@ else
         if (entity != null)
         {
             entity.ParentEmail = profileParentEmail;
+            entity.ParentEmail2 = profileParentEmail2;
             entity.ModifiedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
         }
