@@ -294,7 +294,7 @@ else
                     var seasonStartMonth = rawSeasonStart > 0 ? rawSeasonStart : 8;
                     var startMonthNum = gymnastRecord?.PaymentStartMonth ?? seasonStartMonth;
                     var monthlyAmount = Math.Round(balance / planMonths, 2);
-                    var scheduleYear = startMonthNum >= DateTime.Today.Month ? DateTime.Today.Year : DateTime.Today.Year + 1;
+                    var scheduleYear = startMonthNum <= DateTime.Today.Month ? DateTime.Today.Year : DateTime.Today.Year - 1;
                     var scheduleStart = new DateTime(scheduleYear, startMonthNum, 15);
                     var payLink = parentLinksData.FirstOrDefault(pl => pl.AthleteId == athlete.Id);
                     var usesExternalBilling = payLink?.UseExternalBilling == true;
@@ -938,48 +938,72 @@ else
         if (userId == null) return;
         using var db = await DbFactory.CreateDbContextAsync();
 
-        var parentLinks = await db.ParentLinks
+        var parentLinks = await db.ParentLinks.AsNoTracking()
             .Where(pl => pl.ParentUserId == userId && pl.IsClaimed)
             .ToListAsync();
-        var athleteIds = parentLinks.Select(l => l.AthleteId).ToList();
         parentLinkCount = parentLinks.Count;
 
-        // Load from Gymnasts table and map to Athlete objects for compatibility
-        var gymnastRecords = await db.Gymnasts.AsNoTracking()
-            .Where(g => athleteIds.Contains(g.Id))
-            .OrderBy(g => g.Name)
+        var publishedSeasons = await db.Seasons.AsNoTracking()
+            .Where(s => s.IsPublished)
+            .OrderByDescending(s => s.IsActive)
+            .ThenByDescending(s => s.CreatedAt)
             .ToListAsync();
 
-        gymnastCount = gymnastRecords.Count;
+        if (!publishedSeasons.Any() && parentLinks.Any())
+        {
+            budgetNotReady = true;
+            athletes = new();
+            return;
+        }
 
-        // Get team levels to map gymnast Level string to TeamLevelId
+        budgetNotReady = false;
+
         var allTeamLevels = await db.TeamLevels.AsNoTracking().ToListAsync();
-        athletes = gymnastRecords.Select(g => new Athlete
+        var linkedAthleteIds = parentLinks.Select(l => l.AthleteId).ToList();
+        var gymnastRecords = await db.Gymnasts.AsNoTracking()
+            .Where(g => linkedAthleteIds.Contains(g.Id))
+            .OrderBy(g => g.Name)
+            .ToListAsync();
+        var targetSeason = SelectParentSeason(publishedSeasons, allTeamLevels, gymnastRecords);
+        if (targetSeason == null)
+        {
+            athletes = new();
+            parentGymnasts = new();
+            gymnastCount = 0;
+            return;
+        }
+
+        var seasonIds = new List<int> { targetSeason.Id };
+        teamLevels = allTeamLevels.Where(t => t.SeasonId == targetSeason.Id).ToList();
+        var seasonGymnasts = gymnastRecords
+            .Where(g => !string.IsNullOrWhiteSpace(g.Level)
+                && teamLevels.Any(t => string.Equals(t.Name, g.Level, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (!seasonGymnasts.Any() && gymnastRecords.Any())
+        {
+            budgetNotReady = true;
+            athletes = new();
+            parentGymnasts = new();
+            gymnastCount = 0;
+            return;
+        }
+
+        gymnastCount = seasonGymnasts.Count;
+        parentGymnasts = seasonGymnasts;
+        athletes = seasonGymnasts.Select(g => new Athlete
         {
             Id = g.Id,
             Name = g.Name,
-            TeamLevelId = allTeamLevels.FirstOrDefault(t => t.Name == g.Level)?.Id ?? 0
+            TeamLevelId = teamLevels.FirstOrDefault(t => string.Equals(t.Name, g.Level, StringComparison.OrdinalIgnoreCase))?.Id ?? 0
         }).ToList();
 
+        var athleteIds = athletes.Select(a => a.Id).ToList();
         var levelIds = athletes.Select(a => a.TeamLevelId).Where(id => id > 0).Distinct().ToList();
-        teamLevels = allTeamLevels.Where(t => levelIds.Contains(t.Id)).ToList();
-
-        // Check for published seasons
-        var publishedSeasonIds = await db.Seasons.AsNoTracking()
-            .Where(s => s.IsPublished)
-            .Select(s => s.Id)
-            .ToListAsync();
-
-        if (!publishedSeasonIds.Any() && athletes.Any())
-        {
-            budgetNotReady = true;
-            return;
-        }
-        budgetNotReady = false;
 
         // Check for unsigned commitment forms
         var activeCommitmentForm = await db.CommitmentForms.AsNoTracking()
-            .Where(f => publishedSeasonIds.Contains(f.SeasonId) && f.IsActive)
+            .Where(f => f.SeasonId == targetSeason.Id && f.IsActive)
             .OrderByDescending(f => f.CreatedAt)
             .FirstOrDefaultAsync();
 
@@ -996,25 +1020,21 @@ else
 
         // Athletes already loaded from Gymnasts — no need to re-filter by TeamLevel
         payments = await db.Payments.AsNoTracking().Where(p => athleteIds.Contains(p.AthleteId)).ToListAsync();
-        parentLinksData = await db.ParentLinks.AsNoTracking().Where(pl => pl.ParentUserId == userId && pl.IsClaimed).ToListAsync();
-        parentGymnasts = await db.Gymnasts.AsNoTracking().Where(g => athleteIds.Contains(g.Id)).ToListAsync();
+        parentLinksData = parentLinks.Where(pl => athleteIds.Contains(pl.AthleteId)).ToList();
 
-        // Load seasons — use published seasons directly
-        var seasonIds = publishedSeasonIds;
-        seasons = await db.Seasons.AsNoTracking().Where(s => seasonIds.Contains(s.Id)).ToListAsync();
+        // Load data for the selected published season only
+        seasons = new List<Season> { targetSeason };
         sharedFees = await db.SharedFees.AsNoTracking()
-            .Where(f => seasonIds.Contains(f.SeasonId) && f.IsIncludedInBudget)
+            .Where(f => f.SeasonId == targetSeason.Id && f.IsIncludedInBudget)
             .ToListAsync();
         var sharedFeeIds = sharedFees.Select(f => f.Id).ToList();
         sharedFeeAssignments = await db.SharedFeeTeamLevelAssignments.AsNoTracking()
             .Where(a => sharedFeeIds.Contains(a.SharedFeeId))
             .ToListAsync();
-        allSeasonLevels = await db.TeamLevels.AsNoTracking()
-            .Where(t => seasonIds.Contains(t.SeasonId))
-            .ToListAsync();
+        allSeasonLevels = teamLevels.ToList();
 
         // Load meets for upcoming events
-        meets = await db.Meets.AsNoTracking().Where(m => seasonIds.Contains(m.SeasonId)).ToListAsync();
+        meets = await db.Meets.AsNoTracking().Where(m => m.SeasonId == targetSeason.Id).ToListAsync();
         meetLevelAssignments = await db.MeetTeamLevelAssignments.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
 
         // Load RSVP data
@@ -1025,7 +1045,7 @@ else
 
         // Load upcoming practices
         upcomingPractices = await db.Practices.AsNoTracking()
-            .Where(p => seasonIds.Contains(p.SeasonId) && p.Date >= DateTime.Today)
+            .Where(p => p.SeasonId == targetSeason.Id && p.Date >= DateTime.Today)
             .OrderBy(p => p.Date)
             .ToListAsync();
         var practiceIds = upcomingPractices.Select(p => p.Id).ToList();
@@ -1035,15 +1055,14 @@ else
 
         // Load budget calculator cost per gymnast
         var calcTotal = await db.BudgetCalculatorEntries.AsNoTracking()
-            .Where(e => seasonIds.Contains(e.SeasonId))
+            .Where(e => e.SeasonId == targetSeason.Id)
             .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
-        var activeSeason = seasons.FirstOrDefault();
-        var athleteCount = activeSeason?.AthleteCount > 0 ? activeSeason.AthleteCount : athletes.Count;
+        var athleteCount = targetSeason.AthleteCount > 0 ? targetSeason.AthleteCount : athletes.Count;
         parentCostPerGymnast = athleteCount > 0 ? Math.Round(calcTotal / athleteCount, 2) : 0;
 
         // Load apparel items
         parentApparelItems = await db.ApparelItems.AsNoTracking()
-            .Where(a => seasonIds.Contains(a.SeasonId))
+            .Where(a => a.SeasonId == targetSeason.Id)
             .OrderBy(a => a.IsRequired ? 0 : 1).ThenBy(a => a.Name)
             .ToListAsync();
         parentApparelColumns = parentApparelItems
@@ -1056,7 +1075,7 @@ else
 
         // Load competition items
         parentCompetitionItems = await db.CompetitionItems.AsNoTracking()
-            .Where(c => seasonIds.Contains(c.SeasonId))
+            .Where(c => c.SeasonId == targetSeason.Id)
             .OrderBy(c => c.IsRequired ? 0 : 1).ThenBy(c => c.Name)
             .ToListAsync();
         parentCompColumns = parentCompetitionItems
@@ -1072,21 +1091,40 @@ else
             customAmounts.TryAdd(a.Id, 0);
 
         // Load announcements for published seasons
-        if (seasonIds.Any())
-        {
-            announcements = await db.Announcements.AsNoTracking()
-                .Where(a => seasonIds.Contains(a.SeasonId) && a.TeamLevelId == null)
-                .OrderByDescending(a => a.IsPinned)
-                .ThenByDescending(a => a.CreatedAt)
-                .ToListAsync();
+        announcements = await db.Announcements.AsNoTracking()
+            .Where(a => a.SeasonId == targetSeason.Id && a.TeamLevelId == null)
+            .OrderByDescending(a => a.IsPinned)
+            .ThenByDescending(a => a.CreatedAt)
+            .ToListAsync();
 
-            var annIds = announcements.Select(a => a.Id).ToList();
-            readAnnouncementIds = (await db.AnnouncementReadReceipts.AsNoTracking()
-                .Where(r => r.UserId == userId && annIds.Contains(r.AnnouncementId))
-                .Select(r => r.AnnouncementId)
-                .ToListAsync())
-                .ToHashSet();
-        }
+        var annIds = announcements.Select(a => a.Id).ToList();
+        readAnnouncementIds = (await db.AnnouncementReadReceipts.AsNoTracking()
+            .Where(r => r.UserId == userId && annIds.Contains(r.AnnouncementId))
+            .Select(r => r.AnnouncementId)
+            .ToListAsync())
+            .ToHashSet();
+    }
+
+    private Season? SelectParentSeason(List<Season> publishedSeasons, List<TeamLevel> allTeamLevels, List<Gymnast> gymnastRecords)
+    {
+        if (!publishedSeasons.Any())
+            return null;
+
+        var gymnastLevels = gymnastRecords
+            .Select(g => g.Level)
+            .Where(level => !string.IsNullOrWhiteSpace(level))
+            .Select(level => level!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        bool HasMatchingLevel(Season season) =>
+            allTeamLevels.Any(t => t.SeasonId == season.Id
+                && gymnastLevels.Any(level => string.Equals(level, t.Name, StringComparison.OrdinalIgnoreCase)));
+
+        return publishedSeasons.FirstOrDefault(s => s.IsActive && HasMatchingLevel(s))
+            ?? publishedSeasons.FirstOrDefault(HasMatchingLevel)
+            ?? publishedSeasons.FirstOrDefault(s => s.IsActive)
+            ?? publishedSeasons.FirstOrDefault();
     }
 
     // Level matching helper

@@ -1,5 +1,5 @@
 @page "/payments"
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Employee")]
 @using GymBudgetApp.Models
 @using GymBudgetApp
 @using GymBudgetApp.Services
@@ -8,10 +8,18 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject GymBudgetApp.Services.AuditService AuditService
+@inject GymBudgetApp.Services.PermissionService PermissionService
+@inject IConfiguration Configuration
 
 <h3>Payment Tracking</h3>
 
-@if (seasons == null)
+@if (!canViewPayments)
+{
+    <div class="alert alert-danger">
+        You do not have permission to view payments.
+    </div>
+}
+else if (seasons == null)
 {
     <p>Loading...</p>
 }
@@ -261,6 +269,7 @@ else
     private decimal creditAmount;
     private string creditDescription = "";
     private string? creditMessage;
+    private bool canViewPayments;
 
     private List<Payment> paidPayments => payments.Where(p => p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment).ToList();
     private decimal totalCredits => payments.Where(p => p.Type == PaymentType.Credit).Sum(p => p.Amount);
@@ -273,6 +282,16 @@ else
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
                     ?? authState.User.FindFirst("email")?.Value;
+
+        var adminEmails = Configuration.GetSection("AdminEmails").Get<List<string>>()
+            ?? new() { Configuration["AdminEmail"] ?? "deshaun@tntgym.org" };
+        var isAdmin = adminEmails.Any(ae => string.Equals(userEmail, ae, StringComparison.OrdinalIgnoreCase));
+        await PermissionService.LoadAsync(userId, userEmail, isAdmin);
+        canViewPayments = isAdmin || PermissionService.CanViewPayments;
+
+        if (!canViewPayments)
+            return;
+
         using var db = await DbFactory.CreateDbContextAsync();
         seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
     }
@@ -311,7 +330,20 @@ else
     private async Task LoadData()
     {
         using var db = await DbFactory.CreateDbContextAsync();
-        gymnasts = await db.Gymnasts.AsNoTracking().OrderBy(g => g.Name).ToListAsync();
+        var seasonLevelNames = await db.TeamLevels.AsNoTracking()
+            .Where(t => t.SeasonId == selectedSeasonId)
+            .Select(t => t.Name)
+            .ToListAsync();
+
+        var allGymnasts = await db.Gymnasts.AsNoTracking()
+            .OrderBy(g => g.Name)
+            .ToListAsync();
+
+        gymnasts = allGymnasts
+            .Where(g => !string.IsNullOrWhiteSpace(g.Level)
+                && seasonLevelNames.Any(levelName => string.Equals(levelName, g.Level, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
         var gymnastIds = gymnasts.Select(g => g.Id).ToList();
         payments = await db.Payments.AsNoTracking().Where(p => gymnastIds.Contains(p.AthleteId)).ToListAsync();
         parentLinks = await db.ParentLinks.AsNoTracking().Where(pl => gymnastIds.Contains(pl.AthleteId)).ToListAsync();
