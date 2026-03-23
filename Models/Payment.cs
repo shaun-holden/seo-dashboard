@@ -9,6 +9,8 @@ namespace GymBudgetApp.Models
     {
         public int Id { get; set; }
 
+        public int? SeasonId { get; set; }
+
         public int AthleteId { get; set; }
         public Athlete Athlete { get; set; } = null!;
 

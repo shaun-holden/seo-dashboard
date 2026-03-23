@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Data.Sqlite;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -75,7 +76,21 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
     db.Database.Migrate();
+
+    await using (var connection = new SqliteConnection($"Data Source={dbPath}"))
+    {
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*)
+            FROM pragma_table_info('Payments')
+            WHERE name = 'SeasonId';
+            """;
+        var hasSeasonId = Convert.ToInt32(await command.ExecuteScalarAsync()) > 0;
+        logger.LogInformation("Payments.SeasonId column present: {HasSeasonId}", hasSeasonId);
+    }
 
     // Ensure roles exist and assign roles to existing users without one
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
