@@ -166,26 +166,15 @@ else
                 .SumAsync(e => e.CalculatedTotal);
             costPerGymnast = season.AthleteCount > 0 ? calcTotal / season.AthleteCount : 0;
         }
-        else
-        {
-            loading = false;
-            return;
-        }
 
         // Load all gymnasts
         var gymnasts = await db.Gymnasts.ToListAsync();
 
         // Load athletes for payment matching (payments reference AthleteId)
-        var seasonLevelIds = await db.TeamLevels
-            .Where(t => t.SeasonId == season.Id)
-            .Select(t => t.Id)
-            .ToListAsync();
-        var athletes = await db.Athletes
-            .Where(a => seasonLevelIds.Contains(a.TeamLevelId))
-            .ToListAsync();
+        var athletes = await db.Athletes.ToListAsync();
         var athleteIds = athletes.Select(a => a.Id).ToList();
         var payments = await db.Payments
-            .Where(p => p.SeasonId == season.Id && athleteIds.Contains(p.AthleteId) && p.Status == PaymentStatus.Paid)
+            .Where(p => athleteIds.Contains(p.AthleteId) && p.Status == PaymentStatus.Paid)
             .ToListAsync();
 
         // Build name-to-payments lookup
@@ -194,12 +183,7 @@ else
             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
 
         var rows = new List<BalanceRow>();
-        var seasonLevelNames = await db.TeamLevels
-            .Where(t => t.SeasonId == season.Id)
-            .Select(t => t.Name)
-            .ToListAsync();
-
-        foreach (var gymnast in gymnasts.Where(g => !string.IsNullOrWhiteSpace(g.Level) && seasonLevelNames.Contains(g.Level!)))
+        foreach (var gymnast in gymnasts)
         {
             var level = string.IsNullOrWhiteSpace(gymnast.Level) ? "Unassigned" : gymnast.Level;
 

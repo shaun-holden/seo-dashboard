@@ -173,9 +173,6 @@ namespace GymBudgetApp
                 .Property(p => p.Amount)
                 .HasColumnType("decimal(18,2)");
 
-            builder.Entity<Payment>()
-                .HasIndex(p => new { p.SeasonId, p.AthleteId });
-
             builder.Entity<UserProfile>()
                 .HasIndex(up => up.UserId)
                 .IsUnique();

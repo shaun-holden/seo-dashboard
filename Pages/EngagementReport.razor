@@ -220,7 +220,7 @@ else if (selectedSeasonId == 0)
 
         // Payments
         var payments = await db.Payments
-            .Where(p => p.SeasonId == selectedSeasonId && athleteIds.Contains(p.AthleteId) && parentUserIds.Contains(p.PayerUserId))
+            .Where(p => athleteIds.Contains(p.AthleteId) && parentUserIds.Contains(p.PayerUserId))
             .ToListAsync();
 
         // Messages

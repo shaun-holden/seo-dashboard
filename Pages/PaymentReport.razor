@@ -258,9 +258,7 @@ else if (selectedSeasonId == 0)
         var sharedFeeIds = sharedFees.Select(f => f.Id).ToList();
         var sharedFeeAssignments = await db.SharedFeeTeamLevelAssignments.Where(a => sharedFeeIds.Contains(a.SharedFeeId)).ToListAsync();
 
-        var payments = await db.Payments
-            .Where(p => p.SeasonId == selectedSeasonId && athleteIds.Contains(p.AthleteId))
-            .ToListAsync();
+        var payments = await db.Payments.Where(p => athleteIds.Contains(p.AthleteId)).ToListAsync();
         var parentLinks = await db.ParentLinks.Where(pl => athleteIds.Contains(pl.AthleteId)).ToListAsync();
 
         int seasonAthleteCount = selectedSeason?.AthleteCount ?? teamLevels.Sum(t => t.AthleteCount);
