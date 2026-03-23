@@ -1152,6 +1152,9 @@ namespace GymBudgetApp.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("SeasonId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
 
@@ -1167,6 +1170,8 @@ namespace GymBudgetApp.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AthleteId");
+
+                    b.HasIndex("SeasonId", "AthleteId");
 
                     b.ToTable("Payments");
                 });
