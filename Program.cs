@@ -85,6 +85,10 @@ using (var scope = app.Services.CreateScope())
         Environment.GetEnvironmentVariable("ClearMigrationLock"),
         "true",
         StringComparison.OrdinalIgnoreCase);
+    var logForeignKeyViolations = string.Equals(
+        Environment.GetEnvironmentVariable("LogForeignKeyViolations"),
+        "true",
+        StringComparison.OrdinalIgnoreCase);
 
     await using (var connection = new SqliteConnection($"Data Source={dbPath}"))
     {
@@ -141,6 +145,27 @@ using (var scope = app.Services.CreateScope())
         command.CommandText = "SELECT COUNT(*) FROM pragma_foreign_key_check;";
         var foreignKeyViolations = Convert.ToInt32(await command.ExecuteScalarAsync());
         logger.LogInformation("SQLite foreign key violations detected at startup: {ForeignKeyViolations}", foreignKeyViolations);
+
+        if (logForeignKeyViolations && foreignKeyViolations > 0)
+        {
+            command.CommandText = """
+                SELECT "table", parent, COUNT(*)
+                FROM pragma_foreign_key_check
+                GROUP BY "table", parent
+                ORDER BY COUNT(*) DESC, "table", parent
+                LIMIT 20;
+                """;
+
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                logger.LogWarning(
+                    "FK violation summary: child table {ChildTable}, parent table {ParentTable}, rows {ViolationCount}",
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetInt32(2));
+            }
+        }
     }
 
     // Ensure roles exist and assign roles to existing users without one
