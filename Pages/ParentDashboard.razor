@@ -992,12 +992,12 @@ else
 
         var fallbackAthletes = gymnastRecords
             .Where(g => !string.IsNullOrWhiteSpace(g.Level)
-                && teamLevels.Any(t => string.Equals(t.Name, g.Level, StringComparison.OrdinalIgnoreCase)))
+                && teamLevels.Any(t => LevelNamesMatch(t.Name, g.Level)))
             .Select(g => new Athlete
             {
                 Id = g.Id,
                 Name = g.Name,
-                TeamLevelId = teamLevels.FirstOrDefault(t => string.Equals(t.Name, g.Level, StringComparison.OrdinalIgnoreCase))?.Id ?? 0
+                TeamLevelId = teamLevels.FirstOrDefault(t => LevelNamesMatch(t.Name, g.Level))?.Id ?? 0
             })
             .ToList();
 
@@ -1150,12 +1150,29 @@ else
 
         bool HasMatchingLevel(Season season) =>
             allTeamLevels.Any(t => t.SeasonId == season.Id
-                && gymnastLevels.Any(level => string.Equals(level, t.Name, StringComparison.OrdinalIgnoreCase)));
+                && gymnastLevels.Any(level => LevelNamesMatch(level, t.Name)));
 
         return publishedSeasons.FirstOrDefault(s => s.IsActive && HasMatchingLevel(s))
             ?? publishedSeasons.FirstOrDefault(HasMatchingLevel)
             ?? publishedSeasons.FirstOrDefault(s => s.IsActive)
             ?? publishedSeasons.FirstOrDefault();
+    }
+
+    private static bool LevelNamesMatch(string? left, string? right)
+    {
+        var normalizedLeft = NormalizeLevelName(left);
+        var normalizedRight = NormalizeLevelName(right);
+        return !string.IsNullOrEmpty(normalizedLeft)
+            && !string.IsNullOrEmpty(normalizedRight)
+            && string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeLevelName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return string.Join(" ", value.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
     // Level matching helper
