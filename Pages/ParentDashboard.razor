@@ -991,8 +991,6 @@ else
         }
 
         var fallbackAthletes = gymnastRecords
-            .Where(g => !string.IsNullOrWhiteSpace(g.Level)
-                && teamLevels.Any(t => LevelNamesMatch(t.Name, g.Level)))
             .Select(g => new Athlete
             {
                 Id = g.Id,
@@ -1009,11 +1007,7 @@ else
         parentGymnasts = gymnastRecords.Where(g => athleteIds.Contains(g.Id)).ToList();
         gymnastCount = athletes.Count;
 
-        if (!athletes.Any() && parentLinks.Any())
-        {
-            budgetNotReady = true;
-            return;
-        }
+        budgetNotReady = false;
 
         var levelIds = athletes.Select(a => a.TeamLevelId).Where(id => id > 0).Distinct().ToList();
 
