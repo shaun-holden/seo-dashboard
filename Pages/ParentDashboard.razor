@@ -6,6 +6,7 @@
 @using GymBudgetApp.Services
 @using Microsoft.EntityFrameworkCore
 @using System.Security.Claims
+@using System.Text.RegularExpressions
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IConfiguration Configuration
@@ -294,7 +295,7 @@ else
                     var seasonStartMonth = rawSeasonStart > 0 ? rawSeasonStart : 8;
                     var startMonthNum = gymnastRecord?.PaymentStartMonth ?? seasonStartMonth;
                     var monthlyAmount = Math.Round(balance / planMonths, 2);
-                    var scheduleYear = startMonthNum <= DateTime.Today.Month ? DateTime.Today.Year : DateTime.Today.Year - 1;
+                    var scheduleYear = GetScheduleYear(seasons.FirstOrDefault(), startMonthNum);
                     var scheduleStart = new DateTime(scheduleYear, startMonthNum, 15);
                     var payLink = parentLinksData.FirstOrDefault(pl => pl.AthleteId == athlete.Id);
                     var usesExternalBilling = payLink?.UseExternalBilling == true;
@@ -1167,6 +1168,18 @@ else
             return "";
 
         return string.Join(" ", value.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static int GetScheduleYear(Season? season, int startMonthNum)
+    {
+        if (season != null)
+        {
+            var match = Regex.Match(season.Name ?? "", @"\b(20\d{2})\b");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out var seasonYear))
+                return seasonYear;
+        }
+
+        return startMonthNum <= DateTime.Today.Month ? DateTime.Today.Year : DateTime.Today.Year - 1;
     }
 
     // Level matching helper
