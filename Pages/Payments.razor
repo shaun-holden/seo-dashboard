@@ -310,6 +310,7 @@ else
         var athlete = await db.Gymnasts.FindAsync(creditAthleteId);
         db.Payments.Add(new Payment
         {
+            SeasonId = selectedSeasonId,
             AthleteId = creditAthleteId,
             PayerUserId = userId!,
             Amount = creditAmount,
@@ -345,7 +346,9 @@ else
             .ToList();
 
         var gymnastIds = gymnasts.Select(g => g.Id).ToList();
-        payments = await db.Payments.AsNoTracking().Where(p => gymnastIds.Contains(p.AthleteId)).ToListAsync();
+        payments = await db.Payments.AsNoTracking()
+            .Where(p => p.SeasonId == selectedSeasonId && gymnastIds.Contains(p.AthleteId))
+            .ToListAsync();
         parentLinks = await db.ParentLinks.AsNoTracking().Where(pl => gymnastIds.Contains(pl.AthleteId)).ToListAsync();
 
         // Calculate cost per gymnast from calculator
