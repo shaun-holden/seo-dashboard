@@ -32,9 +32,9 @@ builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(keysFolder))
     .SetApplicationName("GymBudgetApp");
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite($"Data Source={dbPath};Foreign Keys=True"));
+    options.UseSqlite($"Data Source={dbPath};Foreign Keys=False"));
 builder.Services.AddDbContextFactory<AppDbContext>(options =>
-    options.UseSqlite($"Data Source={dbPath};Foreign Keys=True"), ServiceLifetime.Scoped);
+    options.UseSqlite($"Data Source={dbPath};Foreign Keys=False"), ServiceLifetime.Scoped);
 
 builder.Services.AddDefaultIdentity<IdentityUser>(options =>
 {
@@ -79,7 +79,7 @@ using (var scope = app.Services.CreateScope())
     var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
     db.Database.Migrate();
 
-    await using (var connection = new SqliteConnection($"Data Source={dbPath};Foreign Keys=True"))
+    await using (var connection = new SqliteConnection($"Data Source={dbPath}"))
     {
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
@@ -90,14 +90,6 @@ using (var scope = app.Services.CreateScope())
             """;
         var hasSeasonId = Convert.ToInt32(await command.ExecuteScalarAsync()) > 0;
         logger.LogInformation("Payments.SeasonId column present: {HasSeasonId}", hasSeasonId);
-
-        command.CommandText = "PRAGMA foreign_keys;";
-        var foreignKeysEnabled = Convert.ToInt32(await command.ExecuteScalarAsync()) == 1;
-        logger.LogInformation("SQLite foreign key enforcement enabled: {ForeignKeysEnabled}", foreignKeysEnabled);
-
-        command.CommandText = "SELECT COUNT(*) FROM pragma_foreign_key_check;";
-        var foreignKeyViolations = Convert.ToInt32(await command.ExecuteScalarAsync());
-        logger.LogInformation("SQLite foreign key violations detected at startup: {ForeignKeyViolations}", foreignKeyViolations);
     }
 
     // Ensure roles exist and assign roles to existing users without one

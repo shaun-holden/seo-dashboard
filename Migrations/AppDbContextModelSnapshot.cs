@@ -2328,14 +2328,7 @@ namespace GymBudgetApp.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("GymBudgetApp.Models.Season", "Season")
-                        .WithMany("Payments")
-                        .HasForeignKey("SeasonId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.Navigation("Athlete");
-
-                    b.Navigation("Season");
                 });
 
             modelBuilder.Entity("GymBudgetApp.Models.PerDiemEntry", b =>
@@ -2599,8 +2592,6 @@ namespace GymBudgetApp.Migrations
                     b.Navigation("Coaches");
 
                     b.Navigation("Meets");
-
-                    b.Navigation("Payments");
 
                     b.Navigation("SeasonGroups");
 
