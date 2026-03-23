@@ -169,6 +169,12 @@ namespace GymBudgetApp
                 .HasIndex(pl => pl.InviteCode)
                 .IsUnique();
 
+            builder.Entity<ParentLink>()
+                .HasOne(pl => pl.Gymnast)
+                .WithMany()
+                .HasForeignKey(pl => pl.AthleteId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             builder.Entity<Payment>()
                 .Property(p => p.Amount)
                 .HasColumnType("decimal(18,2)");
@@ -181,6 +187,12 @@ namespace GymBudgetApp
                 .WithMany(s => s.Payments)
                 .HasForeignKey(p => p.SeasonId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            builder.Entity<CommitmentSignature>()
+                .HasOne(cs => cs.Gymnast)
+                .WithMany()
+                .HasForeignKey(cs => cs.AthleteId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             builder.Entity<UserProfile>()
                 .HasIndex(up => up.UserId)

@@ -10,7 +10,7 @@ namespace GymBudgetApp.Models
         public string InviteCode { get; set; } = string.Empty;
 
         public int AthleteId { get; set; }
-        public Athlete Athlete { get; set; } = null!;
+        public Gymnast Gymnast { get; set; } = null!;
 
         public string? ParentUserId { get; set; }
         public bool IsClaimed { get; set; }

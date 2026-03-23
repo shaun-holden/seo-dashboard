@@ -119,7 +119,7 @@
                                     {
                                         <tr>
                                             <td>@sig.ParentEmail</td>
-                                            <td>@sig.Athlete.Name</td>
+                                            <td>@sig.Gymnast.Name</td>
                                             <td>@sig.SignatureName</td>
                                             <td>@sig.SignedDate.ToLocalTime().ToString("MMM dd, yyyy")</td>
                                         </tr>
@@ -280,7 +280,7 @@
         {
             using var db = await DbFactory.CreateDbContextAsync();
             formSignatures[formId] = await db.CommitmentSignatures.AsNoTracking()
-                .Include(s => s.Athlete)
+                .Include(s => s.Gymnast)
                 .Where(s => s.CommitmentFormId == formId)
                 .OrderByDescending(s => s.SignedDate)
                 .ToListAsync();

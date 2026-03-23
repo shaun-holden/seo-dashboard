@@ -2165,7 +2165,7 @@ namespace GymBudgetApp.Migrations
 
             modelBuilder.Entity("GymBudgetApp.Models.CommitmentSignature", b =>
                 {
-                    b.HasOne("GymBudgetApp.Models.Athlete", "Athlete")
+                    b.HasOne("GymBudgetApp.Models.Gymnast", "Gymnast")
                         .WithMany()
                         .HasForeignKey("AthleteId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2177,7 +2177,7 @@ namespace GymBudgetApp.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Athlete");
+                    b.Navigation("Gymnast");
 
                     b.Navigation("CommitmentForm");
                 });
@@ -2311,13 +2311,13 @@ namespace GymBudgetApp.Migrations
 
             modelBuilder.Entity("GymBudgetApp.Models.ParentLink", b =>
                 {
-                    b.HasOne("GymBudgetApp.Models.Athlete", "Athlete")
+                    b.HasOne("GymBudgetApp.Models.Gymnast", "Gymnast")
                         .WithMany()
                         .HasForeignKey("AthleteId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Athlete");
+                    b.Navigation("Gymnast");
                 });
 
             modelBuilder.Entity("GymBudgetApp.Models.Payment", b =>

@@ -31,7 +31,7 @@ namespace GymBudgetApp.Models
         public CommitmentForm CommitmentForm { get; set; } = null!;
 
         public int AthleteId { get; set; }
-        public Athlete Athlete { get; set; } = null!;
+        public Gymnast Gymnast { get; set; } = null!;
 
         [Required]
         public string ParentUserId { get; set; } = string.Empty;
