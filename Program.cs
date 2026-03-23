@@ -77,7 +77,19 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
-    db.Database.Migrate();
+    var disableAutoMigrations = string.Equals(
+        Environment.GetEnvironmentVariable("DisableAutoMigrations"),
+        "true",
+        StringComparison.OrdinalIgnoreCase);
+
+    if (disableAutoMigrations)
+    {
+        logger.LogWarning("Automatic database migrations are disabled for this startup.");
+    }
+    else
+    {
+        db.Database.Migrate();
+    }
 
     await using (var connection = new SqliteConnection($"Data Source={dbPath}"))
     {
