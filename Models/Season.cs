@@ -48,6 +48,7 @@ namespace GymBudgetApp.Models
         public ICollection<Coach> Coaches { get; set; } = new List<Coach>();
         public ICollection<TeamLevel> TeamLevels { get; set; } = new List<TeamLevel>();
         public ICollection<SeasonGroup> SeasonGroups { get; set; } = new List<SeasonGroup>();
+        public ICollection<Payment> Payments { get; set; } = new List<Payment>();
         public ICollection<SharedFee> SharedFees { get; set; } = new List<SharedFee>();
         public ICollection<SeasonNote> SeasonNotes { get; set; } = new List<SeasonNote>();
     }
