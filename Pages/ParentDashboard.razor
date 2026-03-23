@@ -977,12 +977,11 @@ else
         }
 
         teamLevels = allTeamLevels.Where(t => t.SeasonId == targetSeason.Id).ToList();
-        var seasonLevelIds = teamLevels.Select(t => t.Id).ToHashSet();
         var seasonAthletes = linkedAthletes
-            .Where(a => seasonLevelIds.Contains(a.TeamLevelId))
+            .Where(a => teamLevels.Any(t => t.Id == a.TeamLevelId))
             .ToList();
 
-        if (!seasonAthletes.Any() && linkedAthletes.Any())
+        if (!seasonAthletes.Any() && linkedAthletes.Any() && !gymnastRecords.Any())
         {
             budgetNotReady = true;
             athletes = new();
@@ -991,14 +990,30 @@ else
             return;
         }
 
+        var fallbackAthletes = gymnastRecords
+            .Where(g => !string.IsNullOrWhiteSpace(g.Level)
+                && teamLevels.Any(t => string.Equals(t.Name, g.Level, StringComparison.OrdinalIgnoreCase)))
+            .Select(g => new Athlete
+            {
+                Id = g.Id,
+                Name = g.Name,
+                TeamLevelId = teamLevels.FirstOrDefault(t => string.Equals(t.Name, g.Level, StringComparison.OrdinalIgnoreCase))?.Id ?? 0
+            })
+            .ToList();
+
         athletes = seasonAthletes
+            .Concat(fallbackAthletes.Where(fa => seasonAthletes.All(a => a.Id != fa.Id)))
             .OrderBy(a => a.Name)
             .ToList();
         var athleteIds = athletes.Select(a => a.Id).ToList();
-        parentGymnasts = gymnastRecords
-            .Where(g => athleteIds.Contains(g.Id))
-            .ToList();
+        parentGymnasts = gymnastRecords.Where(g => athleteIds.Contains(g.Id)).ToList();
         gymnastCount = athletes.Count;
+
+        if (!athletes.Any() && parentLinks.Any())
+        {
+            budgetNotReady = true;
+            return;
+        }
 
         var levelIds = athletes.Select(a => a.TeamLevelId).Where(id => id > 0).Distinct().ToList();
 
