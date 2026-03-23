@@ -81,6 +81,37 @@ using (var scope = app.Services.CreateScope())
         Environment.GetEnvironmentVariable("DisableAutoMigrations"),
         "true",
         StringComparison.OrdinalIgnoreCase);
+    var clearMigrationLock = string.Equals(
+        Environment.GetEnvironmentVariable("ClearMigrationLock"),
+        "true",
+        StringComparison.OrdinalIgnoreCase);
+
+    await using (var connection = new SqliteConnection($"Data Source={dbPath}"))
+    {
+        await connection.OpenAsync();
+
+        if (clearMigrationLock)
+        {
+            await using var clearCommand = connection.CreateCommand();
+            clearCommand.CommandText = """
+                SELECT COUNT(*)
+                FROM sqlite_master
+                WHERE type = 'table' AND name = '__EFMigrationsLock';
+                """;
+            var hasMigrationLockTable = Convert.ToInt32(await clearCommand.ExecuteScalarAsync()) > 0;
+
+            if (hasMigrationLockTable)
+            {
+                clearCommand.CommandText = "DELETE FROM \"__EFMigrationsLock\";";
+                var clearedRows = await clearCommand.ExecuteNonQueryAsync();
+                logger.LogWarning("Cleared {ClearedRows} rows from __EFMigrationsLock.", clearedRows);
+            }
+            else
+            {
+                logger.LogInformation("__EFMigrationsLock table not present; nothing to clear.");
+            }
+        }
+    }
 
     if (disableAutoMigrations)
     {
