@@ -960,11 +960,14 @@ else
 
         var allTeamLevels = await db.TeamLevels.AsNoTracking().ToListAsync();
         var linkedAthleteIds = parentLinks.Select(l => l.AthleteId).ToList();
+        var linkedAthletes = await db.Athletes.AsNoTracking()
+            .Where(a => linkedAthleteIds.Contains(a.Id))
+            .ToListAsync();
         var gymnastRecords = await db.Gymnasts.AsNoTracking()
             .Where(g => linkedAthleteIds.Contains(g.Id))
             .OrderBy(g => g.Name)
             .ToListAsync();
-        var targetSeason = SelectParentSeason(publishedSeasons, allTeamLevels, gymnastRecords);
+        var targetSeason = SelectParentSeason(publishedSeasons, allTeamLevels, linkedAthletes, gymnastRecords);
         if (targetSeason == null)
         {
             athletes = new();
@@ -973,14 +976,13 @@ else
             return;
         }
 
-        var seasonIds = new List<int> { targetSeason.Id };
         teamLevels = allTeamLevels.Where(t => t.SeasonId == targetSeason.Id).ToList();
-        var seasonGymnasts = gymnastRecords
-            .Where(g => !string.IsNullOrWhiteSpace(g.Level)
-                && teamLevels.Any(t => string.Equals(t.Name, g.Level, StringComparison.OrdinalIgnoreCase)))
+        var seasonLevelIds = teamLevels.Select(t => t.Id).ToHashSet();
+        var seasonAthletes = linkedAthletes
+            .Where(a => seasonLevelIds.Contains(a.TeamLevelId))
             .ToList();
 
-        if (!seasonGymnasts.Any() && gymnastRecords.Any())
+        if (!seasonAthletes.Any() && linkedAthletes.Any())
         {
             budgetNotReady = true;
             athletes = new();
@@ -989,16 +991,15 @@ else
             return;
         }
 
-        gymnastCount = seasonGymnasts.Count;
-        parentGymnasts = seasonGymnasts;
-        athletes = seasonGymnasts.Select(g => new Athlete
-        {
-            Id = g.Id,
-            Name = g.Name,
-            TeamLevelId = teamLevels.FirstOrDefault(t => string.Equals(t.Name, g.Level, StringComparison.OrdinalIgnoreCase))?.Id ?? 0
-        }).ToList();
-
+        athletes = seasonAthletes
+            .OrderBy(a => a.Name)
+            .ToList();
         var athleteIds = athletes.Select(a => a.Id).ToList();
+        parentGymnasts = gymnastRecords
+            .Where(g => athleteIds.Contains(g.Id))
+            .ToList();
+        gymnastCount = athletes.Count;
+
         var levelIds = athletes.Select(a => a.TeamLevelId).Where(id => id > 0).Distinct().ToList();
 
         // Check for unsigned commitment forms
@@ -1105,10 +1106,25 @@ else
             .ToHashSet();
     }
 
-    private Season? SelectParentSeason(List<Season> publishedSeasons, List<TeamLevel> allTeamLevels, List<Gymnast> gymnastRecords)
+    private Season? SelectParentSeason(List<Season> publishedSeasons, List<TeamLevel> allTeamLevels, List<Athlete> linkedAthletes, List<Gymnast> gymnastRecords)
     {
         if (!publishedSeasons.Any())
             return null;
+
+        var linkedSeasonIds = linkedAthletes
+            .Select(a => allTeamLevels.FirstOrDefault(t => t.Id == a.TeamLevelId)?.SeasonId)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToHashSet();
+
+        if (linkedSeasonIds.Any())
+        {
+            return publishedSeasons.FirstOrDefault(s => s.IsActive && linkedSeasonIds.Contains(s.Id))
+                ?? publishedSeasons.FirstOrDefault(s => linkedSeasonIds.Contains(s.Id))
+                ?? publishedSeasons.FirstOrDefault(s => s.IsActive)
+                ?? publishedSeasons.FirstOrDefault();
+        }
 
         var gymnastLevels = gymnastRecords
             .Select(g => g.Level)
