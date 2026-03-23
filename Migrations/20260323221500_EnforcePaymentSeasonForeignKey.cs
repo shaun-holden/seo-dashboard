@@ -44,141 +44,20 @@ namespace GymBudgetApp.Migrations
                    );
                 """);
 
-            migrationBuilder.Sql("""
-                CREATE TABLE "Payments_temp" (
-                    "Id" INTEGER NOT NULL CONSTRAINT "PK_Payments" PRIMARY KEY AUTOINCREMENT,
-                    "SeasonId" INTEGER NULL,
-                    "AthleteId" INTEGER NOT NULL,
-                    "PayerUserId" TEXT NOT NULL,
-                    "Amount" decimal(18,2) NOT NULL,
-                    "Status" INTEGER NOT NULL,
-                    "Type" INTEGER NOT NULL DEFAULT 0,
-                    "StripeSessionId" TEXT NULL,
-                    "StripePaymentIntentId" TEXT NULL,
-                    "Description" TEXT NULL,
-                    "CreatedAt" TEXT NOT NULL,
-                    "PaidAt" TEXT NULL,
-                    CONSTRAINT "FK_Payments_Athletes_AthleteId" FOREIGN KEY ("AthleteId") REFERENCES "Athletes" ("Id") ON DELETE CASCADE,
-                    CONSTRAINT "FK_Payments_Seasons_SeasonId" FOREIGN KEY ("SeasonId") REFERENCES "Seasons" ("Id") ON DELETE SET NULL
-                );
-                """);
-
-            migrationBuilder.Sql("""
-                INSERT INTO "Payments_temp" (
-                    "Id",
-                    "SeasonId",
-                    "AthleteId",
-                    "PayerUserId",
-                    "Amount",
-                    "Status",
-                    "Type",
-                    "StripeSessionId",
-                    "StripePaymentIntentId",
-                    "Description",
-                    "CreatedAt",
-                    "PaidAt"
-                )
-                SELECT
-                    "Id",
-                    "SeasonId",
-                    "AthleteId",
-                    "PayerUserId",
-                    "Amount",
-                    "Status",
-                    "Type",
-                    "StripeSessionId",
-                    "StripePaymentIntentId",
-                    "Description",
-                    "CreatedAt",
-                    "PaidAt"
-                FROM "Payments";
-                """);
-
-            migrationBuilder.Sql("""DROP TABLE "Payments";""");
-            migrationBuilder.Sql("""ALTER TABLE "Payments_temp" RENAME TO "Payments";""");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Payments_AthleteId",
+            migrationBuilder.AddForeignKey(
+                name: "FK_Payments_Seasons_SeasonId",
                 table: "Payments",
-                column: "AthleteId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Payments_SeasonId_AthleteId",
-                table: "Payments",
-                columns: new[] { "SeasonId", "AthleteId" });
+                column: "SeasonId",
+                principalTable: "Seasons",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.SetNull);
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.Sql("""
-                CREATE TABLE "Payments_temp" (
-                    "Id" INTEGER NOT NULL CONSTRAINT "PK_Payments" PRIMARY KEY AUTOINCREMENT,
-                    "SeasonId" INTEGER NULL,
-                    "AthleteId" INTEGER NOT NULL,
-                    "PayerUserId" TEXT NOT NULL,
-                    "Amount" decimal(18,2) NOT NULL,
-                    "Status" INTEGER NOT NULL,
-                    "Type" INTEGER NOT NULL DEFAULT 0,
-                    "StripeSessionId" TEXT NULL,
-                    "StripePaymentIntentId" TEXT NULL,
-                    "Description" TEXT NULL,
-                    "CreatedAt" TEXT NOT NULL,
-                    "PaidAt" TEXT NULL,
-                    CONSTRAINT "FK_Payments_Athletes_AthleteId" FOREIGN KEY ("AthleteId") REFERENCES "Athletes" ("Id") ON DELETE CASCADE
-                );
-                """);
-
-            migrationBuilder.Sql("""
-                INSERT INTO "Payments_temp" (
-                    "Id",
-                    "SeasonId",
-                    "AthleteId",
-                    "PayerUserId",
-                    "Amount",
-                    "Status",
-                    "Type",
-                    "StripeSessionId",
-                    "StripePaymentIntentId",
-                    "Description",
-                    "CreatedAt",
-                    "PaidAt"
-                )
-                SELECT
-                    "Id",
-                    "SeasonId",
-                    "AthleteId",
-                    "PayerUserId",
-                    "Amount",
-                    "Status",
-                    "Type",
-                    "StripeSessionId",
-                    "StripePaymentIntentId",
-                    "Description",
-                    "CreatedAt",
-                    "PaidAt"
-                FROM "Payments";
-                """);
-
-            migrationBuilder.DropIndex(
-                name: "IX_Payments_SeasonId_AthleteId",
+            migrationBuilder.DropForeignKey(
+                name: "FK_Payments_Seasons_SeasonId",
                 table: "Payments");
-
-            migrationBuilder.DropIndex(
-                name: "IX_Payments_AthleteId",
-                table: "Payments");
-
-            migrationBuilder.Sql("""DROP TABLE "Payments";""");
-            migrationBuilder.Sql("""ALTER TABLE "Payments_temp" RENAME TO "Payments";""");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Payments_AthleteId",
-                table: "Payments",
-                column: "AthleteId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Payments_SeasonId_AthleteId",
-                table: "Payments",
-                columns: new[] { "SeasonId", "AthleteId" });
         }
     }
 }
