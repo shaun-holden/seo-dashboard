@@ -176,6 +176,12 @@ namespace GymBudgetApp
             builder.Entity<Payment>()
                 .HasIndex(p => new { p.SeasonId, p.AthleteId });
 
+            builder.Entity<Payment>()
+                .HasOne(p => p.Season)
+                .WithMany(s => s.Payments)
+                .HasForeignKey(p => p.SeasonId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             builder.Entity<UserProfile>()
                 .HasIndex(up => up.UserId)
                 .IsUnique();
