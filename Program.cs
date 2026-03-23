@@ -146,6 +146,16 @@ using (var scope = app.Services.CreateScope())
         var foreignKeyViolations = Convert.ToInt32(await command.ExecuteScalarAsync());
         logger.LogInformation("SQLite foreign key violations detected at startup: {ForeignKeyViolations}", foreignKeyViolations);
 
+        command.CommandText = """
+            SELECT COUNT(*)
+            FROM __EFMigrationsHistory
+            WHERE MigrationId = '20260324000500_CleanRemainingForeignKeyViolations';
+            """;
+        var cleanupMigrationRecorded = Convert.ToInt32(await command.ExecuteScalarAsync()) > 0;
+        logger.LogInformation(
+            "Cleanup migration 20260324000500 recorded in history: {CleanupMigrationRecorded}",
+            cleanupMigrationRecorded);
+
         if (logForeignKeyViolations && foreignKeyViolations > 0)
         {
             command.CommandText = """
