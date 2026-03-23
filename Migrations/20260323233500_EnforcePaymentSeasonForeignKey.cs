@@ -13,6 +13,15 @@ namespace GymBudgetApp.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql("""
+                DELETE FROM Payments
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM Athletes a
+                    WHERE a.Id = Payments.AthleteId
+                );
+                """);
+
+            migrationBuilder.Sql("""
                 UPDATE Payments
                 SET SeasonId = (
                     SELECT tl.SeasonId
