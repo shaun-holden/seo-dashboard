@@ -20,6 +20,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<GymBudgetApp.Services.PushNotificationService>();
 builder.Services.AddSingleton<GymBudgetApp.Services.BackupService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GymBudgetApp.Services.BackupService>());
+builder.Services.AddHostedService<GymBudgetApp.Services.PaymentReminderService>();
 
 var dbFolder = Environment.GetEnvironmentVariable("DB_PATH")
     ?? Directory.GetCurrentDirectory();

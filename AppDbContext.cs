@@ -126,6 +126,7 @@ namespace GymBudgetApp
         public DbSet<UserProfile> UserProfiles { get; set; }
         public DbSet<PushSubscriptionRecord> PushSubscriptions { get; set; }
         public DbSet<PaymentPlanRequest> PaymentPlanRequests { get; set; }
+        public DbSet<PaymentReminderLog> PaymentReminderLogs { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
