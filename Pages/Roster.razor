@@ -204,17 +204,17 @@
 
 @if (deleteConfirmGymnast != null)
 {
-    <div class="alert alert-danger mb-3">
-        <h6 class="alert-heading">Delete @deleteConfirmGymnast.Name?</h6>
+    <div class="alert alert-warning mb-3">
+        <h6 class="alert-heading">Archive @deleteConfirmGymnast.Name?</h6>
         @if (deleteHasLink)
         {
-            <p class="mb-2"><strong>This athlete is linked to a parent account.</strong> Deleting will remove their parent link, payment history, and all related data. The parent will no longer see this athlete.</p>
+            <p class="mb-2"><strong>This athlete is linked to a parent account.</strong> Archiving will hide them from the roster and parent dashboard. You can restore them later from the archive.</p>
         }
         else
         {
-            <p class="mb-2">This will permanently delete this athlete and all related data.</p>
+            <p class="mb-2">This will move the athlete to the archive. You can restore them at any time.</p>
         }
-        <button class="btn btn-danger me-2" @onclick="DeleteGymnast">Yes, Delete</button>
+        <button class="btn btn-warning me-2" @onclick="DeleteGymnast">Yes, Archive</button>
         <button class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
     </div>
 }
@@ -334,7 +334,7 @@
                         <td class="text-end fw-bold">$@fullTotal.ToString("N2")</td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditGymnast(g)">Edit</button>
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDeleteGymnast(g)">Delete</button>
+                            <button class="btn btn-sm btn-outline-warning" @onclick="() => ConfirmDeleteGymnast(g)">Archive</button>
                         </td>
                     </tr>
                 }
@@ -370,8 +370,47 @@
         </table>
 </div>
 
+@if (archivedGymnasts.Any())
+{
+    <div class="mt-4">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="() => showArchived = !showArchived">
+            <span class="oi oi-box me-1"></span> @(showArchived ? "Hide" : "Show") Archive (@archivedGymnasts.Count)
+        </button>
+    </div>
+
+    @if (showArchived)
+    {
+        <div class="card mt-2 border-secondary">
+            <div class="card-header bg-secondary text-white">
+                <h6 class="mb-0">Archived Athletes</h6>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr><th>Name</th><th>Level</th><th>Archived</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var g in archivedGymnasts)
+                        {
+                            <tr class="text-muted">
+                                <td>@g.Name</td>
+                                <td>@(g.Level ?? "—")</td>
+                                <td>@(g.ArchivedAt?.ToString("MMM dd, yyyy") ?? "—")</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-success" @onclick="() => RestoreGymnast(g)">Restore</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
 @code {
     private List<Gymnast> gymnasts = new();
+    private List<Gymnast> archivedGymnasts = new();
     private string? userId;
     private decimal costPerGymnast;
     private bool showForm;
@@ -521,9 +560,11 @@
     private async Task LoadData()
     {
         using var db = await DbFactory.CreateDbContextAsync();
-        gymnasts = await db.Gymnasts.AsNoTracking()
+        var allGymnasts = await db.Gymnasts.AsNoTracking()
             .OrderBy(g => g.Level).ThenBy(g => g.Name)
             .ToListAsync();
+        archivedGymnasts = allGymnasts.Where(g => g.IsArchived).ToList();
+        gymnasts = allGymnasts.Where(g => !g.IsArchived).ToList();
 
         // Sync levels: ensure all gymnast levels exist in Levels table
         savedLevels = await db.Levels.OrderBy(l => l.Name).ToListAsync();
@@ -877,6 +918,7 @@
 
     private Gymnast? deleteConfirmGymnast;
     private bool deleteHasLink;
+    private bool showArchived;
 
     private async Task ConfirmDeleteGymnast(Gymnast g)
     {
@@ -897,18 +939,26 @@
         deleteConfirmGymnast = null;
 
         using var db = await DbFactory.CreateDbContextAsync();
-        // Clean up related records
-        var links = await db.ParentLinks.Where(pl => pl.AthleteId == g.Id).ToListAsync();
-        db.ParentLinks.RemoveRange(links);
-        var payments = await db.Payments.Where(p => p.AthleteId == g.Id).ToListAsync();
-        db.Payments.RemoveRange(payments);
-        var apparelSels = await db.GymnastApparelSelections.Where(s => s.GymnastId == g.Id).ToListAsync();
-        db.GymnastApparelSelections.RemoveRange(apparelSels);
-        var compSels = await db.GymnastCompetitionSelections.Where(s => s.GymnastId == g.Id).ToListAsync();
-        db.GymnastCompetitionSelections.RemoveRange(compSels);
         var entity = await db.Gymnasts.FindAsync(g.Id);
-        if (entity != null) db.Gymnasts.Remove(entity);
-        await db.SaveChangesAsync();
+        if (entity != null)
+        {
+            entity.IsArchived = true;
+            entity.ArchivedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+        await LoadData();
+    }
+
+    private async Task RestoreGymnast(Gymnast g)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Gymnasts.FindAsync(g.Id);
+        if (entity != null)
+        {
+            entity.IsArchived = false;
+            entity.ArchivedAt = null;
+            await db.SaveChangesAsync();
+        }
         await LoadData();
     }
 }

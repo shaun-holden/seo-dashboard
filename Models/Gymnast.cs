@@ -61,6 +61,9 @@ namespace GymBudgetApp.Models
         [Required]
         public string UserId { get; set; } = string.Empty;
 
+        public bool IsArchived { get; set; }
+        public DateTime? ArchivedAt { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime ModifiedAt { get; set; } = DateTime.UtcNow;
     }

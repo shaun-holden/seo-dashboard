@@ -1141,7 +1141,7 @@ else
             .Where(a => linkedAthleteIds.Contains(a.Id))
             .ToListAsync();
         var gymnastRecords = await db.Gymnasts.AsNoTracking()
-            .Where(g => linkedAthleteIds.Contains(g.Id))
+            .Where(g => linkedAthleteIds.Contains(g.Id) && !g.IsArchived)
             .OrderBy(g => g.Name)
             .ToListAsync();
 
