@@ -12,6 +12,7 @@
 @inject IConfiguration Configuration
 @inject NavigationManager Navigation
 @inject GymBudgetApp.Services.NotificationService NotificationService
+@inject IJSRuntime JS
 
 @if (!loading && !hasProfile)
 {
@@ -628,6 +629,15 @@ else
                         </tbody>
                     </table>
                 }
+
+                <div class="d-flex gap-2 mt-2 mb-3">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => DownloadStatement(athlete, athleteLevel, totalCost, totalPaid, totalCredits, balance, allAthleteTransactions)">
+                        <span class="oi oi-data-transfer-download me-1"></span> Download Statement
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick='() => JS.InvokeVoidAsync("printPage")'>
+                        <span class="oi oi-print me-1"></span> Print
+                    </button>
+                </div>
 
                 <!-- Upcoming Meets -->
                 @{
@@ -2166,5 +2176,44 @@ else
             paymentError = $"Payment error: {ex.Message}";
             isProcessing = false;
         }
+    }
+
+    private async Task DownloadStatement(Athlete athlete, string level, decimal totalCost, decimal totalPaid, decimal totalCredits, decimal balance, List<Payment> transactions)
+    {
+        var seasonName = seasons.FirstOrDefault()?.Name ?? "Season";
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("Top Notch Training - Account Statement");
+        csv.AppendLine($"Athlete,{athlete.Name}");
+        csv.AppendLine($"Level,{level}");
+        csv.AppendLine($"Season,{seasonName}");
+        csv.AppendLine($"Generated,{DateTime.Now:MMMM d yyyy}");
+        csv.AppendLine();
+        csv.AppendLine("--- Charges ---");
+        csv.AppendLine("Item,Type,Amount");
+        csv.AppendLine($"Shared Fees,Shared,{parentCostPerGymnast:N2}");
+        var apparelCost = GetParentApparelCost(athlete.Id, level);
+        var compCost = GetParentCompCost(athlete.Id, level);
+        if (apparelCost + compCost > 0)
+            csv.AppendLine($"Individual Costs,Athlete,{(apparelCost + compCost):N2}");
+        csv.AppendLine($"Total Fees,,{totalCost:N2}");
+        csv.AppendLine();
+        csv.AppendLine("--- Summary ---");
+        csv.AppendLine($"Total Fees,,{totalCost:N2}");
+        csv.AppendLine($"Total Paid,,{totalPaid:N2}");
+        if (totalCredits > 0) csv.AppendLine($"Credits,,{totalCredits:N2}");
+        csv.AppendLine($"Balance Due,,{balance:N2}");
+        csv.AppendLine();
+        csv.AppendLine("--- Payment History ---");
+        csv.AppendLine("Date,Description,Amount,Type");
+        foreach (var p in transactions)
+        {
+            var date = (p.PaidAt ?? p.CreatedAt).ToString("MMM dd yyyy");
+            var desc = (p.Description ?? (p.Type == PaymentType.Credit ? "Credit" : "Payment")).Replace(",", " ");
+            var type = p.Type == PaymentType.Credit ? "Credit" : p.Status == PaymentStatus.Pending ? "Pending" : "Payment";
+            csv.AppendLine($"{date},{desc},{p.Amount:N2},{type}");
+        }
+
+        var filename = $"Statement_{athlete.Name.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd}.csv";
+        await JS.InvokeVoidAsync("downloadFile", filename, csv.ToString());
     }
 }
