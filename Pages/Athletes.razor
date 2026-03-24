@@ -10,6 +10,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject NavigationManager NavigationManager
+@inject IConfiguration Configuration
 
 <h3>Athletes</h3>
 
@@ -423,18 +424,48 @@ else
             await db.SaveChangesAsync();
         }
 
-        var registerUrl = $"{NavigationManager.BaseUri}Identity/Account/Register";
+        var appUrl = Configuration["AppUrl"] ?? NavigationManager.BaseUri.TrimEnd('/');
+        var registerUrl = $"{appUrl}/Identity/Account/Register";
+        var claimUrl = $"{appUrl}/claim";
         var emailBody = $@"
-            <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
-                <h2>You're Invited to Top Notch Training!</h2>
-                <p>You have been invited to manage <strong>{gymnast.Name}</strong>'s account on Top Notch Training.</p>
-                <p>Your invite code is: <strong style='font-size: 1.2em; color: #0d6efd;'>{inviteCode}</strong></p>
-                <p>To get started, create your account by clicking the link below:</p>
-                <p><a href='{registerUrl}' style='display: inline-block; padding: 10px 20px; background-color: #0d6efd; color: #ffffff; text-decoration: none; border-radius: 5px;'>Register Now</a></p>
-                <p>After registering, use your invite code to link to your athlete's account.</p>
-                <hr style='border: none; border-top: 1px solid #dee2e6;' />
-                <p style='color: #6c757d; font-size: 0.9em;'>Top Notch Training</p>
-            </div>";
+<div style='max-width:600px;margin:0 auto;font-family:Arial,sans-serif;'>
+    <div style='background:#1a6b3c;padding:20px;text-align:center;'>
+        <h1 style='color:white;margin:0;font-size:24px;'>Top Notch Training</h1>
+    </div>
+    <div style='padding:20px;background:#f8f9fa;'>
+        <div style='background:white;border-radius:8px;padding:20px;margin-bottom:15px;'>
+            <h2 style='color:#333;margin-top:0;'>You're Invited!</h2>
+            <p>You have been invited to manage <strong>{gymnast.Name}</strong>'s account on GymHub, the parent portal for Top Notch Training.</p>
+
+            <div style='background:#f0f7ff;border-radius:8px;padding:15px;text-align:center;margin:20px 0;'>
+                <div style='color:#666;font-size:13px;'>Your Invite Code</div>
+                <div style='font-size:28px;font-weight:bold;color:#0d6efd;letter-spacing:3px;'>{inviteCode}</div>
+            </div>
+
+            <h3 style='color:#333;'>How to Get Started</h3>
+            <ol style='color:#555;line-height:1.8;'>
+                <li>Click the button below to create your account</li>
+                <li>After registering, go to <a href='{claimUrl}'>Link Athlete</a> and enter your invite code</li>
+                <li>You'll see {gymnast.Name}'s charges, payment schedule, and more</li>
+            </ol>
+
+            <div style='text-align:center;margin:20px 0;'>
+                <a href='{registerUrl}' style='display:inline-block;background:#1a6b3c;color:white;padding:14px 30px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:16px;'>Create Your Account</a>
+            </div>
+
+            <div style='background:#fff8e1;border-radius:8px;padding:15px;margin-top:20px;'>
+                <h4 style='margin-top:0;color:#333;'>Add GymHub to Your Phone</h4>
+                <p style='margin-bottom:8px;color:#555;'>For the best experience, add GymHub to your home screen:</p>
+                <p style='margin-bottom:5px;'><strong>iPhone:</strong> Open <a href='{appUrl}'>{appUrl.Replace("https://", "")}</a> in Safari → tap the <strong>Share</strong> button (square with arrow) → tap <strong>Add to Home Screen</strong></p>
+                <p style='margin-bottom:0;'><strong>Android:</strong> Open <a href='{appUrl}'>{appUrl.Replace("https://", "")}</a> in Chrome → tap the <strong>three dots</strong> menu → tap <strong>Add to Home Screen</strong></p>
+            </div>
+        </div>
+
+        <p style='color:#999;font-size:12px;text-align:center;margin-top:15px;'>
+            GymHub Parent Portal: <a href='{appUrl}' style='color:#999;'>{appUrl.Replace("https://", "")}</a>
+        </p>
+    </div>
+</div>";
 
         try
         {
