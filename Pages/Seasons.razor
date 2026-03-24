@@ -4,9 +4,11 @@
 @using GymBudgetApp
 @using GymBudgetApp.Services
 @using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @inject NavigationManager Nav
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject GymBudgetApp.Services.AuditService AuditService
 
 <h3>Seasons</h3>
 
@@ -16,7 +18,66 @@
 }
 else
 {
-    <button class="btn btn-primary mb-3" @onclick="ShowForm">+ New Season</button>
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase">Seasons</div>
+                    <div class="display-6 fw-semibold">@seasons.Count</div>
+                    <div class="text-muted small">@activeSeasonCount active, @publishedSeasonCount published</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase">Budget Locks</div>
+                    <div class="display-6 fw-semibold">@budgetLockedSeasonCount</div>
+                    <div class="text-muted small">@draftSeasonCount draft season(s) still editable</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase">Published Athletes</div>
+                    <div class="display-6 fw-semibold">@publishedAthleteCount</div>
+                    <div class="text-muted small">Across all published seasons</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase">Recent Activity</div>
+                    <div class="display-6 fw-semibold">@recentSeasonAuditLogs.Count</div>
+                    <div class="text-muted small">Season changes in the latest history feed</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body d-flex flex-wrap gap-3 align-items-end">
+            <div>
+                <label class="form-label fw-semibold mb-1">Search Seasons</label>
+                <input class="form-control" style="min-width: 220px;" placeholder="Find by season name" @bind="seasonSearchText" @bind:event="oninput" />
+            </div>
+            <div>
+                <label class="form-label fw-semibold mb-1">Status Filter</label>
+                <select class="form-select" style="min-width: 200px;" @bind="seasonFilter">
+                    <option value="All">All Seasons</option>
+                    <option value="Active">Active</option>
+                    <option value="Published">Published</option>
+                    <option value="BudgetLocked">Budget Locked</option>
+                    <option value="Draft">Draft</option>
+                </select>
+            </div>
+            <div class="ms-auto">
+                <button class="btn btn-primary" @onclick="ShowForm">+ New Season</button>
+            </div>
+        </div>
+    </div>
 
     @if (showForm)
     {
@@ -92,86 +153,151 @@ else
         </div>
     }
 
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Season</th>
-                <th>Type</th>
-                <th>Athletes</th>
-                <th>Status</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var season in seasons)
-            {
-                <tr>
-                    <td>@season.Name</td>
-                    <td>
-                        @if (season.ProjectType == ProjectType.Custom)
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white border-0 pb-0">
+            <h5 class="mb-1">Season Control Center</h5>
+            <p class="text-muted mb-3">Use Active for staff-facing dropdown priority, Published for parent visibility, and Budget Locked to freeze the calculator only.</p>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Season</th>
+                            <th>Type</th>
+                            <th class="text-end">Athletes</th>
+                            <th class="text-end">Levels</th>
+                            <th class="text-end">Meets</th>
+                            <th class="text-end">Budget Lines</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var season in filteredSeasons)
                         {
-                            <span class="badge bg-info">Custom</span>
+                            <tr>
+                                <td>
+                                    <div class="fw-semibold">@season.Name</div>
+                                    <div class="text-muted small">Updated @season.ModifiedAt.ToLocalTime().ToString("MMM dd, yyyy h:mm tt")</div>
+                                </td>
+                                <td>
+                                    @if (season.ProjectType == ProjectType.Custom)
+                                    {
+                                        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">Custom</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">Competition</span>
+                                    }
+                                </td>
+                                <td class="text-end fw-semibold">@season.AthleteCount</td>
+                                <td class="text-end">@GetSeasonMetric(levelCountBySeason, season.Id)</td>
+                                <td class="text-end">@GetSeasonMetric(meetCountBySeason, season.Id)</td>
+                                <td class="text-end">@GetSeasonMetric(budgetEntryCountBySeason, season.Id)</td>
+                                <td>
+                                    @if (season.IsActive)
+                                    {
+                                        <span class="badge bg-success me-1">Active</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary me-1">Inactive</span>
+                                    }
+                                    @if (season.IsPublished)
+                                    {
+                                        <span class="badge bg-primary me-1">Published</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-light text-dark border me-1">Draft</span>
+                                    }
+                                    @if (season.IsLocked)
+                                    {
+                                        <span class="badge bg-dark">Budget Locked</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-1">
+                                        @if (season.IsActive)
+                                        {
+                                            <button class="btn btn-sm btn-outline-warning" @onclick="() => SetActive(season)">
+                                                <span class="oi oi-ban"></span> Deactivate
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-outline-warning" @onclick="() => SetActive(season)">
+                                                <span class="oi oi-star"></span> Activate
+                                            </button>
+                                        }
+                                        @if (season.IsPublished)
+                                        {
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => TogglePublish(season)">Unpublish</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-success" @onclick="() => TogglePublish(season)">Publish</button>
+                                        }
+                                        <button class="btn btn-sm btn-outline-dark" @onclick="() => ToggleLock(season)">
+                                            @(season.IsLocked ? "Unlock Budget" : "Lock Budget")
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => EditSeason(season)">Edit</button>
+                                        <button class="btn btn-sm btn-outline-success" @onclick="() => StartCopy(season)">Copy</button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteSeason(season)">Delete</button>
+                                    </div>
+                                </td>
+                            </tr>
                         }
-                        else
+                        @if (!filteredSeasons.Any())
                         {
-                            <span class="badge bg-primary">Competition</span>
+                            <tr>
+                                <td colspan="8" class="text-center text-muted py-4">No seasons match the current filters.</td>
+                            </tr>
                         }
-                    </td>
-                    <td>@season.AthleteCount</td>
-                    <td>
-                        @if (season.IsActive)
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white border-0">
+            <h5 class="mb-1">Recent Season Activity</h5>
+            <p class="text-muted mb-0">The latest season, publish, and budget-lock changes.</p>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Date</th>
+                            <th>User</th>
+                            <th>Action</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var entry in recentSeasonAuditLogs)
                         {
-                            <span class="badge bg-success">Active</span>
+                            <tr>
+                                <td>@entry.Timestamp.ToLocalTime().ToString("MMM dd, yyyy h:mm tt")</td>
+                                <td>@entry.UserEmail</td>
+                                <td><span class="badge bg-secondary">@entry.Action</span></td>
+                                <td>@entry.Details</td>
+                            </tr>
                         }
-                        else
+                        @if (!recentSeasonAuditLogs.Any())
                         {
-                            <span class="badge bg-secondary">Inactive</span>
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-4">No season activity yet.</td>
+                            </tr>
                         }
-                        @if (season.IsPublished)
-                        {
-                            <span class="badge bg-success ms-1">Published</span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-secondary ms-1">Draft</span>
-                        }
-                        @if (season.IsLocked)
-                        {
-                            <span class="badge bg-dark ms-1">Budget Locked</span>
-                        }
-                    </td>
-                    <td>
-                        @if (season.IsActive)
-                        {
-                            <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => SetActive(season)">
-                                <span class="oi oi-ban"></span> Deactivate
-                            </button>
-                        }
-                        else
-                        {
-                            <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => SetActive(season)">
-                                <span class="oi oi-star"></span> Activate
-                            </button>
-                        }
-                        @if (season.IsPublished)
-                        {
-                            <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => TogglePublish(season)">Unpublish</button>
-                        }
-                        else
-                        {
-                            <button class="btn btn-sm btn-success me-1" @onclick="() => TogglePublish(season)">Publish</button>
-                        }
-                        <button class="btn btn-sm btn-outline-dark me-1" @onclick="() => ToggleLock(season)">
-                            @(season.IsLocked ? "Unlock Budget" : "Lock Budget")
-                        </button>
-                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditSeason(season)">Edit</button>
-                        <button class="btn btn-sm btn-outline-success me-1" @onclick="() => StartCopy(season)">Copy</button>
-                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteSeason(season)">Delete</button>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
     <hr />
 
@@ -230,9 +356,16 @@ else
 
 @code {
     private List<Season>? seasons;
+    private List<AuditLog> recentSeasonAuditLogs = new();
+    private Dictionary<int, int> levelCountBySeason = new();
+    private Dictionary<int, int> meetCountBySeason = new();
+    private Dictionary<int, int> budgetEntryCountBySeason = new();
     private bool showForm = false;
     private Season? editingSeason;
     private string? userId;
+    private string? userEmail;
+    private string seasonSearchText = "";
+    private string seasonFilter = "All";
 
     private string formName = "";
     private int formAthleteCount = 0;
@@ -251,13 +384,65 @@ else
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? authState.User.FindFirst("email")?.Value
+                    ?? authState.User.Identity?.Name;
         await LoadSeasons();
     }
 
     private async Task LoadSeasons()
     {
-        seasons = await Task.FromResult(Db.Seasons.OrderByDescending(s => s.Name).ToList());
+        seasons = await Db.Seasons.AsNoTracking()
+            .OrderByDescending(s => s.IsActive)
+            .ThenByDescending(s => s.IsPublished)
+            .ThenByDescending(s => s.Name)
+            .ToListAsync();
+
+        levelCountBySeason = await Db.TeamLevels.AsNoTracking()
+            .GroupBy(t => t.SeasonId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+
+        meetCountBySeason = await Db.Meets.AsNoTracking()
+            .GroupBy(m => m.SeasonId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+
+        budgetEntryCountBySeason = await Db.BudgetCalculatorEntries.AsNoTracking()
+            .GroupBy(e => e.SeasonId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+
+        recentSeasonAuditLogs = await Db.AuditLogs.AsNoTracking()
+            .Where(a => a.Action.StartsWith("Season"))
+            .OrderByDescending(a => a.Timestamp)
+            .Take(12)
+            .ToListAsync();
     }
+
+    private int activeSeasonCount => seasons?.Count(s => s.IsActive) ?? 0;
+    private int publishedSeasonCount => seasons?.Count(s => s.IsPublished) ?? 0;
+    private int budgetLockedSeasonCount => seasons?.Count(s => s.IsLocked) ?? 0;
+    private int draftSeasonCount => seasons?.Count(s => !s.IsPublished) ?? 0;
+    private int publishedAthleteCount => seasons?.Where(s => s.IsPublished).Sum(s => s.AthleteCount) ?? 0;
+
+    private IEnumerable<Season> filteredSeasons =>
+        (seasons ?? Enumerable.Empty<Season>())
+            .Where(s => string.IsNullOrWhiteSpace(seasonSearchText)
+                || s.Name.Contains(seasonSearchText, StringComparison.OrdinalIgnoreCase))
+            .Where(MatchesSeasonFilter);
+
+    private bool MatchesSeasonFilter(Season season) => seasonFilter switch
+    {
+        "Active" => season.IsActive,
+        "Published" => season.IsPublished,
+        "BudgetLocked" => season.IsLocked,
+        "Draft" => !season.IsPublished,
+        _ => true
+    };
+
+    private static int GetSeasonMetric(Dictionary<int, int> metrics, int seasonId) =>
+        metrics.TryGetValue(seasonId, out var value) ? value : 0;
 
     private void ShowForm()
     {
@@ -297,6 +482,9 @@ else
 
     private async Task SaveSeason()
     {
+        string auditAction;
+        string auditDetails;
+
         if (editingSeason == null)
         {
             var newSeason = new Season
@@ -316,9 +504,12 @@ else
                 EnableMileage = formProjectType == ProjectType.Custom ? formEnableMileage : true
             };
             Db.Seasons.Add(newSeason);
+            auditAction = "SeasonCreated";
+            auditDetails = $"Created season {newSeason.Name} ({newSeason.ProjectType}) with {newSeason.AthleteCount} athletes.";
         }
         else
         {
+            var originalName = editingSeason.Name;
             editingSeason.Name = formName;
             editingSeason.AthleteCount = formAthleteCount;
             editingSeason.IsActive = formIsActive;
@@ -332,9 +523,12 @@ else
             editingSeason.EnablePerDiem = formProjectType == ProjectType.Custom ? formEnablePerDiem : true;
             editingSeason.EnableMileage = formProjectType == ProjectType.Custom ? formEnableMileage : true;
             Db.Seasons.Update(editingSeason);
+            auditAction = "SeasonUpdated";
+            auditDetails = $"Updated season {originalName} to {editingSeason.Name}. Active={editingSeason.IsActive}, Published={editingSeason.IsPublished}, BudgetLocked={editingSeason.IsLocked}.";
         }
 
         await Db.SaveChangesAsync();
+        await AuditService.LogAsync(userId ?? "", userEmail ?? "", auditAction, auditDetails);
         await LoadSeasons();
         showForm = false;
     }
@@ -343,6 +537,7 @@ else
     {
         season.IsActive = !season.IsActive;
         await Db.SaveChangesAsync();
+        await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonActivationChanged", $"{season.Name} marked {(season.IsActive ? "active" : "inactive")}.");
         await LoadSeasons();
     }
 
@@ -350,6 +545,7 @@ else
     {
         season.IsLocked = !season.IsLocked;
         await Db.SaveChangesAsync();
+        await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonBudgetLockChanged", $"{season.Name} budget calculator {(season.IsLocked ? "locked" : "unlocked")}.");
         await LoadSeasons();
     }
 
@@ -358,13 +554,16 @@ else
         season.IsPublished = !season.IsPublished;
         Db.Seasons.Update(season);
         await Db.SaveChangesAsync();
+        await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonPublishChanged", $"{season.Name} {(season.IsPublished ? "published" : "unpublished")}.");
         await LoadSeasons();
     }
 
     private async Task DeleteSeason(Season season)
     {
+        var seasonName = season.Name;
         Db.Seasons.Remove(season);
         await Db.SaveChangesAsync();
+        await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonDeleted", $"Deleted season {seasonName}.");
         await LoadSeasons();
     }
 
@@ -469,6 +668,9 @@ else
             }
 
             copySuccess = true;
+            var targetSeasonName = Db.Seasons.AsNoTracking().Where(s => s.Id == copyTargetId).Select(s => s.Name).FirstOrDefault() ?? $"Season {copyTargetId}";
+            await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonStructureCopied", $"Copied structure from {copySource.Name} into {targetSeasonName}.");
+            await LoadSeasons();
         }
         catch (Exception ex)
         {
