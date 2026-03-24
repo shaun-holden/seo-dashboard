@@ -36,7 +36,50 @@
         </button>
     }
     <span class="text-muted">@filteredGymnasts.Count gymnast(s)</span>
+    <button class="btn btn-sm btn-outline-primary" @onclick="() => showBulkAssign = !showBulkAssign">
+        <span class="oi oi-layers me-1"></span> Bulk Assign Level
+    </button>
 </div>
+
+@if (showBulkAssign)
+{
+    <div class="card mb-3 p-3 border-primary">
+        <h6>Bulk Assign Level</h6>
+        <p class="text-muted small mb-2">
+            @if (!string.IsNullOrEmpty(filterLevel))
+            {
+                <span>Applies to <strong>@filteredGymnasts.Count</strong> gymnast(s) currently filtered by "<strong>@filterLevel</strong>".</span>
+            }
+            else
+            {
+                <span>Applies to <strong>all @filteredGymnasts.Count</strong> gymnast(s). Use the level filter above to narrow the selection.</span>
+            }
+        </p>
+        <div class="d-flex gap-2 align-items-end">
+            <div>
+                <label class="form-label small mb-1">New Level</label>
+                <div class="d-flex gap-2">
+                    <select class="form-select form-select-sm" style="width: 200px;" @bind="bulkAssignLevel">
+                        <option value="">-- Select or type below --</option>
+                        @foreach (var lvl in allLevels)
+                        {
+                            <option value="@lvl">@lvl</option>
+                        }
+                    </select>
+                    <input class="form-control form-control-sm" style="width: 200px;" placeholder="Or type a new level" @bind="bulkAssignCustomLevel" />
+                </div>
+            </div>
+            <button class="btn btn-sm btn-primary" @onclick="DoBulkAssign" disabled="@(string.IsNullOrWhiteSpace(bulkAssignLevel) && string.IsNullOrWhiteSpace(bulkAssignCustomLevel))">
+                Assign to @filteredGymnasts.Count gymnast(s)
+            </button>
+            <button class="btn btn-sm btn-secondary" @onclick="() => showBulkAssign = false">Cancel</button>
+        </div>
+        @if (bulkAssignMessage != null)
+        {
+            <div class="alert alert-success mt-2 py-1 small mb-0">@bulkAssignMessage</div>
+        }
+    </div>
+}
 
 @if (showLevelManager)
 {
@@ -344,6 +387,10 @@
     private string newLevelName = "";
     private List<string> customLevels = new();
     private bool showLevelManager;
+    private bool showBulkAssign;
+    private string bulkAssignLevel = "";
+    private string bulkAssignCustomLevel = "";
+    private string? bulkAssignMessage;
     private string? renamingLevel;
     private string renameNewName = "";
     private string? levelMessage;
@@ -389,6 +436,26 @@
         renamingLevel = level;
         renameNewName = level;
         levelMessage = null;
+    }
+
+    private async Task DoBulkAssign()
+    {
+        var targetLevel = !string.IsNullOrWhiteSpace(bulkAssignCustomLevel)
+            ? bulkAssignCustomLevel.Trim()
+            : bulkAssignLevel.Trim();
+        if (string.IsNullOrWhiteSpace(targetLevel)) return;
+
+        var ids = filteredGymnasts.Select(g => g.Id).ToList();
+        using var db = await DbFactory.CreateDbContextAsync();
+        var toUpdate = await db.Gymnasts.Where(g => ids.Contains(g.Id)).ToListAsync();
+        foreach (var g in toUpdate)
+            g.Level = targetLevel;
+        await db.SaveChangesAsync();
+
+        bulkAssignMessage = $"Assigned {toUpdate.Count} gymnast(s) to \"{targetLevel}\".";
+        bulkAssignLevel = "";
+        bulkAssignCustomLevel = "";
+        await LoadData();
     }
 
     private async Task ConfirmRename(string oldName)
