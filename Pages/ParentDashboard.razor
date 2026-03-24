@@ -1121,7 +1121,6 @@ else
         }
 
         budgetNotReady = false;
-        publishedSeasonsList = publishedSeasons;
 
         var allTeamLevels = await db.TeamLevels.AsNoTracking().ToListAsync();
         var linkedAthleteIds = parentLinks.Select(l => l.AthleteId).ToList();
@@ -1133,14 +1132,37 @@ else
             .OrderBy(g => g.Name)
             .ToListAsync();
 
+        // Filter seasons to only those relevant to this parent's athletes
+        var gymnastLevels = gymnastRecords
+            .Select(g => g.Level)
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .Select(l => l!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var linkedTeamLevelSeasonIds = linkedAthletes
+            .Select(a => allTeamLevels.FirstOrDefault(t => t.Id == a.TeamLevelId)?.SeasonId)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .ToHashSet();
+
+        publishedSeasonsList = publishedSeasons.Where(s =>
+            // Season has a TeamLevel directly assigned to this parent's athlete
+            linkedTeamLevelSeasonIds.Contains(s.Id)
+            // Season has TeamLevels matching a gymnast's level name
+            || allTeamLevels.Any(t => t.SeasonId == s.Id
+                && gymnastLevels.Any(level => LevelNamesMatch(level, t.Name)))
+            // Season has no TeamLevels but has budget data (gymnast-based season)
+            || (!allTeamLevels.Any(t => t.SeasonId == s.Id) && gymnastRecords.Any())
+        ).ToList();
+
         Season? targetSeason;
         if (selectedSeasonId.HasValue)
         {
-            targetSeason = publishedSeasons.FirstOrDefault(s => s.Id == selectedSeasonId.Value);
+            targetSeason = publishedSeasonsList.FirstOrDefault(s => s.Id == selectedSeasonId.Value);
         }
         else
         {
-            targetSeason = SelectParentSeason(publishedSeasons, allTeamLevels, linkedAthletes, gymnastRecords);
+            targetSeason = SelectParentSeason(publishedSeasonsList, allTeamLevels, linkedAthletes, gymnastRecords);
             selectedSeasonId = targetSeason?.Id;
         }
         if (targetSeason == null)
