@@ -226,6 +226,7 @@ else
                     </tfoot>
                 </table>
 
+                <!-- DEBUG: season=@(seasons.FirstOrDefault()?.Id) level="@athleteLevel" apparelCols=@parentApparelColumns.Count compCols=@parentCompColumns.Count apparelItems=@parentApparelItems.Count compItems=@parentCompetitionItems.Count -->
                 @if (parentApparelColumns.Any(col => DoesApparelApplyToLevel(col.Name, athleteLevel))
                     || parentCompColumns.Any(col => DoesCompApplyToLevel2(col.Name, athleteLevel)))
                 {
