@@ -633,6 +633,11 @@
         return false;
     }
 
+    private static bool IsAppliesToEmpty(string? appliesTo) =>
+        string.IsNullOrWhiteSpace(appliesTo)
+        || appliesTo.Trim().Equals("All Levels", StringComparison.OrdinalIgnoreCase)
+        || appliesTo.Trim().Equals("All", StringComparison.OrdinalIgnoreCase);
+
     private bool DoesItemApplyToLevel(string itemName, string? level)
     {
         if (string.IsNullOrEmpty(level)) return true;
@@ -640,10 +645,10 @@
         if (!items.Any()) return false;
 
         // If any item has no AppliesTo (general), it applies to all
-        if (items.Any(a => string.IsNullOrEmpty(a.AppliesTo))) return true;
+        if (items.Any(a => IsAppliesToEmpty(a.AppliesTo))) return true;
 
         // Check if any item's AppliesTo matches this level
-        return items.Any(a => !string.IsNullOrEmpty(a.AppliesTo) && LevelMatchesAppliesTo(level, a.AppliesTo));
+        return items.Any(a => !IsAppliesToEmpty(a.AppliesTo) && LevelMatchesAppliesTo(level, a.AppliesTo!));
     }
 
     private decimal GetItemPrice(string itemName, string? level)
@@ -654,13 +659,13 @@
         // Check for level-specific pricing
         if (!string.IsNullOrEmpty(level))
         {
-            var levelItem = items.FirstOrDefault(a => !string.IsNullOrEmpty(a.AppliesTo) &&
-                LevelMatchesAppliesTo(level, a.AppliesTo));
+            var levelItem = items.FirstOrDefault(a => !IsAppliesToEmpty(a.AppliesTo) &&
+                LevelMatchesAppliesTo(level, a.AppliesTo!));
             if (levelItem != null) return levelItem.Price;
         }
 
         // Only use general pricing (no AppliesTo) — if all items have AppliesTo and none match, return 0
-        var generalItem = items.FirstOrDefault(a => string.IsNullOrEmpty(a.AppliesTo));
+        var generalItem = items.FirstOrDefault(a => IsAppliesToEmpty(a.AppliesTo));
         return generalItem?.Price ?? 0;
     }
 
@@ -695,8 +700,8 @@
         if (string.IsNullOrEmpty(level)) return true;
         var items = competitionItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
         if (!items.Any()) return false;
-        if (items.Any(a => string.IsNullOrEmpty(a.AppliesTo))) return true;
-        return items.Any(a => !string.IsNullOrEmpty(a.AppliesTo) && LevelMatchesAppliesTo(level, a.AppliesTo));
+        if (items.Any(a => IsAppliesToEmpty(a.AppliesTo))) return true;
+        return items.Any(a => !IsAppliesToEmpty(a.AppliesTo) && LevelMatchesAppliesTo(level, a.AppliesTo!));
     }
 
     private decimal GetCompItemPrice(string itemName, string? level)
@@ -705,10 +710,10 @@
         if (!items.Any()) return 0;
         if (!string.IsNullOrEmpty(level))
         {
-            var levelItem = items.FirstOrDefault(a => !string.IsNullOrEmpty(a.AppliesTo) && LevelMatchesAppliesTo(level, a.AppliesTo));
+            var levelItem = items.FirstOrDefault(a => !IsAppliesToEmpty(a.AppliesTo) && LevelMatchesAppliesTo(level, a.AppliesTo!));
             if (levelItem != null) return levelItem.Price;
         }
-        var generalItem = items.FirstOrDefault(a => string.IsNullOrEmpty(a.AppliesTo));
+        var generalItem = items.FirstOrDefault(a => IsAppliesToEmpty(a.AppliesTo));
         return generalItem?.Price ?? 0;
     }
 

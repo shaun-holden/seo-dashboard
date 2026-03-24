@@ -1437,14 +1437,20 @@ else
             });
     }
 
+    // "All Levels" typed into AppliesTo should behave the same as leaving it blank
+    private static bool IsAppliesToEmpty(string? appliesTo) =>
+        string.IsNullOrWhiteSpace(appliesTo)
+        || appliesTo.Trim().Equals("All Levels", StringComparison.OrdinalIgnoreCase)
+        || appliesTo.Trim().Equals("All", StringComparison.OrdinalIgnoreCase);
+
     // Apparel helpers
     private bool DoesApparelApplyToLevel(string itemName, string level)
     {
         if (string.IsNullOrEmpty(level)) return true;
         var items = parentApparelItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
         if (!items.Any()) return false;
-        if (items.Any(a => string.IsNullOrEmpty(a.AppliesTo))) return true;
-        return items.Any(a => !string.IsNullOrEmpty(a.AppliesTo) && LevelMatchesKeywords(level, a.AppliesTo));
+        if (items.Any(a => IsAppliesToEmpty(a.AppliesTo))) return true;
+        return items.Any(a => !IsAppliesToEmpty(a.AppliesTo) && LevelMatchesKeywords(level, a.AppliesTo!));
     }
 
     private decimal GetApparelPrice(string itemName, string level)
@@ -1454,7 +1460,7 @@ else
         if (!string.IsNullOrEmpty(level))
         {
             // Find the best match — prefer the one with the longest matching keyword
-            var matches = items.Where(a => !string.IsNullOrEmpty(a.AppliesTo) && LevelMatchesKeywords(level, a.AppliesTo)).ToList();
+            var matches = items.Where(a => !IsAppliesToEmpty(a.AppliesTo) && LevelMatchesKeywords(level, a.AppliesTo!)).ToList();
             if (matches.Count == 1) return matches[0].Price;
             if (matches.Count > 1)
             {
@@ -1466,7 +1472,7 @@ else
                 return best.Price;
             }
         }
-        return items.FirstOrDefault(a => string.IsNullOrEmpty(a.AppliesTo))?.Price ?? 0;
+        return items.FirstOrDefault(a => IsAppliesToEmpty(a.AppliesTo))?.Price ?? 0;
     }
 
     private bool IsParentApparelSelected(int athleteId, string itemName)
@@ -1520,8 +1526,8 @@ else
         if (string.IsNullOrEmpty(level)) return true;
         var items = parentCompetitionItems.Where(c => c.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
         if (!items.Any()) return false;
-        if (items.Any(c => string.IsNullOrEmpty(c.AppliesTo))) return true;
-        return items.Any(c => !string.IsNullOrEmpty(c.AppliesTo) && LevelMatchesKeywords(level, c.AppliesTo));
+        if (items.Any(c => IsAppliesToEmpty(c.AppliesTo))) return true;
+        return items.Any(c => !IsAppliesToEmpty(c.AppliesTo) && LevelMatchesKeywords(level, c.AppliesTo!));
     }
 
     private decimal GetCompPrice2(string itemName, string level)
@@ -1530,10 +1536,10 @@ else
         if (!items.Any()) return 0;
         if (!string.IsNullOrEmpty(level))
         {
-            var match = items.FirstOrDefault(c => !string.IsNullOrEmpty(c.AppliesTo) && LevelMatchesKeywords(level, c.AppliesTo));
+            var match = items.FirstOrDefault(c => !IsAppliesToEmpty(c.AppliesTo) && LevelMatchesKeywords(level, c.AppliesTo!));
             if (match != null) return match.Price;
         }
-        return items.FirstOrDefault(c => string.IsNullOrEmpty(c.AppliesTo))?.Price ?? 0;
+        return items.FirstOrDefault(c => IsAppliesToEmpty(c.AppliesTo))?.Price ?? 0;
     }
 
     private decimal GetParentCompCost(int athleteId, string level)
@@ -1555,9 +1561,9 @@ else
         if (string.IsNullOrEmpty(level)) return true;
         var items = parentCompetitionItems.Where(c => c.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
         if (!items.Any()) return false;
-        if (items.Any(c => string.IsNullOrEmpty(c.AppliesTo))) return true;
-        return items.Any(c => !string.IsNullOrEmpty(c.AppliesTo) &&
-            c.AppliesTo.Split(',').Any(k =>
+        if (items.Any(c => IsAppliesToEmpty(c.AppliesTo))) return true;
+        return items.Any(c => !IsAppliesToEmpty(c.AppliesTo) &&
+            c.AppliesTo!.Split(',').Any(k =>
                 level.Contains(k.Trim(), StringComparison.OrdinalIgnoreCase) ||
                 k.Trim().Contains(level, StringComparison.OrdinalIgnoreCase)));
     }
@@ -1569,13 +1575,13 @@ else
         if (!items.Any()) return 0;
         if (!string.IsNullOrEmpty(level))
         {
-            var match = items.FirstOrDefault(c => !string.IsNullOrEmpty(c.AppliesTo) &&
-                c.AppliesTo.Split(',').Any(k =>
+            var match = items.FirstOrDefault(c => !IsAppliesToEmpty(c.AppliesTo) &&
+                c.AppliesTo!.Split(',').Any(k =>
                     level.Contains(k.Trim(), StringComparison.OrdinalIgnoreCase) ||
                     k.Trim().Contains(level, StringComparison.OrdinalIgnoreCase)));
             if (match != null) return match.Price;
         }
-        return items.FirstOrDefault(c => string.IsNullOrEmpty(c.AppliesTo))?.Price ?? 0;
+        return items.FirstOrDefault(c => IsAppliesToEmpty(c.AppliesTo))?.Price ?? 0;
     }
 
     private bool IsParentCompSelected(int athleteId, string itemName)
