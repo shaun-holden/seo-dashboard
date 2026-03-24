@@ -172,9 +172,10 @@ else
     @foreach (var athlete in athletes)
     {
         var athleteLevel = parentGymnasts.FirstOrDefault(g => g.Id == athlete.Id)?.Level ?? teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? "";
-        var sharedFeeCost = parentCostPerGymnast;
-        var apparelCost = GetParentApparelCost(athlete.Id, athleteLevel);
-        var compCost = GetParentCompCost(athlete.Id, athleteLevel);
+        var isInSeason = seasonAthleteIds.Contains(athlete.Id);
+        var sharedFeeCost = isInSeason ? parentCostPerGymnast : 0m;
+        var apparelCost = isInSeason ? GetParentApparelCost(athlete.Id, athleteLevel) : 0m;
+        var compCost = isInSeason ? GetParentCompCost(athlete.Id, athleteLevel) : 0m;
         var totalCost = sharedFeeCost + apparelCost + compCost;
         var athletePayments = payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment).ToList();
         var athleteCredits = payments.Where(p => p.AthleteId == athlete.Id && p.Type == PaymentType.Credit).ToList();
@@ -183,13 +184,17 @@ else
         var balance = totalCost - totalPaid - totalCredits;
         var isExpanded = expandedAthletes.Contains(athlete.Id);
 
-        <div class="card mb-4">
+        <div class="card mb-4 @(!isInSeason ? "opacity-50" : "")">
             <div class="card-header d-flex justify-content-between align-items-center"
                  @onclick="() => ToggleAthlete(athlete.Id)" style="cursor: pointer;">
                 <div>
                     <h5 class="mb-0 d-inline">@athlete.Name</h5>
                     <span class="badge bg-primary ms-2">@(teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name ?? parentGymnasts.FirstOrDefault(g => g.Id == athlete.Id)?.Level ?? "")</span>
-                    @if (balance <= 0)
+                    @if (!isInSeason)
+                    {
+                        <span class="badge bg-secondary ms-1">Not in this season</span>
+                    }
+                    else if (balance <= 0)
                     {
                         <span class="badge bg-success ms-1">Paid in Full</span>
                     }
@@ -197,7 +202,7 @@ else
                     {
                         <span class="badge bg-warning text-dark ms-1">$@balance.ToString("N2") due</span>
                     }
-                    <div class="small text-muted mt-1">Tap to view individual charges, payment status, and schedule.</div>
+                    <div class="small text-muted mt-1">@(isInSeason ? "Tap to view individual charges, payment status, and schedule." : "This athlete is not part of the selected season.")</div>
                 </div>
                 <span class="oi @(isExpanded ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
             </div>
@@ -908,6 +913,7 @@ else
     private List<Season> publishedSeasonsList = new();
     private int? selectedSeasonId;
     private HashSet<int> expandedAthletes = new();
+    private HashSet<int> seasonAthleteIds = new();
     private bool isProcessing;
     private string? paymentError;
     private bool stripeEnabled;
@@ -971,10 +977,11 @@ else
     private int parentLinkCount;
     private int gymnastCount;
     private bool needsCommitment;
-    private decimal familyBalanceDue => athletes.Sum(GetAthleteBalance);
-    private decimal familyPaidTotal => athletes.Sum(GetAthletePaidTotal);
-    private decimal familyCreditsTotal => athletes.Sum(GetAthleteCreditsTotal);
-    private int familyAthletesWithBalanceCount => athletes.Count(a => GetAthleteBalance(a) > 0);
+    private List<Athlete> seasonActiveAthletes => athletes.Where(a => seasonAthleteIds.Contains(a.Id)).ToList();
+    private decimal familyBalanceDue => seasonActiveAthletes.Sum(GetAthleteBalance);
+    private decimal familyPaidTotal => seasonActiveAthletes.Sum(GetAthletePaidTotal);
+    private decimal familyCreditsTotal => seasonActiveAthletes.Sum(GetAthleteCreditsTotal);
+    private int familyAthletesWithBalanceCount => seasonActiveAthletes.Count(a => GetAthleteBalance(a) > 0);
     private int unreadAnnouncementCount => Math.Max(announcements.Count - readAnnouncementIds.Count, 0);
     private int upcomingScheduleCount => meets.Count(m => m.Date >= DateTime.Today) + upcomingPractices.Count;
     private DateTime? familyNextDueDate => GetFamilyNextDue()?.DueDate;
@@ -1208,6 +1215,18 @@ else
                 TeamLevelId = teamLevels.FirstOrDefault(t => LevelNamesMatch(t.Name, g.Level))?.Id ?? 0
             })
             .ToList();
+
+        // Athletes that match this season's levels
+        var matchedFallback = fallbackAthletes.Where(fa => fa.TeamLevelId > 0 && seasonAthletes.All(a => a.Id != fa.Id)).ToList();
+        var matchedIds = seasonAthletes.Select(a => a.Id)
+            .Concat(matchedFallback.Select(a => a.Id))
+            .ToHashSet();
+
+        // For seasons with no TeamLevels (gymnast-based), all gymnasts belong
+        if (!teamLevels.Any())
+            matchedIds = gymnastRecords.Select(g => g.Id).ToHashSet();
+
+        seasonAthleteIds = matchedIds;
 
         athletes = seasonAthletes
             .Concat(fallbackAthletes.Where(fa => seasonAthletes.All(a => a.Id != fa.Id)))
@@ -1474,6 +1493,7 @@ else
 
     private NextDueInfo? GetFamilyNextDue() =>
         athletes
+            .Where(a => seasonAthleteIds.Contains(a.Id))
             .Select(a =>
             {
                 var gymnastRecord = parentGymnasts.FirstOrDefault(g => g.Id == a.Id);
