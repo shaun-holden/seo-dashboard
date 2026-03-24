@@ -332,6 +332,10 @@ else
                         <li>@copyPreview.CoachCount coach(es)</li>
                         <li>@copyPreview.MeetCount meet(s)</li>
                         <li>@copyPreview.TeamLevelCount team level(s) with @copyPreview.AthleteItemCount athlete item(s)</li>
+                        <li>@copyPreview.SharedFeeCount shared fee(s)</li>
+                        <li>@copyPreview.ApparelItemCount apparel item(s)</li>
+                        <li>@copyPreview.CompetitionItemCount competition item(s)</li>
+                        <li>@copyPreview.BudgetEntryCount budget line(s)</li>
                     </ul>
                 </div>
             }
@@ -629,6 +633,10 @@ else
         public int MeetCount { get; set; }
         public int TeamLevelCount { get; set; }
         public int AthleteItemCount { get; set; }
+        public int SharedFeeCount { get; set; }
+        public int ApparelItemCount { get; set; }
+        public int CompetitionItemCount { get; set; }
+        public int BudgetEntryCount { get; set; }
     }
 
     private void StartCopy(Season season)
@@ -661,7 +669,11 @@ else
             CoachCount = Db.Coaches.Count(c => c.SeasonId == copySource.Id),
             MeetCount = Db.Meets.Count(m => m.SeasonId == copySource.Id),
             TeamLevelCount = levelIds.Count,
-            AthleteItemCount = Db.AthleteItems.Count(a => levelIds.Contains(a.TeamLevelId))
+            AthleteItemCount = Db.AthleteItems.Count(a => levelIds.Contains(a.TeamLevelId)),
+            SharedFeeCount = Db.SharedFees.Count(f => f.SeasonId == copySource.Id),
+            ApparelItemCount = Db.ApparelItems.Count(a => a.SeasonId == copySource.Id),
+            CompetitionItemCount = Db.CompetitionItems.Count(c => c.SeasonId == copySource.Id),
+            BudgetEntryCount = Db.BudgetCalculatorEntries.Count(e => e.SeasonId == copySource.Id)
         };
     }
 
@@ -709,6 +721,60 @@ else
                 }
                 await Db.SaveChangesAsync();
             }
+
+            // 4. Copy shared fees
+            var srcSharedFees = Db.SharedFees.Where(f => f.SeasonId == srcId).ToList();
+            foreach (var fee in srcSharedFees)
+            {
+                Db.SharedFees.Add(new SharedFee
+                {
+                    Name = fee.Name, Amount = fee.Amount, Category = fee.Category,
+                    IsIncludedInBudget = fee.IsIncludedInBudget, SeasonId = copyTargetId
+                });
+            }
+            await Db.SaveChangesAsync();
+
+            // 5. Copy apparel items
+            var srcApparel = Db.ApparelItems.Where(a => a.SeasonId == srcId).ToList();
+            foreach (var item in srcApparel)
+            {
+                Db.ApparelItems.Add(new ApparelItem
+                {
+                    Name = item.Name, Price = item.Price, IsRequired = item.IsRequired,
+                    AppliesTo = item.AppliesTo, SelectionDeadline = item.SelectionDeadline,
+                    SeasonId = copyTargetId
+                });
+            }
+            await Db.SaveChangesAsync();
+
+            // 6. Copy competition items
+            var srcComp = Db.CompetitionItems.Where(c => c.SeasonId == srcId).ToList();
+            foreach (var item in srcComp)
+            {
+                Db.CompetitionItems.Add(new CompetitionItem
+                {
+                    Name = item.Name, Price = item.Price, IsRequired = item.IsRequired,
+                    AppliesTo = item.AppliesTo, SelectionDeadline = item.SelectionDeadline,
+                    SeasonId = copyTargetId
+                });
+            }
+            await Db.SaveChangesAsync();
+
+            // 7. Copy budget calculator entries
+            var srcBudget = Db.BudgetCalculatorEntries.Where(e => e.SeasonId == srcId).ToList();
+            foreach (var entry in srcBudget)
+            {
+                Db.BudgetCalculatorEntries.Add(new BudgetCalculatorEntry
+                {
+                    SeasonId = copyTargetId,
+                    Category = entry.Category, Name = entry.Name,
+                    Amount = entry.Amount, Quantity1 = entry.Quantity1,
+                    Quantity2 = entry.Quantity2, Quantity3 = entry.Quantity3,
+                    CalculatedTotal = entry.CalculatedTotal,
+                    IsPercentage = entry.IsPercentage
+                });
+            }
+            await Db.SaveChangesAsync();
 
             copySuccess = true;
             var targetSeasonName = Db.Seasons.AsNoTracking().Where(s => s.Id == copyTargetId).Select(s => s.Name).FirstOrDefault() ?? $"Season {copyTargetId}";
