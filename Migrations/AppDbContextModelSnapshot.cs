@@ -1510,6 +1510,9 @@ namespace GymBudgetApp.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("IsLocked")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IsPublished")
                         .HasColumnType("INTEGER");
 

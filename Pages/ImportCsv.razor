@@ -149,7 +149,10 @@
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         currentUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         mySeasons = Db.Seasons.Where(s => s.UserId == currentUserId).OrderByDescending(s => s.Name).ToList();
-        var activeSeason = mySeasons.FirstOrDefault(s => s.IsActive);
+        var activeSeason = mySeasons
+            .OrderByDescending(s => s.IsActive)
+            .ThenByDescending(s => s.Name)
+            .FirstOrDefault();
         labels = new ProjectLabels(activeSeason);
     }
 

@@ -251,7 +251,10 @@
         currentUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         mySeasons = await Db.Seasons.Where(s => s.UserId == currentUserId).OrderByDescending(s => s.Name).ToListAsync();
         myPin = await Db.UserImportPins.FirstOrDefaultAsync(p => p.UserId == currentUserId);
-        var activeSeason = mySeasons.FirstOrDefault(s => s.IsActive);
+        var activeSeason = mySeasons
+            .OrderByDescending(s => s.IsActive)
+            .ThenByDescending(s => s.Name)
+            .FirstOrDefault();
         labels = new ProjectLabels(activeSeason);
     }
 

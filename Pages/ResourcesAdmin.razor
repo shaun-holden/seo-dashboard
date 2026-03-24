@@ -151,7 +151,7 @@
     protected override async Task OnInitializedAsync()
     {
         using var db = await DbFactory.CreateDbContextAsync();
-        seasons = await db.Seasons.AsNoTracking().Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        seasons = await db.Seasons.AsNoTracking().OrderByDescending(s => s.IsActive).ThenBy(s => s.Name).ToListAsync();
         if (seasons.Any())
         {
             selectedSeasonId = seasons.First().Id;

@@ -470,7 +470,7 @@ else
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        seasons = await Task.FromResult(Db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToList());
+        seasons = await Task.FromResult(Db.Seasons.OrderByDescending(s => s.IsActive).ThenByDescending(s => s.Name).ToList());
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)

@@ -1123,6 +1123,11 @@ else
         if (!publishedSeasons.Any())
             return null;
 
+        publishedSeasons = publishedSeasons
+            .OrderByDescending(s => s.IsActive)
+            .ThenByDescending(s => s.Name)
+            .ToList();
+
         var linkedSeasonIds = linkedAthletes
             .Select(a => allTeamLevels.FirstOrDefault(t => t.Id == a.TeamLevelId)?.SeasonId)
             .Where(id => id.HasValue)

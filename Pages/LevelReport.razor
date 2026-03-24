@@ -16,6 +16,21 @@
 </div>
 
 <div class="row g-2 align-items-center mb-3">
+    <div class="col-auto">
+        <label class="col-form-label fw-semibold">Season</label>
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @onchange="OnSeasonChanged">
+            <option value="">-- Select Season --</option>
+            @if (seasons != null)
+            {
+                @foreach (var s in seasons)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            }
+        </select>
+    </div>
     @if (reportRows.Any())
     {
         <div class="col-auto ms-auto">
@@ -95,12 +110,34 @@ else
 
 @code {
     private bool loading = true;
+    private List<Season>? seasons;
+    private int selectedSeasonId;
     private List<LevelRow> reportRows = new();
 
     private record LevelRow(string LevelName, int GymnastCount, decimal CostPerGymnast, decimal TotalFees, decimal TotalPaid);
 
     protected override async Task OnInitializedAsync()
     {
+        using var db = await DbFactory.CreateDbContextAsync();
+        seasons = await db.Seasons.AsNoTracking()
+            .OrderByDescending(s => s.IsActive)
+            .ThenByDescending(s => s.Name)
+            .ToListAsync();
+        selectedSeasonId = seasons.FirstOrDefault()?.Id ?? 0;
+        await LoadData();
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var seasonId))
+        {
+            selectedSeasonId = 0;
+            reportRows.Clear();
+            loading = false;
+            return;
+        }
+
+        selectedSeasonId = seasonId;
         await LoadData();
     }
 
@@ -111,11 +148,14 @@ else
 
         using var db = await DbFactory.CreateDbContextAsync();
 
-        // Get active published season for cost-per-gymnast calculation
-        var season = await db.Seasons
-            .Where(s => s.IsActive)
-            .OrderByDescending(s => s.Name)
-            .FirstOrDefaultAsync();
+        if (selectedSeasonId <= 0)
+        {
+            loading = false;
+            return;
+        }
+
+        var season = await db.Seasons.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == selectedSeasonId);
 
         decimal costPerGymnast = 0;
         if (season != null)

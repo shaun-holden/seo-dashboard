@@ -221,7 +221,7 @@ else if (selectedSeasonId == 0)
     protected override async Task OnInitializedAsync()
     {
         using var db = await DbFactory.CreateDbContextAsync();
-        seasons = await db.Seasons.Where(s => s.IsActive).OrderByDescending(s => s.Name).ToListAsync();
+        seasons = await db.Seasons.OrderByDescending(s => s.IsActive).ThenByDescending(s => s.Name).ToListAsync();
     }
 
     private async Task OnSeasonChanged(ChangeEventArgs e)

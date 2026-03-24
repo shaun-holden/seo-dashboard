@@ -252,10 +252,10 @@ else if (activeTab == "compose")
             .OrderBy(u => u.Email)
             .ToList();
 
-        // Load team levels from active seasons
+        // Load team levels from all seasons so compose works when multiple seasons stay open.
         var activeSeasonIds = await db.Seasons.AsNoTracking()
-            .Where(s => s.IsActive)
             .Select(s => new { s.Id, s.Name })
+            .OrderByDescending(s => s.Name)
             .ToListAsync();
 
         var seasonDict = activeSeasonIds.ToDictionary(s => s.Id, s => s.Name);

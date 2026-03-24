@@ -14,6 +14,27 @@
 }
 else
 {
+    <div class="row g-2 align-items-center mb-3">
+        <div class="col-md-4">
+            <label class="form-label">Season</label>
+            <select class="form-select" @onchange="OnSeasonChanged">
+                <option value="">-- Select Season --</option>
+                @foreach (var season in seasons)
+                {
+                    <option value="@season.Id">@season.Name</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-8">
+            @if (selectedSeason?.IsLocked == true)
+            {
+                <div class="alert alert-warning mb-0 py-2">
+                    This season is locked. Payment plan changes are disabled.
+                </div>
+            }
+        </div>
+    </div>
+
     <!-- Bulk Update by Level -->
     <div class="card mb-3">
         <div class="card-header"><h6 class="mb-0">Bulk Update by Level</h6></div>
@@ -49,7 +70,7 @@ else
                 </div>
                 <div class="col-md-2">
                     <button class="btn btn-primary w-100" @onclick="ApplyBulkUpdate"
-                            disabled="@string.IsNullOrEmpty(bulkLevel)">
+                            disabled="@(string.IsNullOrEmpty(bulkLevel) || selectedSeason?.IsLocked == true)">
                         Apply to Level
                     </button>
                 </div>
@@ -101,7 +122,8 @@ else
                             <td class="text-center">
                                 <select class="form-select form-select-sm d-inline-block" style="width: 90px;"
                                         value="@months"
-                                        @onchange="(e) => UpdateMonths(gId, e)">
+                                        @onchange="(e) => UpdateMonths(gId, e)"
+                                        disabled="@(selectedSeason?.IsLocked == true)">
                                     @for (int m = 1; m <= 12; m++)
                                     {
                                         <option value="@m">@m</option>
@@ -111,7 +133,8 @@ else
                             <td class="text-center">
                                 <select class="form-select form-select-sm d-inline-block" style="width: 130px;"
                                         value="@startMonth"
-                                        @onchange="(e) => UpdateStartMonth(gId, e)">
+                                        @onchange="(e) => UpdateStartMonth(gId, e)"
+                                        disabled="@(selectedSeason?.IsLocked == true)">
                                     @for (int m = 1; m <= 12; m++)
                                     {
                                         <option value="@m">@(new DateTime(2026, m, 1).ToString("MMMM"))</option>
@@ -147,7 +170,10 @@ else
 
 @code {
     private bool loading = true;
+    private List<Season> seasons = new();
+    private Season? selectedSeason;
     private List<Gymnast> gymnasts = new();
+    private List<Gymnast> allGymnasts = new();
     private List<string> levels = new();
     private int seasonPaymentMonths = 8;
     private int seasonStartMonth = 8;
@@ -177,21 +203,67 @@ else
     protected override async Task OnInitializedAsync()
     {
         using var db = await DbFactory.CreateDbContextAsync();
-        gymnasts = await db.Gymnasts.OrderBy(g => g.Name).ToListAsync();
-        levels = gymnasts.Where(g => !string.IsNullOrEmpty(g.Level)).Select(g => g.Level!).Distinct().OrderBy(l => l).ToList();
-
-        var activeSeason = await db.Seasons.FirstOrDefaultAsync(s => s.IsActive);
-        if (activeSeason != null)
+        seasons = await db.Seasons.AsNoTracking()
+            .OrderByDescending(s => s.IsActive)
+            .ThenByDescending(s => s.Name)
+            .ToListAsync();
+        allGymnasts = await db.Gymnasts.OrderBy(g => g.Name).ToListAsync();
+        selectedSeason = seasons.FirstOrDefault();
+        if (selectedSeason != null)
         {
-            seasonPaymentMonths = activeSeason.PaymentMonths > 0 ? activeSeason.PaymentMonths : 8;
-            seasonStartMonth = activeSeason.PaymentStartMonth > 0 ? activeSeason.PaymentStartMonth : 8;
-            var calcTotal = await db.BudgetCalculatorEntries
-                .Where(e => e.SeasonId == activeSeason.Id)
-                .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
-            var athleteCount = activeSeason.AthleteCount > 0 ? activeSeason.AthleteCount : gymnasts.Count;
-            costPerGymnast = athleteCount > 0 ? Math.Round(calcTotal / athleteCount, 2) : 0;
+            await LoadSeasonData(selectedSeason.Id);
         }
         loading = false;
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var seasonId))
+            return;
+
+        await LoadSeasonData(seasonId);
+    }
+
+    private async Task LoadSeasonData(int seasonId)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        selectedSeason = seasons.FirstOrDefault(s => s.Id == seasonId);
+        if (selectedSeason == null)
+        {
+            gymnasts.Clear();
+            levels.Clear();
+            seasonPaymentMonths = 8;
+            seasonStartMonth = 8;
+            costPerGymnast = 0;
+            return;
+        }
+
+        seasonPaymentMonths = selectedSeason.PaymentMonths > 0 ? selectedSeason.PaymentMonths : 8;
+        seasonStartMonth = selectedSeason.PaymentStartMonth > 0 ? selectedSeason.PaymentStartMonth : 8;
+        var calcTotal = await db.BudgetCalculatorEntries
+            .Where(e => e.SeasonId == selectedSeason.Id)
+            .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
+
+        var seasonLevelNames = await db.TeamLevels.AsNoTracking()
+            .Where(t => t.SeasonId == selectedSeason.Id)
+            .Select(t => t.Name)
+            .ToListAsync();
+
+        gymnasts = allGymnasts
+            .Where(g => !string.IsNullOrWhiteSpace(g.Level) && seasonLevelNames.Contains(g.Level!))
+            .OrderBy(g => g.Name)
+            .ToList();
+        levels = gymnasts
+            .Where(g => !string.IsNullOrEmpty(g.Level))
+            .Select(g => g.Level!)
+            .Distinct()
+            .OrderBy(l => l)
+            .ToList();
+
+        var athleteCount = selectedSeason.AthleteCount > 0 ? selectedSeason.AthleteCount : gymnasts.Count;
+        costPerGymnast = athleteCount > 0 ? Math.Round(calcTotal / athleteCount, 2) : 0;
+        filterLevel = "";
+        bulkLevel = "";
     }
 
     private async Task ApplyBulkUpdate()

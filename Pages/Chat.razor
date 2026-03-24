@@ -145,9 +145,12 @@
             profilePictures[p.UserId] = p.ProfilePictureData;
         }
 
-        // Ensure rooms exist for active season using roster levels
-        var activeSeason = await db.Seasons.FirstOrDefaultAsync(s => s.IsActive);
-        if (activeSeason != null)
+        // Ensure rooms exist for each unlocked active season using roster levels.
+        var activeSeasons = await db.Seasons.AsNoTracking()
+            .Where(s => s.IsActive && !s.IsLocked)
+            .OrderByDescending(s => s.Name)
+            .ToListAsync();
+        foreach (var activeSeason in activeSeasons)
         {
             var rosterLevels = await db.Gymnasts
                 .Where(g => !string.IsNullOrEmpty(g.Level))

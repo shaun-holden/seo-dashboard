@@ -1,6 +1,7 @@
 using GymBudgetApp.Models;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace GymBudgetApp
 {
@@ -11,15 +12,190 @@ namespace GymBudgetApp
 
         public override int SaveChanges()
         {
+            ValidateLockedSeasons();
             UpdateAuditTimestamps();
             return base.SaveChanges();
         }
 
         public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
+            ValidateLockedSeasons();
             UpdateAuditTimestamps();
             return base.SaveChangesAsync(cancellationToken);
         }
+
+        private void ValidateLockedSeasons()
+        {
+            var changedEntries = ChangeTracker.Entries()
+                .Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+                .ToList();
+
+            if (!changedEntries.Any())
+                return;
+
+            var seasonIds = changedEntries
+                .Select(ResolveSeasonId)
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value)
+                .ToHashSet();
+
+            foreach (var seasonEntry in changedEntries.Where(e => e.Entity is Season))
+            {
+                var season = (Season)seasonEntry.Entity;
+                if (season.Id > 0)
+                    seasonIds.Add(season.Id);
+            }
+
+            if (!seasonIds.Any())
+                return;
+
+            var lockedSeasons = Seasons.AsNoTracking()
+                .Where(s => seasonIds.Contains(s.Id) && s.IsLocked)
+                .Select(s => new { s.Id, s.Name })
+                .ToDictionary(s => s.Id, s => s.Name);
+
+            foreach (var entry in changedEntries)
+            {
+                if (entry.Entity is Season season)
+                {
+                    if (season.Id <= 0 || !lockedSeasons.TryGetValue(season.Id, out var lockedSeasonName))
+                        continue;
+
+                    if (entry.State == EntityState.Modified)
+                    {
+                        var modifiedProperties = entry.Properties
+                            .Where(p => p.IsModified && p.Metadata.Name != nameof(Season.ModifiedAt))
+                            .Select(p => p.Metadata.Name)
+                            .ToList();
+
+                        var unlockingOnly = modifiedProperties.Count == 1
+                            && modifiedProperties[0] == nameof(Season.IsLocked)
+                            && entry.Property(nameof(Season.IsLocked)).CurrentValue is false;
+
+                        if (unlockingOnly)
+                            continue;
+                    }
+
+                    throw new InvalidOperationException($"Season '{lockedSeasonName}' is locked and cannot be modified.");
+                }
+
+                var seasonId = ResolveSeasonId(entry);
+                if (seasonId.HasValue && lockedSeasons.TryGetValue(seasonId.Value, out var seasonName))
+                    throw new InvalidOperationException($"Season '{seasonName}' is locked and cannot be modified.");
+            }
+        }
+
+        private int? ResolveSeasonId(EntityEntry entry)
+        {
+            var seasonIdProperty = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "SeasonId");
+            if (seasonIdProperty != null)
+                return ToNullableInt(seasonIdProperty.CurrentValue);
+
+            return entry.Entity switch
+            {
+                Athlete athlete => TeamLevels.AsNoTracking()
+                    .Where(t => t.Id == athlete.TeamLevelId)
+                    .Select(t => (int?)t.SeasonId)
+                    .FirstOrDefault(),
+                AthleteItem item => TeamLevels.AsNoTracking()
+                    .Where(t => t.Id == item.TeamLevelId)
+                    .Select(t => (int?)t.SeasonId)
+                    .FirstOrDefault(),
+                AthleteItemSelection selection => AthleteItems.AsNoTracking()
+                    .Where(i => i.Id == selection.AthleteItemId)
+                    .Select(i => (int?)i.TeamLevel.SeasonId)
+                    .FirstOrDefault(),
+                CoachMeetAssignment assignment => Coaches.AsNoTracking()
+                    .Where(c => c.Id == assignment.CoachId)
+                    .Select(c => (int?)c.SeasonId)
+                    .FirstOrDefault()
+                    ?? Meets.AsNoTracking()
+                        .Where(m => m.Id == assignment.MeetId)
+                        .Select(m => (int?)m.SeasonId)
+                        .FirstOrDefault(),
+                MeetGroupAssignment assignment => Meets.AsNoTracking()
+                    .Where(m => m.Id == assignment.MeetId)
+                    .Select(m => (int?)m.SeasonId)
+                    .FirstOrDefault(),
+                CoachGroupAssignment assignment => Coaches.AsNoTracking()
+                    .Where(c => c.Id == assignment.CoachId)
+                    .Select(c => (int?)c.SeasonId)
+                    .FirstOrDefault(),
+                PerDiemEntry entryValue => Coaches.AsNoTracking()
+                    .Where(c => c.Id == entryValue.CoachId)
+                    .Select(c => (int?)c.SeasonId)
+                    .FirstOrDefault()
+                    ?? Meets.AsNoTracking()
+                        .Where(m => m.Id == entryValue.MeetId)
+                        .Select(m => (int?)m.SeasonId)
+                        .FirstOrDefault(),
+                MileageEntry entryValue => Coaches.AsNoTracking()
+                    .Where(c => c.Id == entryValue.CoachId)
+                    .Select(c => (int?)c.SeasonId)
+                    .FirstOrDefault()
+                    ?? Meets.AsNoTracking()
+                        .Where(m => m.Id == entryValue.MeetId)
+                        .Select(m => (int?)m.SeasonId)
+                        .FirstOrDefault(),
+                TeamLevelGroupAssignment assignment => TeamLevels.AsNoTracking()
+                    .Where(t => t.Id == assignment.TeamLevelId)
+                    .Select(t => (int?)t.SeasonId)
+                    .FirstOrDefault(),
+                MeetTeamLevelAssignment assignment => Meets.AsNoTracking()
+                    .Where(m => m.Id == assignment.MeetId)
+                    .Select(m => (int?)m.SeasonId)
+                    .FirstOrDefault()
+                    ?? TeamLevels.AsNoTracking()
+                        .Where(t => t.Id == assignment.TeamLevelId)
+                        .Select(t => (int?)t.SeasonId)
+                        .FirstOrDefault(),
+                SharedFeeTeamLevelAssignment assignment => SharedFees.AsNoTracking()
+                    .Where(f => f.Id == assignment.SharedFeeId)
+                    .Select(f => (int?)f.SeasonId)
+                    .FirstOrDefault()
+                    ?? TeamLevels.AsNoTracking()
+                        .Where(t => t.Id == assignment.TeamLevelId)
+                        .Select(t => (int?)t.SeasonId)
+                        .FirstOrDefault(),
+                Message message => TeamLevels.AsNoTracking()
+                    .Where(t => t.Id == message.TeamLevelId)
+                    .Select(t => (int?)t.SeasonId)
+                    .FirstOrDefault(),
+                ChatMessage message => ChatRooms.AsNoTracking()
+                    .Where(r => r.Id == message.ChatRoomId)
+                    .Select(r => r.SeasonId)
+                    .FirstOrDefault(),
+                ChatRoomMember member => ChatRooms.AsNoTracking()
+                    .Where(r => r.Id == member.ChatRoomId)
+                    .Select(r => r.SeasonId)
+                    .FirstOrDefault(),
+                CommitmentSignature signature => CommitmentForms.AsNoTracking()
+                    .Where(f => f.Id == signature.CommitmentFormId)
+                    .Select(f => (int?)f.SeasonId)
+                    .FirstOrDefault(),
+                PracticeRsvp rsvp => Practices.AsNoTracking()
+                    .Where(p => p.Id == rsvp.PracticeId)
+                    .Select(p => (int?)p.SeasonId)
+                    .FirstOrDefault(),
+                EventRsvp rsvp => Meets.AsNoTracking()
+                    .Where(m => m.Id == rsvp.MeetId)
+                    .Select(m => (int?)m.SeasonId)
+                    .FirstOrDefault(),
+                AnnouncementReadReceipt receipt => Announcements.AsNoTracking()
+                    .Where(a => a.Id == receipt.AnnouncementId)
+                    .Select(a => (int?)a.SeasonId)
+                    .FirstOrDefault(),
+                _ => null
+            };
+        }
+
+        private static int? ToNullableInt(object? value) => value switch
+        {
+            null => null,
+            int intValue => intValue,
+            long longValue => (int)longValue,
+            _ => null
+        };
 
         private void UpdateAuditTimestamps()
         {

@@ -474,7 +474,10 @@
         customLevels.Clear();
 
         // Calculate cost per gymnast from active season's calculator
-        var activeSeason = await db.Seasons.AsNoTracking().FirstOrDefaultAsync(s => s.IsActive);
+        var activeSeason = await db.Seasons.AsNoTracking()
+            .Where(s => s.IsActive)
+            .OrderByDescending(s => s.Name)
+            .FirstOrDefaultAsync();
         if (activeSeason != null)
         {
             var calcTotal = await db.BudgetCalculatorEntries.AsNoTracking()

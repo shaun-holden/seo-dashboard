@@ -42,6 +42,9 @@ else
             <div class="mb-2">
                 <input type="checkbox" @bind="formIsActive" /> Active Season
             </div>
+            <div class="mb-2">
+                <input type="checkbox" @bind="formIsLocked" /> Locked Season
+            </div>
 
             @if (formProjectType == ProjectType.Custom)
             {
@@ -131,12 +134,22 @@ else
                         {
                             <span class="badge bg-secondary ms-1">Draft</span>
                         }
+                        @if (season.IsLocked)
+                        {
+                            <span class="badge bg-dark ms-1">Locked</span>
+                        }
                     </td>
                     <td>
-                        @if (!season.IsActive)
+                        @if (season.IsActive)
                         {
                             <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => SetActive(season)">
-                                <span class="oi oi-star"></span> Set Active
+                                <span class="oi oi-ban"></span> Deactivate
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => SetActive(season)">
+                                <span class="oi oi-star"></span> Activate
                             </button>
                         }
                         @if (season.IsPublished)
@@ -147,6 +160,9 @@ else
                         {
                             <button class="btn btn-sm btn-success me-1" @onclick="() => TogglePublish(season)">Publish</button>
                         }
+                        <button class="btn btn-sm btn-outline-dark me-1" @onclick="() => ToggleLock(season)">
+                            @(season.IsLocked ? "Unlock" : "Lock")
+                        </button>
                         <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditSeason(season)">Edit</button>
                         <button class="btn btn-sm btn-outline-success me-1" @onclick="() => StartCopy(season)">Copy</button>
                         <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteSeason(season)">Delete</button>
@@ -220,6 +236,7 @@ else
     private string formName = "";
     private int formAthleteCount = 0;
     private bool formIsActive = true;
+    private bool formIsLocked;
     private ProjectType formProjectType = ProjectType.Competition;
     private string formMeetLabel = "Meet";
     private string formCoachLabel = "Coach";
@@ -247,6 +264,7 @@ else
         formName = "";
         formAthleteCount = 0;
         formIsActive = true;
+        formIsLocked = false;
         formProjectType = ProjectType.Competition;
         formMeetLabel = "Meet";
         formCoachLabel = "Coach";
@@ -264,6 +282,7 @@ else
         formName = season.Name;
         formAthleteCount = season.AthleteCount;
         formIsActive = season.IsActive;
+        formIsLocked = season.IsLocked;
         formProjectType = season.ProjectType;
         formMeetLabel = season.MeetLabel;
         formCoachLabel = season.CoachLabel;
@@ -277,14 +296,6 @@ else
 
     private async Task SaveSeason()
     {
-        // Deactivate all other seasons when setting one as active
-        if (formIsActive)
-        {
-            var activeSeasons = Db.Seasons.Where(s => s.IsActive);
-            foreach (var s in activeSeasons)
-                s.IsActive = false;
-        }
-
         if (editingSeason == null)
         {
             var newSeason = new Season
@@ -292,6 +303,7 @@ else
                 Name = formName,
                 AthleteCount = formAthleteCount,
                 IsActive = formIsActive,
+                IsLocked = formIsLocked,
                 UserId = userId ?? string.Empty,
                 ProjectType = formProjectType,
                 MeetLabel = formProjectType == ProjectType.Custom ? formMeetLabel : "Meet",
@@ -309,6 +321,7 @@ else
             editingSeason.Name = formName;
             editingSeason.AthleteCount = formAthleteCount;
             editingSeason.IsActive = formIsActive;
+            editingSeason.IsLocked = formIsLocked;
             editingSeason.ProjectType = formProjectType;
             editingSeason.MeetLabel = formProjectType == ProjectType.Custom ? formMeetLabel : "Meet";
             editingSeason.CoachLabel = formProjectType == ProjectType.Custom ? formCoachLabel : "Coach";
@@ -327,11 +340,14 @@ else
 
     private async Task SetActive(Season season)
     {
-        // Deactivate all seasons
-        foreach (var s in Db.Seasons.Where(s => s.IsActive))
-            s.IsActive = false;
-        // Activate the selected one
-        season.IsActive = true;
+        season.IsActive = !season.IsActive;
+        await Db.SaveChangesAsync();
+        await LoadSeasons();
+    }
+
+    private async Task ToggleLock(Season season)
+    {
+        season.IsLocked = !season.IsLocked;
         await Db.SaveChangesAsync();
         await LoadSeasons();
     }

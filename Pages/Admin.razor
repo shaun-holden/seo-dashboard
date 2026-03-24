@@ -561,7 +561,10 @@ else
         )).ToList();
 
         // Load commitment form status
-        var activeSeason = await db.Seasons.AsNoTracking().Where(s => s.IsActive).FirstOrDefaultAsync();
+        var activeSeason = await db.Seasons.AsNoTracking()
+            .Where(s => s.IsActive)
+            .OrderByDescending(s => s.Name)
+            .FirstOrDefaultAsync();
         if (activeSeason != null)
         {
             var activeForm = await db.CommitmentForms.AsNoTracking()
