@@ -107,8 +107,11 @@ else
 
     @if (publishedSeasonsList.Count > 1)
     {
-        <div class="mb-3">
-            <label class="form-label small text-muted mb-1">Season</label>
+        <div class="alert alert-primary d-flex justify-content-between align-items-center mb-3 py-2">
+            <div>
+                <strong>@(publishedSeasonsList.FirstOrDefault(s => s.Id == selectedSeasonId)?.Name ?? "Select Season")</strong>
+                <small class="ms-2 text-primary-emphasis">@publishedSeasonsList.Count seasons available</small>
+            </div>
             <select class="form-select form-select-sm w-auto" @onchange="OnSeasonChanged">
                 @foreach (var s in publishedSeasonsList)
                 {
