@@ -1302,9 +1302,14 @@ else
     {
         var normalizedLeft = NormalizeLevelName(left);
         var normalizedRight = NormalizeLevelName(right);
-        return !string.IsNullOrEmpty(normalizedLeft)
-            && !string.IsNullOrEmpty(normalizedRight)
-            && string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
+        var compactLeft = CompactLevelName(left);
+        var compactRight = CompactLevelName(right);
+        return (!string.IsNullOrEmpty(normalizedLeft)
+                && !string.IsNullOrEmpty(normalizedRight)
+                && string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase))
+            || (!string.IsNullOrEmpty(compactLeft)
+                && !string.IsNullOrEmpty(compactRight)
+                && string.Equals(compactLeft, compactRight, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string NormalizeLevelName(string? value)
@@ -1312,7 +1317,15 @@ else
         if (string.IsNullOrWhiteSpace(value))
             return "";
 
-        return string.Join(" ", value.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        var withoutLevelWord = Regex.Replace(value.Trim(), @"\blevel\b", " ", RegexOptions.IgnoreCase);
+        var normalized = Regex.Replace(withoutLevelWord, @"[^A-Za-z0-9]+", " ");
+        return string.Join(" ", normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static string CompactLevelName(string? value)
+    {
+        var normalized = NormalizeLevelName(value);
+        return normalized.Replace(" ", "", StringComparison.Ordinal);
     }
 
     private static int GetScheduleYear(Season? season, int startMonthNum)
@@ -1404,8 +1417,24 @@ else
     // Level matching helper
     private bool LevelMatchesKeywords(string level, string appliesTo)
     {
-        return appliesTo.Split(',').Select(k => k.Trim()).Where(k => k.Length > 0)
-            .Any(k => level.Contains(k, StringComparison.OrdinalIgnoreCase) || k.Contains(level, StringComparison.OrdinalIgnoreCase));
+        var normalizedLevel = NormalizeLevelName(level);
+        var compactLevel = CompactLevelName(level);
+
+        return appliesTo.Split(',')
+            .Select(k => k.Trim())
+            .Where(k => k.Length > 0)
+            .Any(k =>
+            {
+                var normalizedKeyword = NormalizeLevelName(k);
+                var compactKeyword = CompactLevelName(k);
+
+                return (!string.IsNullOrEmpty(normalizedKeyword)
+                        && (normalizedLevel.Contains(normalizedKeyword, StringComparison.OrdinalIgnoreCase)
+                            || normalizedKeyword.Contains(normalizedLevel, StringComparison.OrdinalIgnoreCase)))
+                    || (!string.IsNullOrEmpty(compactKeyword)
+                        && (compactLevel.Contains(compactKeyword, StringComparison.OrdinalIgnoreCase)
+                            || compactKeyword.Contains(compactLevel, StringComparison.OrdinalIgnoreCase)));
+            });
     }
 
     // Apparel helpers
