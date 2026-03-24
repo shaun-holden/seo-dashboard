@@ -148,6 +148,12 @@ else
                 </div>
             }
 
+            <div class="mb-3">
+                <label class="form-label">Levels <small class="text-muted">(comma-separated — controls which parents see this season)</small></label>
+                <input class="form-control" @bind="formLevels" placeholder="e.g. USA 10, USA 9, USA 8, NGA 7" />
+                <div class="form-text">Only parents whose athletes match these levels will see this season. Leave blank for all athletes.</div>
+            </div>
+
             <button class="btn btn-success me-2" @onclick="SaveSeason">Save</button>
             <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
         </div>
@@ -379,6 +385,7 @@ else
     private bool formEnableTeamLevels = true;
     private bool formEnablePerDiem = true;
     private bool formEnableMileage = true;
+    private string formLevels = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -459,10 +466,11 @@ else
         formEnableTeamLevels = true;
         formEnablePerDiem = true;
         formEnableMileage = true;
+        formLevels = "";
         showForm = true;
     }
 
-    private void EditSeason(Season season)
+    private async Task EditSeason(Season season)
     {
         editingSeason = season;
         formName = season.Name;
@@ -477,6 +485,14 @@ else
         formEnableTeamLevels = season.EnableTeamLevels;
         formEnablePerDiem = season.EnablePerDiem;
         formEnableMileage = season.EnableMileage;
+
+        var existingLevels = await Db.TeamLevels.AsNoTracking()
+            .Where(t => t.SeasonId == season.Id)
+            .OrderBy(t => t.Name)
+            .Select(t => t.Name)
+            .ToListAsync();
+        formLevels = string.Join(", ", existingLevels);
+
         showForm = true;
     }
 
@@ -525,6 +541,33 @@ else
             Db.Seasons.Update(editingSeason);
             auditAction = "SeasonUpdated";
             auditDetails = $"Updated season {originalName} to {editingSeason.Name}. Active={editingSeason.IsActive}, Published={editingSeason.IsPublished}, BudgetLocked={editingSeason.IsLocked}.";
+        }
+
+        await Db.SaveChangesAsync();
+
+        // Sync TeamLevel records from the comma-separated levels field
+        var savedSeason = editingSeason ?? Db.Seasons.Local.OrderByDescending(s => s.Id).First();
+        var desiredLevels = formLevels.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var existingLevels = await Db.TeamLevels
+            .Where(t => t.SeasonId == savedSeason.Id)
+            .ToListAsync();
+
+        // Remove levels no longer in the list
+        var toRemove = existingLevels
+            .Where(e => !desiredLevels.Any(d => string.Equals(d, e.Name, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        if (toRemove.Any())
+            Db.TeamLevels.RemoveRange(toRemove);
+
+        // Add new levels
+        var existingNames = existingLevels.Select(e => e.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var levelName in desiredLevels.Where(d => !existingNames.Contains(d)))
+        {
+            Db.TeamLevels.Add(new TeamLevel { Name = levelName, SeasonId = savedSeason.Id });
         }
 
         await Db.SaveChangesAsync();
