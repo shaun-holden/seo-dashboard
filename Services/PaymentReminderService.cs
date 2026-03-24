@@ -223,7 +223,7 @@ namespace GymBudgetApp.Services
             var match = Regex.Match(season.Name ?? "", @"\b(20\d{2})\b");
             if (match.Success && int.TryParse(match.Groups[1].Value, out var seasonYear))
                 return seasonYear;
-            return startMonthNum <= DateTime.Today.Month ? DateTime.Today.Year : DateTime.Today.Year - 1;
+            return DateTime.Today.Year;
         }
 
         private static string BuildEmailHtml(string athleteName, decimal amount, DateTime dueDate,

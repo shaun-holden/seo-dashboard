@@ -1408,7 +1408,8 @@ else
                 return seasonYear;
         }
 
-        return startMonthNum <= DateTime.Today.Month ? DateTime.Today.Year : DateTime.Today.Year - 1;
+        // Default to current year — schedules are forward-looking
+        return DateTime.Today.Year;
     }
 
     private decimal GetAthletePaidTotal(Athlete athlete) =>
