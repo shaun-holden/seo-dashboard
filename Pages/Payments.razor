@@ -523,7 +523,15 @@ else
         var athleteCount = season?.AthleteCount > 0 ? season.AthleteCount : gymnasts.Count;
         costPerGymnast = athleteCount > 0 ? Math.Round(calcTotal / athleteCount, 2) : 0;
 
-        paymentRows = gymnasts.Select(g =>
+        // Only include athletes who have payments (Stripe or manual) or credits in the system
+        var athleteIdsWithPayments = payments
+            .Select(p => p.AthleteId)
+            .Distinct()
+            .ToHashSet();
+
+        paymentRows = gymnasts
+            .Where(g => athleteIdsWithPayments.Contains(g.Id))
+            .Select(g =>
         {
             var paid = payments
                 .Where(p => p.AthleteId == g.Id && p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment)

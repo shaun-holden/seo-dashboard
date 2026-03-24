@@ -591,6 +591,7 @@ else
     private async Task ToggleLock(Season season)
     {
         season.IsLocked = !season.IsLocked;
+        Db.Seasons.Update(season);
         await Db.SaveChangesAsync();
         await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonBudgetLockChanged", $"{season.Name} budget calculator {(season.IsLocked ? "locked" : "unlocked")}.");
         await LoadSeasons();

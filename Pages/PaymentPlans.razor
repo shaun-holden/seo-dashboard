@@ -6,7 +6,7 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 
 <h3>Payment Plans</h3>
-<p class="text-muted">Set custom payment months per athlete. Default uses the season setting.</p>
+<p class="text-muted">Manage payment plans for families with approved plan requests.</p>
 
 @if (loading)
 {
@@ -235,13 +235,15 @@ else
             .Where(e => e.SeasonId == selectedSeason.Id)
             .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
 
-        var seasonLevelNames = await db.TeamLevels.AsNoTracking()
-            .Where(t => t.SeasonId == selectedSeason.Id)
-            .Select(t => t.Name)
+        // Only show gymnasts with approved payment plan requests
+        var approvedAthleteIds = await db.PaymentPlanRequests.AsNoTracking()
+            .Where(r => r.Status == "Approved")
+            .Select(r => r.AthleteId)
+            .Distinct()
             .ToListAsync();
 
         gymnasts = allGymnasts
-            .Where(g => !string.IsNullOrWhiteSpace(g.Level) && seasonLevelNames.Contains(g.Level!))
+            .Where(g => approvedAthleteIds.Contains(g.Id))
             .OrderBy(g => g.Name)
             .ToList();
         levels = gymnasts
