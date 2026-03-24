@@ -99,7 +99,57 @@ else
 {
     <div class="d-flex justify-content-between align-items-center mb-3">
         <span class="text-muted">@athletes.Count athlete(s)</span>
-        <a href="/claim" class="btn btn-sm btn-outline-primary">+ Link Another Athlete</a>
+        <div class="d-flex gap-2">
+            <a href="/chat" class="btn btn-sm btn-outline-secondary">Open Chat</a>
+            <a href="/claim" class="btn btn-sm btn-outline-primary">+ Link Another Athlete</a>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase">Family Balance</div>
+                    <div class="display-6 fw-semibold @(familyBalanceDue > 0 ? "text-warning" : "text-success")">$@familyBalanceDue.ToString("N2")</div>
+                    <div class="text-muted small">@familyAthletesWithBalanceCount athlete(s) with a remaining balance</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase">Paid So Far</div>
+                    <div class="display-6 fw-semibold text-success">$@familyPaidTotal.ToString("N2")</div>
+                    <div class="text-muted small">$@familyCreditsTotal.ToString("N2") in credits applied</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase">Unread Updates</div>
+                    <div class="display-6 fw-semibold">@unreadAnnouncementCount</div>
+                    <div class="text-muted small">@upcomingScheduleCount upcoming event(s) and practice(s)</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase">Next Payment Due</div>
+                    @if (familyNextDueDate.HasValue)
+                    {
+                        <div class="h4 fw-semibold mb-1">@familyNextDueDate.Value.ToString("MMM dd")</div>
+                        <div class="text-muted small">$@familyNextDueAmount.ToString("N2") next scheduled amount</div>
+                    }
+                    else
+                    {
+                        <div class="h5 fw-semibold text-success mb-1">No upcoming dues</div>
+                        <div class="text-muted small">All visible athlete schedules are current</div>
+                    }
+                </div>
+            </div>
+        </div>
     </div>
 
     @foreach (var athlete in athletes)
@@ -299,7 +349,32 @@ else
                     var scheduleStart = new DateTime(scheduleYear, startMonthNum, 15);
                     var payLink = parentLinksData.FirstOrDefault(pl => pl.AthleteId == athlete.Id);
                     var usesExternalBilling = payLink?.UseExternalBilling == true;
+                    var nextDueInfo = GetNextDueInfo(seasons.FirstOrDefault(), gymnastRecord, totalCost, totalPaid, totalCredits);
+                    var nextDueAlertClass = balance <= 0 ? "alert-success" : nextDueInfo.PastDueInstallments > 0 ? "alert-danger" : "alert-info";
                 }
+
+                <div class="alert @nextDueAlertClass mb-3">
+                    @if (balance <= 0)
+                    {
+                        <span><strong>All set.</strong> Your balance for this athlete is paid in full.</span>
+                    }
+                    else if (nextDueInfo.DueDate.HasValue)
+                    {
+                        <span><strong>Next step:</strong> @nextDueInfo.Label for <strong>$@nextDueInfo.Amount.ToString("N2")</strong> on <strong>@nextDueInfo.DueDate.Value.ToString("MMMM dd, yyyy")</strong>.</span>
+                        @if (nextDueInfo.PastDueInstallments > 0)
+                        {
+                            <span class="ms-1">@nextDueInfo.PastDueInstallments payment(s) are currently past due.</span>
+                        }
+                        else
+                        {
+                            <span class="ms-1">@nextDueInfo.RemainingInstallments payment(s) remaining in the schedule.</span>
+                        }
+                    }
+                    else
+                    {
+                        <span><strong>Balance remaining:</strong> $@balance.ToString("N2"). Payment options are available below.</span>
+                    }
+                </div>
 
                 @if (balance > 0)
                 {
@@ -787,6 +862,8 @@ else
             .Take(announcementDisplayCount)
             .ToList();
 
+    private record NextDueInfo(DateTime? DueDate, string Label, decimal Amount, int RemainingInstallments, int PastDueInstallments);
+
     private void ShowMoreAnnouncements()
     {
         announcementDisplayCount = announcements.Count;
@@ -803,6 +880,14 @@ else
     private int parentLinkCount;
     private int gymnastCount;
     private bool needsCommitment;
+    private decimal familyBalanceDue => athletes.Sum(GetAthleteBalance);
+    private decimal familyPaidTotal => athletes.Sum(GetAthletePaidTotal);
+    private decimal familyCreditsTotal => athletes.Sum(GetAthleteCreditsTotal);
+    private int familyAthletesWithBalanceCount => athletes.Count(a => GetAthleteBalance(a) > 0);
+    private int unreadAnnouncementCount => Math.Max(announcements.Count - readAnnouncementIds.Count, 0);
+    private int upcomingScheduleCount => meets.Count(m => m.Date >= DateTime.Today) + upcomingPractices.Count;
+    private DateTime? familyNextDueDate => GetFamilyNextDue()?.DueDate;
+    private decimal familyNextDueAmount => GetFamilyNextDue()?.Amount ?? 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -1188,6 +1273,80 @@ else
 
         return startMonthNum <= DateTime.Today.Month ? DateTime.Today.Year : DateTime.Today.Year - 1;
     }
+
+    private decimal GetAthletePaidTotal(Athlete athlete) =>
+        payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment)
+            .Sum(p => p.Amount);
+
+    private decimal GetAthleteCreditsTotal(Athlete athlete) =>
+        payments.Where(p => p.AthleteId == athlete.Id && p.Type == PaymentType.Credit)
+            .Sum(p => p.Amount);
+
+    private decimal GetAthleteBalance(Athlete athlete)
+    {
+        var athleteLevel = parentGymnasts.FirstOrDefault(g => g.Id == athlete.Id)?.Level
+            ?? teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId)?.Name
+            ?? "";
+        var totalCost = parentCostPerGymnast
+            + GetParentApparelCost(athlete.Id, athleteLevel)
+            + GetParentCompCost(athlete.Id, athleteLevel);
+        return totalCost - GetAthletePaidTotal(athlete) - GetAthleteCreditsTotal(athlete);
+    }
+
+    private NextDueInfo GetNextDueInfo(Season? season, Gymnast? gymnastRecord, decimal totalCost, decimal totalPaid, decimal totalCredits)
+    {
+        var outstandingBalance = totalCost - totalPaid - totalCredits;
+        if (outstandingBalance <= 0)
+            return new NextDueInfo(null, "Paid in full", 0, 0, 0);
+
+        var planMonths = gymnastRecord?.PaymentPlanMonths ?? season?.PaymentMonths ?? 8;
+        if (planMonths <= 0)
+            planMonths = 8;
+
+        var rawSeasonStart = season?.PaymentStartMonth ?? 0;
+        var seasonStartMonth = rawSeasonStart > 0 ? rawSeasonStart : 8;
+        var startMonthNum = gymnastRecord?.PaymentStartMonth ?? seasonStartMonth;
+        var scheduledTotal = Math.Max(totalCost - totalCredits, 0);
+        var monthlyAmount = planMonths > 0 ? Math.Round(scheduledTotal / planMonths, 2) : outstandingBalance;
+        var scheduleYear = GetScheduleYear(season, startMonthNum);
+        var scheduleStart = new DateTime(scheduleYear, startMonthNum, 15);
+
+        var remainingInstallments = 0;
+        var pastDueInstallments = 0;
+
+        for (int i = 0; i < planMonths; i++)
+        {
+            var dueDate = scheduleStart.AddMonths(i);
+            var installmentNum = i + 1;
+            var cumulativeDue = monthlyAmount * installmentNum;
+            var isPaid = totalPaid >= cumulativeDue;
+            if (isPaid)
+                continue;
+
+            remainingInstallments = planMonths - i;
+            pastDueInstallments = Enumerable.Range(i, planMonths - i)
+                .Count(index => scheduleStart.AddMonths(index) < DateTime.Today);
+
+            var label = dueDate < DateTime.Today ? "Past due payment" : "Upcoming payment";
+            return new NextDueInfo(dueDate, label, monthlyAmount, remainingInstallments, pastDueInstallments);
+        }
+
+        return new NextDueInfo(null, "Balance remaining", outstandingBalance, 0, 0);
+    }
+
+    private NextDueInfo? GetFamilyNextDue() =>
+        athletes
+            .Select(a =>
+            {
+                var gymnastRecord = parentGymnasts.FirstOrDefault(g => g.Id == a.Id);
+                var athleteLevel = gymnastRecord?.Level ?? teamLevels.FirstOrDefault(t => t.Id == a.TeamLevelId)?.Name ?? "";
+                var totalCost = parentCostPerGymnast + GetParentApparelCost(a.Id, athleteLevel) + GetParentCompCost(a.Id, athleteLevel);
+                return GetNextDueInfo(seasons.FirstOrDefault(), gymnastRecord, totalCost, GetAthletePaidTotal(a), GetAthleteCreditsTotal(a));
+            })
+            .Where(info => info.DueDate.HasValue)
+            .OrderBy(info => info.DueDate)
+            .ThenByDescending(info => info.PastDueInstallments)
+            .FirstOrDefault();
 
     // Level matching helper
     private bool LevelMatchesKeywords(string level, string appliesTo)
