@@ -13,6 +13,9 @@
 @inject NavigationManager Navigation
 @inject GymBudgetApp.Services.NotificationService NotificationService
 @inject IJSRuntime JS
+@inject Microsoft.AspNetCore.Identity.UserManager<Microsoft.AspNetCore.Identity.IdentityUser> UserManager
+
+<PreviewBanner IsPreviewMode="@isPreviewMode" ParentEmail="@previewEmail" />
 
 @if (!loading && !hasProfile)
 {
@@ -896,6 +899,11 @@ else
 }
 
 @code {
+    [SupplyParameterFromQuery(Name = "viewAs")]
+    public string? ViewAs { get; set; }
+
+    private bool isPreviewMode;
+    private string? previewEmail;
     private bool loading = true;
     private bool hasProfile;
     private string? userId;
@@ -995,13 +1003,24 @@ else
                     ?? authState.User.FindFirst("email")?.Value;
 
         var adminEmails = Configuration.GetSection("AdminEmails").Get<List<string>>() ?? new() { Configuration["AdminEmail"] ?? "deshaun@tntgym.org" };
-        var isAdmin = adminEmails.Any(ae => string.Equals(userEmail, ae, StringComparison.OrdinalIgnoreCase));
+        var isAdmin = adminEmails.Any(ae => string.Equals(userEmail, ae, StringComparison.OrdinalIgnoreCase))
+                      || authState.User.IsInRole("Employee");
+
+        // Admin preview mode: view as a specific parent
+        if (!string.IsNullOrEmpty(ViewAs) && isAdmin)
+        {
+            isPreviewMode = true;
+            var targetUser = await UserManager.FindByIdAsync(ViewAs);
+            previewEmail = targetUser?.Email ?? "Unknown";
+            userId = ViewAs;
+        }
+
         maintenanceMode = Configuration.GetValue<bool>("MaintenanceMode") && !isAdmin;
         if (maintenanceMode) { loading = false; return; }
 
         var stripeKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY")
             ?? Configuration["Stripe:SecretKey"] ?? "";
-        stripeEnabled = !string.IsNullOrEmpty(stripeKey);
+        stripeEnabled = isPreviewMode ? false : !string.IsNullOrEmpty(stripeKey);
 
         // Check if profile exists
         using (var dbCheck = await DbFactory.CreateDbContextAsync())

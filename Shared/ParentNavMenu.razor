@@ -3,6 +3,8 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject GymBudgetApp.Services.ChatService ChatService
+@inject NavigationManager NavigationManager
+@inject IConfiguration Configuration
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -111,10 +113,29 @@
     private int unreadMessageCount;
     private int unreadChatCount;
 
+    private bool isPreviewMode;
+    private string? viewAsParam;
+
     protected override async Task OnInitializedAsync()
     {
+        // Check if admin is previewing as a parent
+        var uri = new Uri(NavigationManager.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        viewAsParam = query["viewAs"];
+
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var email = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? authState.User.FindFirst("email")?.Value;
+
+        if (!string.IsNullOrEmpty(viewAsParam))
+        {
+            var adminEmails = Configuration.GetSection("AdminEmails").Get<List<string>>() ?? new() { Configuration["AdminEmail"] ?? "deshaun@tntgym.org" };
+            isPreviewMode = adminEmails.Any(ae => string.Equals(email, ae, StringComparison.OrdinalIgnoreCase))
+                            || authState.User.IsInRole("Employee");
+            if (isPreviewMode) userId = viewAsParam;
+        }
+
         if (userId != null)
         {
             using var db = await DbFactory.CreateDbContextAsync();

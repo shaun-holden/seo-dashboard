@@ -1,0 +1,15 @@
+@if (IsPreviewMode)
+{
+    <div class="alert alert-warning d-flex align-items-center justify-content-between mb-3" style="position: sticky; top: 0; z-index: 1000;">
+        <div>
+            <span class="oi oi-eye me-2"></span>
+            <strong>Preview Mode</strong> — Viewing as <strong>@ParentEmail</strong>
+        </div>
+        <a href="/" class="btn btn-sm btn-outline-dark">Back to Admin</a>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsPreviewMode { get; set; }
+    [Parameter] public string? ParentEmail { get; set; }
+}
