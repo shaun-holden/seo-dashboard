@@ -28,16 +28,24 @@ else
 
     @if (selectedSeasonId > 0)
     {
+        @if (isBudgetLocked)
+        {
+            <div class="alert alert-warning">
+                This season's budget calculator is locked. You can review the budget, but edits are disabled.
+            </div>
+        }
+
         <div class="budget-tabs">
             @foreach (var tab in allTabs)
             {
-                <button class="budget-tab @(activeTab == tab ? "active" : "")" @onclick="() => SetTab(tab)">@GetTabLabel(tab)</button>
+                <button class="budget-tab @(activeTab == tab ? "active" : "")" @onclick="() => SetTab(tab)" disabled="@isBudgetLocked">@GetTabLabel(tab)</button>
             }
-            <button class="budget-tab @(activeTab == addCategoryTab ? "active" : "")" @onclick="() => SetTab(addCategoryTab)">+ Add Category</button>
+            <button class="budget-tab @(activeTab == addCategoryTab ? "active" : "")" @onclick="() => SetTab(addCategoryTab)" disabled="@isBudgetLocked">+ Add Category</button>
         </div>
 
         <div class="card mb-3">
             <div class="card-body">
+                <fieldset disabled="@isBudgetLocked">
                 @if (activeTab == "TeamEntry")
                 {
                     <h5>Team Entry Fees</h5>
@@ -539,6 +547,7 @@ else
                     </button>
                     <div class="mt-3 fw-bold">Category Total: $@GetCategoryTotal(activeTab).ToString("N2") | Actual: $@GetCategoryActual(activeTab).ToString("N2")</div>
                 }
+                </fieldset>
             </div>
         </div>
 
@@ -573,6 +582,7 @@ else
 @code {
     private List<Season>? seasons;
     private int selectedSeasonId;
+    private bool isBudgetLocked => seasons?.FirstOrDefault(s => s.Id == selectedSeasonId)?.IsLocked == true;
     private string activeTab = "TeamEntry";
     private List<string> rosterLevels = new();
     private List<BudgetCalculatorEntry> entries = new();

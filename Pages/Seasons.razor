@@ -43,7 +43,8 @@ else
                 <input type="checkbox" @bind="formIsActive" /> Active Season
             </div>
             <div class="mb-2">
-                <input type="checkbox" @bind="formIsLocked" /> Locked Season
+                <input type="checkbox" @bind="formIsLocked" /> Lock Budget Calculator
+                <div class="form-text">Prevents edits in Budget Calculator only. Other season pages stay editable.</div>
             </div>
 
             @if (formProjectType == ProjectType.Custom)
@@ -136,7 +137,7 @@ else
                         }
                         @if (season.IsLocked)
                         {
-                            <span class="badge bg-dark ms-1">Locked</span>
+                            <span class="badge bg-dark ms-1">Budget Locked</span>
                         }
                     </td>
                     <td>
@@ -161,7 +162,7 @@ else
                             <button class="btn btn-sm btn-success me-1" @onclick="() => TogglePublish(season)">Publish</button>
                         }
                         <button class="btn btn-sm btn-outline-dark me-1" @onclick="() => ToggleLock(season)">
-                            @(season.IsLocked ? "Unlock" : "Lock")
+                            @(season.IsLocked ? "Unlock Budget" : "Lock Budget")
                         </button>
                         <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditSeason(season)">Edit</button>
                         <button class="btn btn-sm btn-outline-success me-1" @onclick="() => StartCopy(season)">Copy</button>

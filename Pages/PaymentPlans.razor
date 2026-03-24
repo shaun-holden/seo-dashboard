@@ -25,14 +25,7 @@ else
                 }
             </select>
         </div>
-        <div class="col-md-8">
-            @if (selectedSeason?.IsLocked == true)
-            {
-                <div class="alert alert-warning mb-0 py-2">
-                    This season is locked. Payment plan changes are disabled.
-                </div>
-            }
-        </div>
+        <div class="col-md-8"></div>
     </div>
 
     <!-- Bulk Update by Level -->
@@ -70,7 +63,7 @@ else
                 </div>
                 <div class="col-md-2">
                     <button class="btn btn-primary w-100" @onclick="ApplyBulkUpdate"
-                            disabled="@(string.IsNullOrEmpty(bulkLevel) || selectedSeason?.IsLocked == true)">
+                            disabled="@string.IsNullOrEmpty(bulkLevel)">
                         Apply to Level
                     </button>
                 </div>
@@ -122,8 +115,7 @@ else
                             <td class="text-center">
                                 <select class="form-select form-select-sm d-inline-block" style="width: 90px;"
                                         value="@months"
-                                        @onchange="(e) => UpdateMonths(gId, e)"
-                                        disabled="@(selectedSeason?.IsLocked == true)">
+                                        @onchange="(e) => UpdateMonths(gId, e)">
                                     @for (int m = 1; m <= 12; m++)
                                     {
                                         <option value="@m">@m</option>
@@ -133,8 +125,7 @@ else
                             <td class="text-center">
                                 <select class="form-select form-select-sm d-inline-block" style="width: 130px;"
                                         value="@startMonth"
-                                        @onchange="(e) => UpdateStartMonth(gId, e)"
-                                        disabled="@(selectedSeason?.IsLocked == true)">
+                                        @onchange="(e) => UpdateStartMonth(gId, e)">
                                     @for (int m = 1; m <= 12; m++)
                                     {
                                         <option value="@m">@(new DateTime(2026, m, 1).ToString("MMMM"))</option>

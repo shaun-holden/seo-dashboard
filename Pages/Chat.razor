@@ -147,7 +147,7 @@
 
         // Ensure rooms exist for each unlocked active season using roster levels.
         var activeSeasons = await db.Seasons.AsNoTracking()
-            .Where(s => s.IsActive && !s.IsLocked)
+            .Where(s => s.IsActive)
             .OrderByDescending(s => s.Name)
             .ToListAsync();
         foreach (var activeSeason in activeSeasons)

@@ -38,13 +38,6 @@ else
 
     @if (selectedSeasonId > 0)
     {
-        @if (selectedSeason?.IsLocked == true)
-        {
-            <div class="alert alert-warning">
-                This season is locked. Credits and payment changes are disabled.
-            </div>
-        }
-
         <div class="row mb-4">
             <div class="col-md-3 mb-2">
                 <div class="card text-white bg-primary">
@@ -90,7 +83,7 @@ else
                     @(showCreditForm ? "Cancel" : "+ Apply Credit")
                 </button>
             </div>
-            @if (showCreditForm && selectedSeason?.IsLocked != true)
+            @if (showCreditForm)
             {
                 <div class="card-body">
                     <div class="row g-3 align-items-end">
@@ -268,7 +261,6 @@ else
         }
     }
     private int selectedSeasonId;
-    private Season? selectedSeason;
     private string? userId;
     private string? userEmail;
     private ProjectLabels labels = ProjectLabels.Default;
@@ -310,14 +302,13 @@ else
     private async Task OnSeasonChanged(ChangeEventArgs e)
     {
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
-        selectedSeason = seasons?.FirstOrDefault(s => s.Id == selectedSeasonId);
-        labels = new ProjectLabels(selectedSeason);
+        labels = new ProjectLabels(seasons?.FirstOrDefault(s => s.Id == selectedSeasonId));
         await LoadData();
     }
 
     private async Task ApplyCredit()
     {
-        if (creditAthleteId == 0 || creditAmount <= 0 || selectedSeason?.IsLocked == true) return;
+        if (creditAthleteId == 0 || creditAmount <= 0) return;
         using var db = await DbFactory.CreateDbContextAsync();
         var athlete = await db.Gymnasts.FindAsync(creditAthleteId);
         db.Payments.Add(new Payment
