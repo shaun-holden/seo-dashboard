@@ -226,7 +226,7 @@ else
                     </tfoot>
                 </table>
 
-                <!-- DEBUG: season=@(seasons.FirstOrDefault()?.Id) level="@athleteLevel" apparelCols=@parentApparelColumns.Count compCols=@parentCompColumns.Count apparelItems=@parentApparelItems.Count compItems=@parentCompetitionItems.Count -->
+                <div class="alert alert-warning small py-1 mb-2"><strong>DEBUG:</strong> season=@(seasons.FirstOrDefault()?.Id) seasonName="@(seasons.FirstOrDefault()?.Name)" level="@athleteLevel" apparelCols=@parentApparelColumns.Count compCols=@parentCompColumns.Count apparelItems=@parentApparelItems.Count compItems=@parentCompetitionItems.Count</div>
                 @if (parentApparelColumns.Any(col => DoesApparelApplyToLevel(col.Name, athleteLevel))
                     || parentCompColumns.Any(col => DoesCompApplyToLevel2(col.Name, athleteLevel)))
                 {
