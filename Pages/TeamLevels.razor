@@ -40,7 +40,46 @@ else
         {
             <button class="btn btn-outline-success mb-3 me-2" @onclick="ShowItemForm">+ Add @labels.AthleteItem</button>
         }
-        <button class="btn btn-outline-warning mb-3" @onclick="ShowSharedFeeForm">+ Add Shared Fee</button>
+        <button class="btn btn-outline-warning mb-3 me-2" @onclick="ShowSharedFeeForm">+ Add Shared Fee</button>
+        <button class="btn btn-outline-info mb-3" @onclick="LoadManageAthletes">
+            @(showManageAthletes ? "Hide" : "Manage") Athletes
+        </button>
+
+        @if (showManageAthletes)
+        {
+            <div class="card mb-4 p-3 border-info">
+                <h5>Manage Athletes in Season</h5>
+                <p class="text-muted small">Check athletes who belong to this season. Changes are saved immediately.</p>
+                @if (!allGymnasts.Any())
+                {
+                    <p class="text-muted">No gymnasts found in roster.</p>
+                }
+                else
+                {
+                    <div class="row">
+                        @foreach (var gymnast in allGymnasts)
+                        {
+                            var gId = gymnast.Id;
+                            var isChecked = seasonGymnastIds.Contains(gId);
+                            <div class="col-md-4 col-sm-6 mb-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="sg-@gId"
+                                           checked="@isChecked"
+                                           @onchange="e => ToggleGymnastInSeason(gId, (bool)e.Value!)" />
+                                    <label class="form-check-label" for="sg-@gId">
+                                        @gymnast.Name
+                                        @if (!string.IsNullOrWhiteSpace(gymnast.Level))
+                                        {
+                                            <span class="text-muted small">(@gymnast.Level)</span>
+                                        }
+                                    </label>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
 
         @if (showAddItemForm)
         {
@@ -1167,6 +1206,10 @@ else
             db.MeetTeamLevelAssignments.Add(new MeetTeamLevelAssignment { TeamLevelId = level.Id, MeetId = mId });
         }
         await db.SaveChangesAsync();
+
+        // Auto-sync gymnasts to this season based on matching level names
+        await SyncSeasonGymnasts(db, selectedSeasonId);
+
         await LoadData();
         showForm = false;
     }
@@ -1485,4 +1528,81 @@ else
         SharedFeeCategory.ProcessFees => "Process Fees",
         _ => cat.ToString()
     };
+
+    // --- Manage Athletes (SeasonGymnast) ---
+    private bool showManageAthletes;
+    private List<Gymnast> allGymnasts = new();
+    private HashSet<int> seasonGymnastIds = new();
+
+    private async Task LoadManageAthletes()
+    {
+        showManageAthletes = !showManageAthletes;
+        if (!showManageAthletes || selectedSeasonId == 0) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        allGymnasts = await db.Gymnasts.AsNoTracking()
+            .Where(g => g.UserId == userId && !g.IsArchived)
+            .OrderBy(g => g.Name)
+            .ToListAsync();
+        seasonGymnastIds = (await db.SeasonGymnasts.AsNoTracking()
+            .Where(sg => sg.SeasonId == selectedSeasonId)
+            .Select(sg => sg.GymnastId)
+            .ToListAsync())
+            .ToHashSet();
+    }
+
+    private async Task ToggleGymnastInSeason(int gymnastId, bool isChecked)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        if (isChecked)
+        {
+            if (!await db.SeasonGymnasts.AnyAsync(sg => sg.SeasonId == selectedSeasonId && sg.GymnastId == gymnastId))
+            {
+                db.SeasonGymnasts.Add(new SeasonGymnast { SeasonId = selectedSeasonId, GymnastId = gymnastId });
+                await db.SaveChangesAsync();
+            }
+            seasonGymnastIds.Add(gymnastId);
+        }
+        else
+        {
+            var existing = await db.SeasonGymnasts
+                .FirstOrDefaultAsync(sg => sg.SeasonId == selectedSeasonId && sg.GymnastId == gymnastId);
+            if (existing != null)
+            {
+                db.SeasonGymnasts.Remove(existing);
+                await db.SaveChangesAsync();
+            }
+            seasonGymnastIds.Remove(gymnastId);
+        }
+    }
+
+    private async Task SyncSeasonGymnasts(AppDbContext db, int seasonId)
+    {
+        if (string.IsNullOrEmpty(userId) || seasonId == 0) return;
+
+        var seasonTeamLevels = await db.TeamLevels.AsNoTracking()
+            .Where(tl => tl.SeasonId == seasonId)
+            .ToListAsync();
+        var gymnasts = await db.Gymnasts.AsNoTracking()
+            .Where(g => g.UserId == userId && !g.IsArchived && g.Level != null)
+            .ToListAsync();
+        var existing = await db.SeasonGymnasts
+            .Where(sg => sg.SeasonId == seasonId)
+            .ToListAsync();
+
+        var matchingGymnastIds = gymnasts
+            .Where(g => seasonTeamLevels.Any(tl =>
+                string.Equals(tl.Name, g.Level, StringComparison.OrdinalIgnoreCase)))
+            .Select(g => g.Id)
+            .ToHashSet();
+
+        // Add missing assignments
+        foreach (var gId in matchingGymnastIds)
+        {
+            if (!existing.Any(e => e.GymnastId == gId))
+                db.SeasonGymnasts.Add(new SeasonGymnast { SeasonId = seasonId, GymnastId = gId });
+        }
+
+        await db.SaveChangesAsync();
+    }
 }

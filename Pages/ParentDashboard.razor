@@ -1152,13 +1152,15 @@ else
             .OrderBy(g => g.Name)
             .ToListAsync();
 
+        // Load explicit season-gymnast assignments
+        var seasonGymnastLinks = await db.SeasonGymnasts.AsNoTracking()
+            .Where(sg => linkedAthleteIds.Contains(sg.GymnastId))
+            .ToListAsync();
+        var gymnastSeasonIds = seasonGymnastLinks
+            .Select(sg => sg.SeasonId)
+            .ToHashSet();
+
         // Filter seasons to only those relevant to this parent's athletes
-        var gymnastLevels = gymnastRecords
-            .Select(g => g.Level)
-            .Where(l => !string.IsNullOrWhiteSpace(l))
-            .Select(l => l!)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
         var linkedTeamLevelSeasonIds = linkedAthletes
             .Select(a => allTeamLevels.FirstOrDefault(t => t.Id == a.TeamLevelId)?.SeasonId)
             .Where(id => id.HasValue)
@@ -1168,9 +1170,8 @@ else
         publishedSeasonsList = publishedSeasons.Where(s =>
             // Season has a TeamLevel directly assigned to this parent's athlete
             linkedTeamLevelSeasonIds.Contains(s.Id)
-            // Season has TeamLevels matching a gymnast's level name
-            || allTeamLevels.Any(t => t.SeasonId == s.Id
-                && gymnastLevels.Any(level => LevelNamesMatch(level, t.Name)))
+            // Season has gymnasts explicitly assigned via SeasonGymnast
+            || gymnastSeasonIds.Contains(s.Id)
             // Season has no TeamLevels but has budget data (gymnast-based season)
             || (!allTeamLevels.Any(t => t.SeasonId == s.Id) && gymnastRecords.Any())
         ).ToList();
@@ -1182,7 +1183,7 @@ else
         }
         else
         {
-            targetSeason = SelectParentSeason(publishedSeasonsList, allTeamLevels, linkedAthletes, gymnastRecords);
+            targetSeason = SelectParentSeason(publishedSeasonsList, allTeamLevels, linkedAthletes, seasonGymnastLinks);
             selectedSeasonId = targetSeason?.Id;
         }
         if (targetSeason == null)
@@ -1207,31 +1208,22 @@ else
             return;
         }
 
+        // Gymnasts explicitly assigned to this season via SeasonGymnast
+        seasonAthleteIds = seasonGymnastLinks
+            .Where(sg => sg.SeasonId == targetSeason.Id)
+            .Select(sg => sg.GymnastId)
+            .ToHashSet();
+
+        // Build athlete list from linked athletes + fallback from gymnast records
         var fallbackAthletes = gymnastRecords
             .Select(g => new Athlete
             {
                 Id = g.Id,
                 Name = g.Name,
-                TeamLevelId = teamLevels.FirstOrDefault(t => LevelNamesMatch(t.Name, g.Level))?.Id ?? 0
+                TeamLevelId = teamLevels.FirstOrDefault(t =>
+                    string.Equals(t.Name, g.Level, StringComparison.OrdinalIgnoreCase))?.Id ?? 0
             })
             .ToList();
-
-        // Determine which athletes belong to this season
-        var matchedFallback = fallbackAthletes.Where(fa => fa.TeamLevelId > 0 && seasonAthletes.All(a => a.Id != fa.Id)).ToList();
-        var matchedIds = seasonAthletes.Select(a => a.Id)
-            .Concat(matchedFallback.Select(a => a.Id))
-            .ToHashSet();
-
-        // If the season has no levels, OR no athletes matched any level,
-        // OR every gymnast level is covered by a team level in this season,
-        // treat it as all-inclusive (all gymnasts belong)
-        var allGymnastLevelsCovered = gymnastRecords
-            .Where(g => !string.IsNullOrWhiteSpace(g.Level))
-            .All(g => teamLevels.Any(t => LevelNamesMatch(t.Name, g.Level)));
-        if (!teamLevels.Any() || !matchedIds.Any() || allGymnastLevelsCovered)
-            matchedIds = gymnastRecords.Select(g => g.Id).ToHashSet();
-
-        seasonAthleteIds = matchedIds;
 
         athletes = seasonAthletes
             .Concat(fallbackAthletes.Where(fa => seasonAthletes.All(a => a.Id != fa.Id)))
@@ -1351,7 +1343,7 @@ else
             .ToHashSet();
     }
 
-    private Season? SelectParentSeason(List<Season> publishedSeasons, List<TeamLevel> allTeamLevels, List<Athlete> linkedAthletes, List<Gymnast> gymnastRecords)
+    private Season? SelectParentSeason(List<Season> publishedSeasons, List<TeamLevel> allTeamLevels, List<Athlete> linkedAthletes, List<SeasonGymnast> seasonGymnastLinks)
     {
         if (!publishedSeasons.Any())
             return null;
@@ -1361,6 +1353,7 @@ else
             .ThenByDescending(s => s.Name)
             .ToList();
 
+        // Seasons from direct athlete->teamlevel links
         var linkedSeasonIds = linkedAthletes
             .Select(a => allTeamLevels.FirstOrDefault(t => t.Id == a.TeamLevelId)?.SeasonId)
             .Where(id => id.HasValue)
@@ -1368,60 +1361,20 @@ else
             .Distinct()
             .ToHashSet();
 
-        if (linkedSeasonIds.Any())
-        {
-            return publishedSeasons.FirstOrDefault(s => s.IsActive && linkedSeasonIds.Contains(s.Id))
-                ?? publishedSeasons.FirstOrDefault(s => linkedSeasonIds.Contains(s.Id))
-                ?? publishedSeasons.FirstOrDefault(s => s.IsActive)
-                ?? publishedSeasons.FirstOrDefault();
-        }
+        // Seasons from explicit SeasonGymnast assignments
+        var assignedSeasonIds = seasonGymnastLinks
+            .Select(sg => sg.SeasonId)
+            .Distinct()
+            .ToHashSet();
 
-        var gymnastLevels = gymnastRecords
-            .Select(g => g.Level)
-            .Where(level => !string.IsNullOrWhiteSpace(level))
-            .Select(level => level!)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        linkedSeasonIds.UnionWith(assignedSeasonIds);
 
-        bool HasMatchingLevel(Season season) =>
-            allTeamLevels.Any(t => t.SeasonId == season.Id
-                && gymnastLevels.Any(level => LevelNamesMatch(level, t.Name)));
-
-        return publishedSeasons.FirstOrDefault(s => s.IsActive && HasMatchingLevel(s))
-            ?? publishedSeasons.FirstOrDefault(HasMatchingLevel)
+        return publishedSeasons.FirstOrDefault(s => s.IsActive && linkedSeasonIds.Contains(s.Id))
+            ?? publishedSeasons.FirstOrDefault(s => linkedSeasonIds.Contains(s.Id))
             ?? publishedSeasons.FirstOrDefault(s => s.IsActive)
             ?? publishedSeasons.FirstOrDefault();
     }
 
-    private static bool LevelNamesMatch(string? left, string? right)
-    {
-        var normalizedLeft = NormalizeLevelName(left);
-        var normalizedRight = NormalizeLevelName(right);
-        var compactLeft = CompactLevelName(left);
-        var compactRight = CompactLevelName(right);
-        return (!string.IsNullOrEmpty(normalizedLeft)
-                && !string.IsNullOrEmpty(normalizedRight)
-                && string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase))
-            || (!string.IsNullOrEmpty(compactLeft)
-                && !string.IsNullOrEmpty(compactRight)
-                && string.Equals(compactLeft, compactRight, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static string NormalizeLevelName(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return "";
-
-        var withoutLevelWord = Regex.Replace(value.Trim(), @"\blevel\b", " ", RegexOptions.IgnoreCase);
-        var normalized = Regex.Replace(withoutLevelWord, @"[^A-Za-z0-9]+", " ");
-        return string.Join(" ", normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries));
-    }
-
-    private static string CompactLevelName(string? value)
-    {
-        var normalized = NormalizeLevelName(value);
-        return normalized.Replace(" ", "", StringComparison.Ordinal);
-    }
 
     private static int GetScheduleYear(Season? season, int startMonthNum)
     {
@@ -1510,6 +1463,22 @@ else
             .OrderBy(info => info.DueDate)
             .ThenByDescending(info => info.PastDueInstallments)
             .FirstOrDefault();
+
+    private static string NormalizeLevelName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var withoutLevelWord = Regex.Replace(value.Trim(), @"\blevel\b", " ", RegexOptions.IgnoreCase);
+        var normalized = Regex.Replace(withoutLevelWord, @"[^A-Za-z0-9]+", " ");
+        return string.Join(" ", normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static string CompactLevelName(string? value)
+    {
+        var normalized = NormalizeLevelName(value);
+        return normalized.Replace(" ", "", StringComparison.Ordinal);
+    }
 
     // Level matching helper
     private bool LevelMatchesKeywords(string level, string appliesTo)

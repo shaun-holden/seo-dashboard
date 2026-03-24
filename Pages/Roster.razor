@@ -491,6 +491,8 @@
             g.Level = targetLevel;
         await db.SaveChangesAsync();
 
+        await SyncGymnastSeasons(db, ids);
+
         bulkAssignMessage = $"Assigned {toUpdate.Count} gymnast(s) to \"{targetLevel}\".";
         bulkAssignLevel = "";
         bulkAssignCustomLevel = "";
@@ -511,6 +513,9 @@
         var levelRecord = await db.Levels.FirstOrDefaultAsync(l => l.Name == oldName);
         if (levelRecord != null) levelRecord.Name = renameNewName.Trim();
         await db.SaveChangesAsync();
+
+        await SyncGymnastSeasons(db, toUpdate.Select(g => g.Id).ToList());
+
         levelMessage = $"Renamed \"{oldName}\" to \"{renameNewName.Trim()}\" ({toUpdate.Count} gymnasts updated).";
         renamingLevel = null;
         await LoadData();
@@ -662,6 +667,7 @@
         if (string.IsNullOrWhiteSpace(formName)) return;
         using var db = await DbFactory.CreateDbContextAsync();
 
+        int gymnastId;
         if (editingGymnast != null)
         {
             var entity = await db.Gymnasts.FindAsync(editingGymnast.Id);
@@ -676,11 +682,16 @@
                 entity.Jacket = formJacket;
                 entity.TeamCamp = true;
                 await db.SaveChangesAsync();
+                gymnastId = entity.Id;
+            }
+            else
+            {
+                return;
             }
         }
         else
         {
-            db.Gymnasts.Add(new Gymnast
+            var newGymnast = new Gymnast
             {
                 Name = formName.Trim(),
                 Level = string.IsNullOrWhiteSpace(formLevel) ? null : formLevel.Trim(),
@@ -691,13 +702,62 @@
                 Jacket = formJacket,
                 TeamCamp = true,
                 UserId = userId!
-            });
+            };
+            db.Gymnasts.Add(newGymnast);
             await db.SaveChangesAsync();
+            gymnastId = newGymnast.Id;
         }
+
+        await SyncGymnastSeasons(db, new List<int> { gymnastId });
 
         showForm = false;
         editingGymnast = null;
         await LoadData();
+    }
+
+    private async Task SyncGymnastSeasons(AppDbContext db, List<int> gymnastIds)
+    {
+        if (string.IsNullOrEmpty(userId) || !gymnastIds.Any()) return;
+
+        var gymnasts = await db.Gymnasts.AsNoTracking()
+            .Where(g => gymnastIds.Contains(g.Id) && !g.IsArchived)
+            .ToListAsync();
+        var seasons = await db.Seasons.AsNoTracking()
+            .Where(s => s.UserId == userId)
+            .Select(s => s.Id)
+            .ToListAsync();
+        var allTeamLevels = await db.TeamLevels.AsNoTracking()
+            .Where(tl => seasons.Contains(tl.SeasonId))
+            .ToListAsync();
+        var existing = await db.SeasonGymnasts
+            .Where(sg => gymnastIds.Contains(sg.GymnastId))
+            .ToListAsync();
+
+        foreach (var gymnast in gymnasts)
+        {
+            var matchingSeasonIds = allTeamLevels
+                .Where(tl => string.Equals(tl.Name, gymnast.Level, StringComparison.OrdinalIgnoreCase))
+                .Select(tl => tl.SeasonId)
+                .Distinct()
+                .ToHashSet();
+
+            // Add missing assignments
+            foreach (var seasonId in matchingSeasonIds)
+            {
+                if (!existing.Any(e => e.GymnastId == gymnast.Id && e.SeasonId == seasonId))
+                {
+                    db.SeasonGymnasts.Add(new SeasonGymnast { SeasonId = seasonId, GymnastId = gymnast.Id });
+                }
+            }
+
+            // Remove assignments that no longer match (only auto-matched ones)
+            var toRemove = existing
+                .Where(e => e.GymnastId == gymnast.Id && !matchingSeasonIds.Contains(e.SeasonId))
+                .ToList();
+            db.SeasonGymnasts.RemoveRange(toRemove);
+        }
+
+        await db.SaveChangesAsync();
     }
 
     private List<ApparelItem> apparelItems = new();

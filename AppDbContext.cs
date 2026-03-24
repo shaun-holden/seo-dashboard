@@ -127,6 +127,7 @@ namespace GymBudgetApp
         public DbSet<PushSubscriptionRecord> PushSubscriptions { get; set; }
         public DbSet<PaymentPlanRequest> PaymentPlanRequests { get; set; }
         public DbSet<PaymentReminderLog> PaymentReminderLogs { get; set; }
+        public DbSet<SeasonGymnast> SeasonGymnasts { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -245,6 +246,10 @@ namespace GymBudgetApp
 
             builder.Entity<PushSubscriptionRecord>()
                 .HasIndex(ps => new { ps.UserId, ps.Endpoint })
+                .IsUnique();
+
+            builder.Entity<SeasonGymnast>()
+                .HasIndex(sg => new { sg.SeasonId, sg.GymnastId })
                 .IsUnique();
         }
     }
