@@ -192,7 +192,7 @@ else
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <div>
                         <h6 class="mb-0">Individual Charges</h6>
-                        <small class="text-muted">This shows the exact charges included for this athlete.</small>
+                        <small class="text-muted">This shows the shared fee total and this athlete's individual costs.</small>
                     </div>
                     <span class="badge bg-light text-dark border">Per-athlete detail</span>
                 </div>
@@ -201,101 +201,21 @@ else
                         <tr><th>Item</th><th>Type</th><th class="text-end">Cost</th></tr>
                     </thead>
                     <tbody>
-                        <!-- Budget calculator charges -->
-                        @foreach (var sharedCharge in GetBudgetChargeRows())
+                        @if (sharedFeeCost > 0)
                         {
                             <tr>
-                                <td>
-                                    <input type="checkbox" class="form-check-input me-2" checked disabled />
-                                    @sharedCharge.Name
-                                </td>
-                                <td><span class="badge bg-secondary">@sharedCharge.Type</span></td>
-                                <td class="text-end">$@sharedCharge.Amount.ToString("N2")</td>
+                                <td><input type="checkbox" class="form-check-input me-2" checked disabled /> Shared Fees</td>
+                                <td><span class="badge bg-secondary">Shared</span></td>
+                                <td class="text-end">$@sharedFeeCost.ToString("N2")</td>
                             </tr>
                         }
-
-                        <!-- Apparel Items -->
-                        @foreach (var col in parentApparelColumns)
+                        @if ((apparelCost + compCost) > 0)
                         {
-                            var appApplies = DoesApparelApplyToLevel(col.Name, athleteLevel);
-                            if (!appApplies) continue;
-                            var appPrice = GetApparelPrice(col.Name, athleteLevel);
-                            var appSelected = IsParentApparelSelected(athlete.Id, col.Name);
-                            var appDeadline = GetApparelDeadline(col.Name);
-                            var appLocked = appDeadline.HasValue && appDeadline.Value < DateTime.Today;
-                            var appAthId = athlete.Id;
-                            var appName = col.Name;
-                            if (col.IsRequired)
-                            {
-                                <tr>
-                                    <td><input type="checkbox" class="form-check-input me-2" checked disabled /> @col.Name</td>
-                                    <td><span class="badge bg-success">Required</span></td>
-                                    <td class="text-end">$@appPrice.ToString("N2")</td>
-                                </tr>
-                            }
-                            else
-                            {
-                                <tr class="@(appSelected ? "" : "table-secondary")">
-                                    <td>
-                                        <input type="checkbox" class="form-check-input me-2" checked="@appSelected"
-                                               disabled="@appLocked"
-                                               @onchange="(e) => ToggleApparelSelection(appAthId, appName, (bool)e.Value!)" />
-                                        @col.Name
-                                        @if (appLocked)
-                                        {
-                                            <small class="text-danger ms-1">Locked</small>
-                                        }
-                                        else if (appDeadline.HasValue)
-                                        {
-                                            <small class="text-warning ms-1">Due @appDeadline.Value.ToString("MMM dd")</small>
-                                        }
-                                    </td>
-                                    <td><span class="badge bg-info">Optional</span></td>
-                                    <td class="text-end">@(appSelected ? $"${appPrice:N2}" : "—")</td>
-                                </tr>
-                            }
-                        }
-
-                        <!-- Competition Items -->
-                        @foreach (var col in parentCompColumns)
-                        {
-                            var compApplies2 = DoesCompApplyToLevel2(col.Name, athleteLevel);
-                            if (!compApplies2) continue;
-                            var compPrice2 = GetCompPrice2(col.Name, athleteLevel);
-                            var compSelected2 = IsParentCompSelected(athlete.Id, col.Name);
-                            var compDeadline = GetCompDeadline(col.Name);
-                            var compLocked = compDeadline.HasValue && compDeadline.Value < DateTime.Today;
-                            var compAthId = athlete.Id;
-                            var compName = col.Name;
-                            if (col.IsRequired)
-                            {
-                                <tr>
-                                    <td><input type="checkbox" class="form-check-input me-2" checked disabled /> @col.Name</td>
-                                    <td><span class="badge bg-danger">Required</span></td>
-                                    <td class="text-end">$@compPrice2.ToString("N2")</td>
-                                </tr>
-                            }
-                            else
-                            {
-                                <tr class="@(compSelected2 ? "" : "table-secondary")">
-                                    <td>
-                                        <input type="checkbox" class="form-check-input me-2" checked="@compSelected2"
-                                               disabled="@compLocked"
-                                               @onchange="(e) => ToggleCompSelection(compAthId, compName, (bool)e.Value!)" />
-                                        @col.Name
-                                        @if (compLocked)
-                                        {
-                                            <small class="text-danger ms-1">Locked</small>
-                                        }
-                                        else if (compDeadline.HasValue)
-                                        {
-                                            <small class="text-warning ms-1">Due @compDeadline.Value.ToString("MMM dd")</small>
-                                        }
-                                    </td>
-                                    <td><span class="badge bg-info">Optional</span></td>
-                                    <td class="text-end">@(compSelected2 ? $"${compPrice2:N2}" : "—")</td>
-                                </tr>
-                            }
+                            <tr>
+                                <td><input type="checkbox" class="form-check-input me-2" checked disabled /> Individual Costs</td>
+                                <td><span class="badge bg-info">Athlete</span></td>
+                                <td class="text-end">$@((apparelCost + compCost).ToString("N2"))</td>
+                            </tr>
                         }
                     </tbody>
                     <tfoot class="table-light">
@@ -833,7 +753,6 @@ else
     private List<MeetTeamLevelAssignment> meetLevelAssignments = new();
     private List<SharedFee> sharedFees = new();
     private List<SharedFeeTeamLevelAssignment> sharedFeeAssignments = new();
-    private List<BudgetCalculatorEntry> budgetEntries = new();
     private List<TeamLevel> allSeasonLevels = new();
     private List<Season> seasons = new();
     private HashSet<int> expandedAthletes = new();
@@ -874,8 +793,6 @@ else
             .ToList();
 
     private record NextDueInfo(DateTime? DueDate, string Label, decimal Amount, int RemainingInstallments, int PastDueInstallments);
-    private record ParentChargeRow(string Name, string Type, decimal Amount);
-
     private void ShowMoreAnnouncements()
     {
         announcementDisplayCount = announcements.Count;
@@ -1167,11 +1084,6 @@ else
         var calcTotal = await db.BudgetCalculatorEntries.AsNoTracking()
             .Where(e => e.SeasonId == targetSeason.Id)
             .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
-        budgetEntries = await db.BudgetCalculatorEntries.AsNoTracking()
-            .Where(e => e.SeasonId == targetSeason.Id && e.CalculatedTotal > 0)
-            .OrderBy(e => e.Category)
-            .ThenBy(e => e.Name)
-            .ToListAsync();
         var athleteCount = targetSeason.AthleteCount > 0 ? targetSeason.AthleteCount : athletes.Count;
         parentCostPerGymnast = athleteCount > 0 ? Math.Round(calcTotal / athleteCount, 2) : 0;
 
@@ -1294,38 +1206,6 @@ else
     private decimal GetAthletePaidTotal(Athlete athlete) =>
         payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment)
             .Sum(p => p.Amount);
-
-    private List<ParentChargeRow> GetBudgetChargeRows()
-    {
-        var athleteCount = seasons.FirstOrDefault()?.AthleteCount ?? 0;
-        if (athleteCount <= 0)
-            athleteCount = athletes.Count;
-        if (athleteCount <= 0)
-            return new();
-
-        return budgetEntries
-            .Select(entry => new ParentChargeRow(
-                GetBudgetChargeLabel(entry),
-                "Budget",
-                Math.Round(entry.CalculatedTotal / athleteCount, 2)))
-            .Where(row => row.Amount > 0)
-            .ToList();
-    }
-
-    private string GetBudgetChargeLabel(BudgetCalculatorEntry entry)
-    {
-        if (!string.IsNullOrWhiteSpace(entry.Name))
-            return entry.Name!;
-
-        return entry.Category switch
-        {
-            "TeamEntry" => "Team Entry",
-            "SessionCost" => "Session Cost",
-            "CarRental" => "Car Rental",
-            "BankFees" => "Bank Fees",
-            _ => Regex.Replace(entry.Category ?? "", "([a-z])([A-Z])", "$1 $2")
-        };
-    }
 
     private decimal GetAthleteCreditsTotal(Athlete athlete) =>
         payments.Where(p => p.AthleteId == athlete.Id && p.Type == PaymentType.Credit)
