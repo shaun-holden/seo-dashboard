@@ -56,8 +56,15 @@ else
                 }
                 else
                 {
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <button class="btn btn-sm btn-outline-primary" @onclick="SelectAllGymnasts">Select All</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="DeselectAllGymnasts">Deselect All</button>
+                        <input class="form-control form-control-sm" style="max-width: 250px;"
+                               placeholder="Search by name..."
+                               @bind="manageAthletesSearch" @bind:event="oninput" />
+                    </div>
                     <div class="row">
-                        @foreach (var gymnast in allGymnasts)
+                        @foreach (var gymnast in filteredManageAthletes)
                         {
                             var gId = gymnast.Id;
                             var isChecked = seasonGymnastIds.Contains(gId);
@@ -1533,6 +1540,10 @@ else
     private bool showManageAthletes;
     private List<Gymnast> allGymnasts = new();
     private HashSet<int> seasonGymnastIds = new();
+    private string manageAthletesSearch = "";
+    private List<Gymnast> filteredManageAthletes => string.IsNullOrWhiteSpace(manageAthletesSearch)
+        ? allGymnasts
+        : allGymnasts.Where(g => g.Name.Contains(manageAthletesSearch, StringComparison.OrdinalIgnoreCase)).ToList();
 
     private async Task LoadManageAthletes()
     {
@@ -1574,6 +1585,35 @@ else
             }
             seasonGymnastIds.Remove(gymnastId);
         }
+    }
+
+    private async Task SelectAllGymnasts()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var toAdd = allGymnasts
+            .Where(g => !seasonGymnastIds.Contains(g.Id))
+            .Select(g => new SeasonGymnast { SeasonId = selectedSeasonId, GymnastId = g.Id })
+            .ToList();
+        if (toAdd.Any())
+        {
+            db.SeasonGymnasts.AddRange(toAdd);
+            await db.SaveChangesAsync();
+        }
+        seasonGymnastIds = allGymnasts.Select(g => g.Id).ToHashSet();
+    }
+
+    private async Task DeselectAllGymnasts()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var toRemove = await db.SeasonGymnasts
+            .Where(sg => sg.SeasonId == selectedSeasonId)
+            .ToListAsync();
+        if (toRemove.Any())
+        {
+            db.SeasonGymnasts.RemoveRange(toRemove);
+            await db.SaveChangesAsync();
+        }
+        seasonGymnastIds.Clear();
     }
 
     private async Task SyncSeasonGymnasts(AppDbContext db, int seasonId)
