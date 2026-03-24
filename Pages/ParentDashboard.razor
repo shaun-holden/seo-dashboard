@@ -180,6 +180,7 @@ else
                     {
                         <span class="badge bg-warning text-dark ms-1">$@balance.ToString("N2") due</span>
                     }
+                    <div class="small text-muted mt-1">Tap to view individual charges, payment status, and schedule.</div>
                 </div>
                 <span class="oi @(isExpanded ? "oi-chevron-top" : "oi-chevron-bottom")"></span>
             </div>
@@ -187,8 +188,14 @@ else
             @if (isExpanded)
             {
             <div class="card-body">
-                <!-- Fee Breakdown -->
-                <h6>Fee Breakdown</h6>
+                <!-- Individual Charges -->
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <h6 class="mb-0">Individual Charges</h6>
+                        <small class="text-muted">This shows the exact charges included for this athlete.</small>
+                    </div>
+                    <span class="badge bg-light text-dark border">Per-athlete detail</span>
+                </div>
                 <table class="table table-sm">
                     <thead class="table-light">
                         <tr><th>Item</th><th>Type</th><th class="text-end">Cost</th></tr>
