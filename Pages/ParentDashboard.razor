@@ -201,13 +201,16 @@ else
                         <tr><th>Item</th><th>Type</th><th class="text-end">Cost</th></tr>
                     </thead>
                     <tbody>
-                        <!-- Shared Fees (from budget calculator) -->
-                        @if (sharedFeeCost > 0)
+                        <!-- Budget calculator charges -->
+                        @foreach (var sharedCharge in GetBudgetChargeRows())
                         {
                             <tr>
-                                <td><input type="checkbox" class="form-check-input me-2" checked disabled /> Shared Fees</td>
-                                <td><span class="badge bg-secondary">Required</span></td>
-                                <td class="text-end">$@sharedFeeCost.ToString("N2")</td>
+                                <td>
+                                    <input type="checkbox" class="form-check-input me-2" checked disabled />
+                                    @sharedCharge.Name
+                                </td>
+                                <td><span class="badge bg-secondary">@sharedCharge.Type</span></td>
+                                <td class="text-end">$@sharedCharge.Amount.ToString("N2")</td>
                             </tr>
                         }
 
@@ -830,6 +833,7 @@ else
     private List<MeetTeamLevelAssignment> meetLevelAssignments = new();
     private List<SharedFee> sharedFees = new();
     private List<SharedFeeTeamLevelAssignment> sharedFeeAssignments = new();
+    private List<BudgetCalculatorEntry> budgetEntries = new();
     private List<TeamLevel> allSeasonLevels = new();
     private List<Season> seasons = new();
     private HashSet<int> expandedAthletes = new();
@@ -870,6 +874,7 @@ else
             .ToList();
 
     private record NextDueInfo(DateTime? DueDate, string Label, decimal Amount, int RemainingInstallments, int PastDueInstallments);
+    private record ParentChargeRow(string Name, string Type, decimal Amount);
 
     private void ShowMoreAnnouncements()
     {
@@ -1162,6 +1167,11 @@ else
         var calcTotal = await db.BudgetCalculatorEntries.AsNoTracking()
             .Where(e => e.SeasonId == targetSeason.Id)
             .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
+        budgetEntries = await db.BudgetCalculatorEntries.AsNoTracking()
+            .Where(e => e.SeasonId == targetSeason.Id && e.CalculatedTotal > 0)
+            .OrderBy(e => e.Category)
+            .ThenBy(e => e.Name)
+            .ToListAsync();
         var athleteCount = targetSeason.AthleteCount > 0 ? targetSeason.AthleteCount : athletes.Count;
         parentCostPerGymnast = athleteCount > 0 ? Math.Round(calcTotal / athleteCount, 2) : 0;
 
@@ -1284,6 +1294,38 @@ else
     private decimal GetAthletePaidTotal(Athlete athlete) =>
         payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment)
             .Sum(p => p.Amount);
+
+    private List<ParentChargeRow> GetBudgetChargeRows()
+    {
+        var athleteCount = seasons.FirstOrDefault()?.AthleteCount ?? 0;
+        if (athleteCount <= 0)
+            athleteCount = athletes.Count;
+        if (athleteCount <= 0)
+            return new();
+
+        return budgetEntries
+            .Select(entry => new ParentChargeRow(
+                GetBudgetChargeLabel(entry),
+                "Budget",
+                Math.Round(entry.CalculatedTotal / athleteCount, 2)))
+            .Where(row => row.Amount > 0)
+            .ToList();
+    }
+
+    private string GetBudgetChargeLabel(BudgetCalculatorEntry entry)
+    {
+        if (!string.IsNullOrWhiteSpace(entry.Name))
+            return entry.Name!;
+
+        return entry.Category switch
+        {
+            "TeamEntry" => "Team Entry",
+            "SessionCost" => "Session Cost",
+            "CarRental" => "Car Rental",
+            "BankFees" => "Bank Fees",
+            _ => Regex.Replace(entry.Category ?? "", "([a-z])([A-Z])", "$1 $2")
+        };
+    }
 
     private decimal GetAthleteCreditsTotal(Athlete athlete) =>
         payments.Where(p => p.AthleteId == athlete.Id && p.Type == PaymentType.Credit)
