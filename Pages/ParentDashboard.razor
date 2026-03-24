@@ -1176,6 +1176,10 @@ else
             || (!allTeamLevels.Any(t => t.SeasonId == s.Id) && gymnastRecords.Any())
         ).ToList();
 
+        // Fallback: if no seasons matched but gymnasts exist, show all published seasons
+        if (!publishedSeasonsList.Any() && gymnastRecords.Any())
+            publishedSeasonsList = publishedSeasons.ToList();
+
         Season? targetSeason;
         if (selectedSeasonId.HasValue)
         {
@@ -1209,10 +1213,15 @@ else
         }
 
         // Gymnasts explicitly assigned to this season via SeasonGymnast
-        seasonAthleteIds = seasonGymnastLinks
+        var assignedIds = seasonGymnastLinks
             .Where(sg => sg.SeasonId == targetSeason.Id)
             .Select(sg => sg.GymnastId)
             .ToHashSet();
+
+        // If no assignments exist for this season yet, treat all gymnasts as belonging
+        seasonAthleteIds = assignedIds.Any()
+            ? assignedIds
+            : gymnastRecords.Select(g => g.Id).ToHashSet();
 
         // Build athlete list from linked athletes + fallback from gymnast records
         var fallbackAthletes = gymnastRecords
