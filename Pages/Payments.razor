@@ -5,11 +5,13 @@
 @using GymBudgetApp.Services
 @using Microsoft.EntityFrameworkCore
 @using System.Security.Claims
+@using System.Text
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject GymBudgetApp.Services.AuditService AuditService
 @inject GymBudgetApp.Services.PermissionService PermissionService
 @inject IConfiguration Configuration
+@inject IJSRuntime JS
 
 <h3>Payment Tracking</h3>
 
@@ -70,6 +72,15 @@ else
                     <div class="card-body">
                         <h6>Collection Rate</h6>
                         <h4>@(totalOwed > 0 ? (totalPaid / totalOwed * 100).ToString("N0") : "0")%</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-2">
+                <div class="card text-white bg-danger">
+                    <div class="card-body">
+                        <h6>Needs Follow-Up</h6>
+                        <h4>@outstandingRows.Count</h4>
+                        <small>@linkedOutstandingRows.Count linked parent(s)</small>
                     </div>
                 </div>
             </div>
@@ -151,7 +162,7 @@ else
             </div>
         }
 
-        <div class="d-flex gap-3 mb-3 flex-wrap">
+        <div class="d-flex gap-3 mb-3 flex-wrap align-items-end">
             <input type="text" class="form-control" style="max-width: 200px;" placeholder="Search name..." @bind="paymentSearchText" @bind:event="oninput" />
             <select class="form-select" style="max-width: 200px;" @bind="paymentFilterLevel">
                 <option value="">All Levels</option>
@@ -160,7 +171,79 @@ else
                     <option value="@lvl">@lvl</option>
                 }
             </select>
+            <select class="form-select" style="max-width: 200px;" @bind="paymentStatusFilter">
+                <option value="All">All Statuses</option>
+                <option value="Unpaid">Unpaid</option>
+                <option value="Partial">Partial</option>
+                <option value="Paid">Paid</option>
+                <option value="Outstanding">Outstanding Only</option>
+            </select>
+            <select class="form-select" style="max-width: 220px;" @bind="paymentParentLinkFilter">
+                <option value="All">All Parent Links</option>
+                <option value="Claimed">Claimed Parents</option>
+                <option value="InvitePending">Invite Pending</option>
+                <option value="Missing">No Parent Link</option>
+            </select>
+            <button class="btn btn-outline-success" @onclick="ExportVisibleRows" disabled="@(!paymentRows.Any())">
+                <span class="oi oi-data-transfer-download me-1"></span>Export Visible CSV
+            </button>
+            <button class="btn btn-outline-primary" @onclick="CopyOutstandingEmails" disabled="@(!outstandingContactEmails.Any())">
+                <span class="oi oi-envelope-closed me-1"></span>Copy Outstanding Emails
+            </button>
         </div>
+
+        @if (actionMessage != null)
+        {
+            <div class="alert alert-info py-2">@actionMessage</div>
+        }
+
+        @if (outstandingRows.Any())
+        {
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Follow-Up Queue</h5>
+                    <span class="text-muted small">@outstandingRows.Count athlete(s) with balances</span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Athlete</th>
+                                <th>Level</th>
+                                <th>Balance</th>
+                                <th>Parent Contact</th>
+                                <th>Link Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in outstandingRows.Take(8))
+                            {
+                                <tr>
+                                    <td>@row.Name</td>
+                                    <td>@row.Level</td>
+                                    <td class="fw-bold text-danger">$@row.Balance.ToString("N2")</td>
+                                    <td>@(string.IsNullOrWhiteSpace(row.ParentContactEmail) ? "—" : row.ParentContactEmail)</td>
+                                    <td>
+                                        @if (row.ParentLinked)
+                                        {
+                                            <span class="badge bg-success">Claimed</span>
+                                        }
+                                        else if (row.HasInviteCode)
+                                        {
+                                            <span class="badge bg-secondary">Invite Pending</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-light text-dark border">Missing Link</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
 
         <div class="card">
             <div class="card-header"><h5 class="mb-0">Athlete Payment Status</h5></div>
@@ -172,33 +255,29 @@ else
                             <th>@labels.TeamLevel</th>
                             <th class="text-end">Total Fees</th>
                             <th class="text-end">Paid</th>
+                            <th class="text-end">Credits</th>
                             <th class="text-end">Balance</th>
                             <th class="text-center">Status</th>
-                            <th class="text-center">Parent Linked</th>
+                            <th class="text-center">Parent Link</th>
+                            <th>Parent Contact</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var athlete in filteredGymnasts)
+                        @foreach (var row in filteredRows)
                         {
-                            var fees = costPerGymnast;
-                            var paid = payments.Where(p => p.AthleteId == athlete.Id && p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment).Sum(p => p.Amount);
-                            var credits = payments.Where(p => p.AthleteId == athlete.Id && p.Type == PaymentType.Credit).Sum(p => p.Amount);
-                            var balance = fees - paid - credits;
-                            var link = parentLinks.FirstOrDefault(pl => pl.AthleteId == athlete.Id);
-                            var levelName = athlete.Level ?? "";
-
                             <tr>
-                                <td><strong>@athlete.Name</strong></td>
-                                <td>@levelName</td>
-                                <td class="text-end">$@fees.ToString("N2")</td>
-                                <td class="text-end text-success">$@paid.ToString("N2")</td>
-                                <td class="text-end @(balance <= 0 ? "text-success" : "text-danger") fw-bold">$@balance.ToString("N2")</td>
+                                <td><strong>@row.Name</strong></td>
+                                <td>@row.Level</td>
+                                <td class="text-end">$@row.TotalFees.ToString("N2")</td>
+                                <td class="text-end text-success">$@row.Paid.ToString("N2")</td>
+                                <td class="text-end text-info">$@row.Credits.ToString("N2")</td>
+                                <td class="text-end @(row.Balance <= 0 ? "text-success" : "text-danger") fw-bold">$@row.Balance.ToString("N2")</td>
                                 <td class="text-center">
-                                    @if (balance <= 0)
+                                    @if (row.Balance <= 0)
                                     {
                                         <span class="badge bg-success">Paid</span>
                                     }
-                                    else if (paid > 0)
+                                    else if (row.Paid > 0)
                                     {
                                         <span class="badge bg-warning text-dark">Partial</span>
                                     }
@@ -208,29 +287,31 @@ else
                                     }
                                 </td>
                                 <td class="text-center">
-                                    @if (link?.IsClaimed == true)
+                                    @if (row.ParentLinked)
                                     {
-                                        <span class="badge bg-success">Yes</span>
+                                        <span class="badge bg-success">Claimed</span>
                                     }
-                                    else if (link != null)
+                                    else if (row.HasInviteCode)
                                     {
-                                        <span class="badge bg-secondary font-monospace">@link.InviteCode</span>
+                                        <span class="badge bg-secondary font-monospace">@row.InviteCode</span>
                                     }
                                     else
                                     {
                                         <span class="text-muted">—</span>
                                     }
                                 </td>
+                                <td>@(string.IsNullOrWhiteSpace(row.ParentContactEmail) ? "—" : row.ParentContactEmail)</td>
                             </tr>
                         }
                     </tbody>
                     <tfoot class="table-light fw-bold">
                         <tr>
                             <td colspan="2">Totals</td>
-                            <td class="text-end">$@totalOwed.ToString("N2")</td>
-                            <td class="text-end text-success">$@totalPaid.ToString("N2")</td>
-                            <td class="text-end">$@((totalOwed - totalPaid).ToString("N2"))</td>
-                            <td colspan="2"></td>
+                            <td class="text-end">$@filteredRows.Sum(r => r.TotalFees).ToString("N2")</td>
+                            <td class="text-end text-success">$@filteredRows.Sum(r => r.Paid).ToString("N2")</td>
+                            <td class="text-end text-info">$@filteredRows.Sum(r => r.Credits).ToString("N2")</td>
+                            <td class="text-end">$@filteredRows.Sum(r => r.Balance).ToString("N2")</td>
+                            <td colspan="3"></td>
                         </tr>
                     </tfoot>
                 </table>
@@ -244,22 +325,13 @@ else
     private List<Gymnast> gymnasts = new();
     private List<Payment> payments = new();
     private List<ParentLink> parentLinks = new();
+    private List<PaymentRow> paymentRows = new();
     private decimal costPerGymnast;
     private string paymentSearchText = "";
     private string paymentFilterLevel = "";
-
-    private List<Gymnast> filteredGymnasts
-    {
-        get
-        {
-            var list = gymnasts.AsEnumerable();
-            if (!string.IsNullOrWhiteSpace(paymentSearchText))
-                list = list.Where(g => g.Name.Contains(paymentSearchText, StringComparison.OrdinalIgnoreCase));
-            if (!string.IsNullOrEmpty(paymentFilterLevel))
-                list = list.Where(g => g.Level == paymentFilterLevel);
-            return list.ToList();
-        }
-    }
+    private string paymentStatusFilter = "All";
+    private string paymentParentLinkFilter = "All";
+    private string? actionMessage;
     private int selectedSeasonId;
     private string? userId;
     private string? userEmail;
@@ -271,10 +343,71 @@ else
     private string? creditMessage;
     private bool canViewPayments;
 
+    private class PaymentRow
+    {
+        public int AthleteId { get; set; }
+        public string Name { get; set; } = "";
+        public string Level { get; set; } = "";
+        public decimal TotalFees { get; set; }
+        public decimal Paid { get; set; }
+        public decimal Credits { get; set; }
+        public decimal Balance { get; set; }
+        public bool ParentLinked { get; set; }
+        public bool HasInviteCode { get; set; }
+        public string InviteCode { get; set; } = "";
+        public string ParentContactEmail { get; set; } = "";
+    }
+
+    private List<PaymentRow> filteredRows =>
+        paymentRows
+            .Where(r => string.IsNullOrWhiteSpace(paymentSearchText)
+                || r.Name.Contains(paymentSearchText, StringComparison.OrdinalIgnoreCase))
+            .Where(r => string.IsNullOrEmpty(paymentFilterLevel) || r.Level == paymentFilterLevel)
+            .Where(MatchesStatusFilter)
+            .Where(MatchesParentLinkFilter)
+            .OrderByDescending(r => r.Balance)
+            .ThenBy(r => r.Name)
+            .ToList();
+
+    private List<PaymentRow> outstandingRows =>
+        paymentRows
+            .Where(r => r.Balance > 0)
+            .OrderByDescending(r => r.Balance)
+            .ThenBy(r => r.Name)
+            .ToList();
+
+    private List<PaymentRow> linkedOutstandingRows =>
+        outstandingRows.Where(r => r.ParentLinked).ToList();
+
+    private List<string> outstandingContactEmails =>
+        outstandingRows
+            .SelectMany(r => r.ParentContactEmail
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(e => e)
+            .ToList();
+
     private List<Payment> paidPayments => payments.Where(p => p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment).ToList();
     private decimal totalCredits => payments.Where(p => p.Type == PaymentType.Credit).Sum(p => p.Amount);
     private decimal totalPaid => paidPayments.Sum(p => p.Amount) + totalCredits;
     private decimal totalOwed => costPerGymnast * gymnasts.Count;
+
+    private bool MatchesStatusFilter(PaymentRow row) => paymentStatusFilter switch
+    {
+        "Paid" => row.Balance <= 0,
+        "Partial" => row.Balance > 0 && row.Paid > 0,
+        "Unpaid" => row.Balance > 0 && row.Paid <= 0,
+        "Outstanding" => row.Balance > 0,
+        _ => true
+    };
+
+    private bool MatchesParentLinkFilter(PaymentRow row) => paymentParentLinkFilter switch
+    {
+        "Claimed" => row.ParentLinked,
+        "InvitePending" => !row.ParentLinked && row.HasInviteCode,
+        "Missing" => !row.ParentLinked && !row.HasInviteCode,
+        _ => true
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -303,6 +436,7 @@ else
     {
         selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         labels = new ProjectLabels(seasons?.FirstOrDefault(s => s.Id == selectedSeasonId));
+        actionMessage = null;
         await LoadData();
     }
 
@@ -329,6 +463,29 @@ else
         creditAmount = 0;
         creditDescription = "";
         await LoadData();
+    }
+
+    private async Task ExportVisibleRows()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Athlete,Level,Total Fees,Paid,Credits,Balance,Status,Parent Link,Parent Contact");
+        foreach (var row in filteredRows)
+        {
+            var status = row.Balance <= 0 ? "Paid" : row.Paid > 0 ? "Partial" : "Unpaid";
+            var linkStatus = row.ParentLinked ? "Claimed" : row.HasInviteCode ? "Invite Pending" : "Missing";
+            sb.AppendLine($"{EscapeCsv(row.Name)},{EscapeCsv(row.Level)},{row.TotalFees:F2},{row.Paid:F2},{row.Credits:F2},{row.Balance:F2},{status},{EscapeCsv(linkStatus)},{EscapeCsv(row.ParentContactEmail)}");
+        }
+        await JS.InvokeVoidAsync("downloadFile", $"payments-{selectedSeasonId}-filtered.csv", sb.ToString());
+        actionMessage = $"Exported {filteredRows.Count} visible payment row(s).";
+    }
+
+    private async Task CopyOutstandingEmails()
+    {
+        var content = string.Join("; ", outstandingContactEmails);
+        await JS.InvokeVoidAsync("copyToClipboard", content);
+        actionMessage = outstandingContactEmails.Any()
+            ? $"Copied {outstandingContactEmails.Count} outstanding parent email(s)."
+            : "No outstanding parent emails were available to copy.";
     }
 
     private async Task LoadData()
@@ -361,5 +518,43 @@ else
         var season = await db.Seasons.FindAsync(selectedSeasonId);
         var athleteCount = season?.AthleteCount > 0 ? season.AthleteCount : gymnasts.Count;
         costPerGymnast = athleteCount > 0 ? Math.Round(calcTotal / athleteCount, 2) : 0;
+
+        paymentRows = gymnasts.Select(g =>
+        {
+            var paid = payments
+                .Where(p => p.AthleteId == g.Id && p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment)
+                .Sum(p => p.Amount);
+            var credits = payments
+                .Where(p => p.AthleteId == g.Id && p.Type == PaymentType.Credit)
+                .Sum(p => p.Amount);
+            var link = parentLinks.FirstOrDefault(pl => pl.AthleteId == g.Id);
+            var contactEmails = new[] { g.ParentEmail, g.ParentEmail2 }
+                .Where(email => !string.IsNullOrWhiteSpace(email))
+                .Select(email => email!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+
+            return new PaymentRow
+            {
+                AthleteId = g.Id,
+                Name = g.Name,
+                Level = g.Level ?? "",
+                TotalFees = costPerGymnast,
+                Paid = paid,
+                Credits = credits,
+                Balance = costPerGymnast - paid - credits,
+                ParentLinked = link?.IsClaimed == true,
+                HasInviteCode = link != null,
+                InviteCode = link?.InviteCode ?? "",
+                ParentContactEmail = string.Join("; ", contactEmails)
+            };
+        }).ToList();
+    }
+
+    private static string EscapeCsv(string? value)
+    {
+        value ??= "";
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        return value;
     }
 }

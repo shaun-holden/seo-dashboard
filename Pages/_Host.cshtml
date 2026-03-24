@@ -46,6 +46,9 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         };
+        window.copyToClipboard = async (content) => {
+            await navigator.clipboard.writeText(content || '');
+        };
         window.exportPdf = () => {
             window.print();
         };
