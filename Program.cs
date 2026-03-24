@@ -209,6 +209,24 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
+// Redirect old Railway URL to custom domain
+var canonicalHost = Environment.GetEnvironmentVariable("CANONICAL_HOST");
+if (!string.IsNullOrEmpty(canonicalHost))
+{
+    app.Use(async (context, next) =>
+    {
+        var host = context.Request.Host.Host;
+        if (!host.Equals(canonicalHost, StringComparison.OrdinalIgnoreCase)
+            && !host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            var url = $"https://{canonicalHost}{context.Request.Path}{context.Request.QueryString}";
+            context.Response.Redirect(url, permanent: true);
+            return;
+        }
+        await next();
+    });
+}
+
 // Security headers
 app.Use(async (context, next) =>
 {
