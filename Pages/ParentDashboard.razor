@@ -105,6 +105,19 @@ else
         </div>
     </div>
 
+    @if (publishedSeasonsList.Count > 1)
+    {
+        <div class="mb-3">
+            <label class="form-label small text-muted mb-1">Season</label>
+            <select class="form-select form-select-sm w-auto" @onchange="OnSeasonChanged">
+                @foreach (var s in publishedSeasonsList)
+                {
+                    <option value="@s.Id" selected="@(s.Id == selectedSeasonId)">@s.Name</option>
+                }
+            </select>
+        </div>
+    }
+
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
@@ -226,7 +239,6 @@ else
                     </tfoot>
                 </table>
 
-                <div class="alert alert-warning small py-1 mb-2"><strong>DEBUG:</strong> season=@(seasons.FirstOrDefault()?.Id) seasonName="@(seasons.FirstOrDefault()?.Name)" level="@athleteLevel" apparelCols=@parentApparelColumns.Count compCols=@parentCompColumns.Count apparelItems=@parentApparelItems.Count compItems=@parentCompetitionItems.Count</div>
                 @if (parentApparelColumns.Any(col => DoesApparelApplyToLevel(col.Name, athleteLevel))
                     || parentCompColumns.Any(col => DoesCompApplyToLevel2(col.Name, athleteLevel)))
                 {
@@ -880,6 +892,8 @@ else
     private List<SharedFeeTeamLevelAssignment> sharedFeeAssignments = new();
     private List<TeamLevel> allSeasonLevels = new();
     private List<Season> seasons = new();
+    private List<Season> publishedSeasonsList = new();
+    private int? selectedSeasonId;
     private HashSet<int> expandedAthletes = new();
     private bool isProcessing;
     private string? paymentError;
@@ -921,6 +935,16 @@ else
     private void ShowMoreAnnouncements()
     {
         announcementDisplayCount = announcements.Count;
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id))
+        {
+            selectedSeasonId = id;
+            expandedAthletes.Clear();
+            await LoadData();
+        }
     }
 
     private void ToggleAthlete(int athleteId)
@@ -1097,6 +1121,7 @@ else
         }
 
         budgetNotReady = false;
+        publishedSeasonsList = publishedSeasons;
 
         var allTeamLevels = await db.TeamLevels.AsNoTracking().ToListAsync();
         var linkedAthleteIds = parentLinks.Select(l => l.AthleteId).ToList();
@@ -1107,7 +1132,17 @@ else
             .Where(g => linkedAthleteIds.Contains(g.Id))
             .OrderBy(g => g.Name)
             .ToListAsync();
-        var targetSeason = SelectParentSeason(publishedSeasons, allTeamLevels, linkedAthletes, gymnastRecords);
+
+        Season? targetSeason;
+        if (selectedSeasonId.HasValue)
+        {
+            targetSeason = publishedSeasons.FirstOrDefault(s => s.Id == selectedSeasonId.Value);
+        }
+        else
+        {
+            targetSeason = SelectParentSeason(publishedSeasons, allTeamLevels, linkedAthletes, gymnastRecords);
+            selectedSeasonId = targetSeason?.Id;
+        }
         if (targetSeason == null)
         {
             athletes = new();
