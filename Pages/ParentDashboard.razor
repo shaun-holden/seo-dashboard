@@ -1216,10 +1216,22 @@ else
             })
             .ToList();
 
-        // On the parent dashboard, all of the parent's gymnasts belong to the
-        // selected season — the season list is already filtered to seasons
-        // relevant to this parent, so no athlete should be greyed out.
-        seasonAthleteIds = gymnastRecords.Select(g => g.Id).ToHashSet();
+        // Determine which athletes belong to this season
+        var matchedFallback = fallbackAthletes.Where(fa => fa.TeamLevelId > 0 && seasonAthletes.All(a => a.Id != fa.Id)).ToList();
+        var matchedIds = seasonAthletes.Select(a => a.Id)
+            .Concat(matchedFallback.Select(a => a.Id))
+            .ToHashSet();
+
+        // If the season has no levels, OR no athletes matched any level,
+        // OR every gymnast level is covered by a team level in this season,
+        // treat it as all-inclusive (all gymnasts belong)
+        var allGymnastLevelsCovered = gymnastRecords
+            .Where(g => !string.IsNullOrWhiteSpace(g.Level))
+            .All(g => teamLevels.Any(t => LevelNamesMatch(t.Name, g.Level)));
+        if (!teamLevels.Any() || !matchedIds.Any() || allGymnastLevelsCovered)
+            matchedIds = gymnastRecords.Select(g => g.Id).ToHashSet();
+
+        seasonAthleteIds = matchedIds;
 
         athletes = seasonAthletes
             .Concat(fallbackAthletes.Where(fa => seasonAthletes.All(a => a.Id != fa.Id)))
