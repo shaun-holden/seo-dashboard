@@ -13,9 +13,9 @@ Complete team management platform for gymnastics programs. Manage budgets, athle
 ### Team
 
 - **Seasons** — Create and manage seasons with copy structure and import
-- **Athletes** — Manage gymnasts, invite parents with invite codes, delete confirmation with parent link warnings
-- **Roster** — Track apparel sizes and competition items per athlete
-- **Manage Levels** — Organize athletes by team level with individualized budgets
+- **Athletes** — Manage gymnasts, invite parents with invite codes, archive instead of delete
+- **Roster** — Track apparel sizes and competition items per athlete, bulk assign levels
+- **Team Levels** — Create levels per season, explicitly assign athletes to seasons with select all/search
 - **Emergency Contacts** — View emergency contacts and medical notes for all athletes (employee accessible)
 
 ### Schedule
@@ -27,11 +27,11 @@ Complete team management platform for gymnastics programs. Manage budgets, athle
 ### Finance
 
 - **Budget** — Track revenue and expenses by category with budget vs. actual
-- **Budget Calculator** — What-if scenario modeling for per-athlete costs
+- **Budget Calculator** — What-if scenario modeling for per-athlete costs (lockable per season)
 - **Apparel** — Pricing and assignment for team apparel items
 - **Competitions** — Competition entry fees and travel costs
-- **Payments** — Track payments and apply credits per athlete
-- **Payment Plans** — Auto-generated monthly installment plans with bulk level updates
+- **Payments** — Track Stripe and manual payments per athlete, apply credits for iClass families
+- **Payment Plans** — Custom payment months for approved plan requests, bulk level updates
 - **Payment Plan Requests** — Parents can request alternate payment plans, admin reviews and approves
 - **Stripe Integration** — Online payments (Pay Monthly, Pay in Full, Custom Amount, Auto-Pay)
 - **iClassPro Billing** — Optional CSV import for billing integration
@@ -49,11 +49,12 @@ Complete team management platform for gymnastics programs. Manage budgets, athle
 
 ### Admin
 
-- **User Management** — Roles (Admin, Coach, Parent) and permissions
+- **User Management** — Roles (Admin, Employee, Parent) with granular permissions
 - **Two-Factor Authentication** — Optional 2FA for account security
-- **Audit Log** — Track all admin actions
-- **Backups** — Daily automated database backups
+- **Audit Log** — Track all admin actions with timestamps
+- **Backups** — Daily automated database backups with download
 - **Maintenance Mode** — Temporarily disable parent access during updates
+- **Data Import/Export** — CSV export/import for season data, cross-user budget import with PIN verification
 - **Billing Report** — View billing preferences (Stripe, iClassPro, Manual) by athlete
 
 ## Parent Portal
@@ -65,17 +66,19 @@ A separate green-themed portal for parents with mobile PWA support and push noti
 | **Fee Breakdown** | Shared fees, apparel, and competition costs per athlete |
 | **Payment Plan** | Monthly installments with due dates on the 15th |
 | **Stripe Payments** | Pay Monthly, Pay in Full, Custom Amount, or Auto-Pay |
+| **Statement Download** | Download or print financial statements per athlete |
 | **Profile** | Display name, profile picture, push notification toggle |
-| **Child Profiles** | Emergency contacts, medical info per linked athlete |
-| **Payment Plan Requests** | Request alternate payment plans for review |
-| **Announcements** | View team announcements filtered by level |
+| **Child Profiles** | Emergency contacts, medical info, sizes per linked athlete |
+| **Payment Plan Requests** | Request alternate payment plans for admin review |
+| **Announcements** | View team announcements filtered by level with read tracking |
 | **Push Notifications** | Get notified on phone for new announcements and events |
-| **Schedule** | Upcoming meets and practices |
-| **Calendar** | Full season calendar view |
-| **Messages** | Direct messaging with admin |
+| **Schedule & RSVP** | Upcoming meets and practices with per-athlete RSVP |
+| **Calendar** | Full season calendar with meets, practices, and payment due dates |
+| **Messages** | Direct messaging with admin, inbox with replies |
 | **Chat** | Team chat with emoji picker and profile pictures |
-| **Gallery** | View team photo albums |
-| **Commitment Form** | Review and sign commitment forms digitally |
+| **Gallery** | View team photo albums filtered by level |
+| **Commitment Form** | Review, initial sections, and sign commitment forms digitally |
+| **Resources** | View and download team documents and links |
 
 ## Reports
 
@@ -147,7 +150,7 @@ The app will be available at `http://localhost:5224`.
 - **Two-Factor Authentication** — Optional TOTP-based 2FA
 - **Audit Logging** — All admin actions recorded with timestamps
 - **Daily Backups** — Automated database backups with retention
-- **Delete Safeguards** — Confirmation with parent link warnings before deleting athletes
+- **Archive Safeguards** — Athletes are archived instead of deleted, preserving payment history
 
 ## Deployment
 
