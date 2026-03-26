@@ -505,9 +505,10 @@ else
         string auditAction;
         string auditDetails;
 
+        Season? newSeason = null;
         if (editingSeason == null)
         {
-            var newSeason = new Season
+            newSeason = new Season
             {
                 Name = formName,
                 AthleteCount = formAthleteCount,
@@ -550,7 +551,7 @@ else
         await Db.SaveChangesAsync();
 
         // Sync TeamLevel records from the comma-separated levels field
-        var savedSeason = editingSeason ?? Db.Seasons.Local.OrderByDescending(s => s.Id).First();
+        var savedSeason = editingSeason ?? newSeason!;
         var desiredLevels = formLevels.Split(',', StringSplitOptions.RemoveEmptyEntries)
             .Select(l => l.Trim())
             .Where(l => l.Length > 0)
@@ -583,6 +584,7 @@ else
     private async Task SetActive(Season season)
     {
         season.IsActive = !season.IsActive;
+        Db.Seasons.Update(season);
         await Db.SaveChangesAsync();
         await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonActivationChanged", $"{season.Name} marked {(season.IsActive ? "active" : "inactive")}.");
         await LoadSeasons();
@@ -657,24 +659,24 @@ else
         copyError = null;
     }
 
-    private void UpdateCopyPreview()
+    private async Task UpdateCopyPreview()
     {
         copyPreview = null;
         copySuccess = false;
         copyError = null;
         if (copySource == null || copyTargetId <= 0) return;
 
-        var levelIds = Db.TeamLevels.Where(t => t.SeasonId == copySource.Id).Select(t => t.Id).ToList();
+        var levelIds = await Db.TeamLevels.Where(t => t.SeasonId == copySource.Id).Select(t => t.Id).ToListAsync();
         copyPreview = new CopyPreview
         {
-            CoachCount = Db.Coaches.Count(c => c.SeasonId == copySource.Id),
-            MeetCount = Db.Meets.Count(m => m.SeasonId == copySource.Id),
+            CoachCount = await Db.Coaches.CountAsync(c => c.SeasonId == copySource.Id),
+            MeetCount = await Db.Meets.CountAsync(m => m.SeasonId == copySource.Id),
             TeamLevelCount = levelIds.Count,
-            AthleteItemCount = Db.AthleteItems.Count(a => levelIds.Contains(a.TeamLevelId)),
-            SharedFeeCount = Db.SharedFees.Count(f => f.SeasonId == copySource.Id),
-            ApparelItemCount = Db.ApparelItems.Count(a => a.SeasonId == copySource.Id),
-            CompetitionItemCount = Db.CompetitionItems.Count(c => c.SeasonId == copySource.Id),
-            BudgetEntryCount = Db.BudgetCalculatorEntries.Count(e => e.SeasonId == copySource.Id)
+            AthleteItemCount = await Db.AthleteItems.CountAsync(a => levelIds.Contains(a.TeamLevelId)),
+            SharedFeeCount = await Db.SharedFees.CountAsync(f => f.SeasonId == copySource.Id),
+            ApparelItemCount = await Db.ApparelItems.CountAsync(a => a.SeasonId == copySource.Id),
+            CompetitionItemCount = await Db.CompetitionItems.CountAsync(c => c.SeasonId == copySource.Id),
+            BudgetEntryCount = await Db.BudgetCalculatorEntries.CountAsync(e => e.SeasonId == copySource.Id)
         };
     }
 
