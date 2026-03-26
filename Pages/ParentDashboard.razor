@@ -1193,13 +1193,7 @@ else
             linkedTeamLevelSeasonIds.Contains(s.Id)
             // Season has gymnasts explicitly assigned via SeasonGymnast
             || gymnastSeasonIds.Contains(s.Id)
-            // Season has no TeamLevels but has budget data (gymnast-based season)
-            || (!allTeamLevels.Any(t => t.SeasonId == s.Id) && gymnastRecords.Any())
         ).ToList();
-
-        // Fallback: if no seasons matched but gymnasts exist, show all published seasons
-        if (!publishedSeasonsList.Any() && gymnastRecords.Any())
-            publishedSeasonsList = publishedSeasons.ToList();
 
         Season? targetSeason;
         if (selectedSeasonId.HasValue)
@@ -1239,10 +1233,8 @@ else
             .Select(sg => sg.GymnastId)
             .ToHashSet();
 
-        // If no assignments exist for this season yet, treat all gymnasts as belonging
-        seasonAthleteIds = assignedIds.Any()
-            ? assignedIds
-            : gymnastRecords.Select(g => g.Id).ToHashSet();
+        // Only show athletes explicitly assigned to this season
+        seasonAthleteIds = assignedIds;
 
         // Build athlete list from linked athletes + fallback from gymnast records
         var fallbackAthletes = gymnastRecords
@@ -1257,6 +1249,7 @@ else
 
         athletes = seasonAthletes
             .Concat(fallbackAthletes.Where(fa => seasonAthletes.All(a => a.Id != fa.Id)))
+            .Where(a => seasonAthleteIds.Contains(a.Id))
             .OrderBy(a => a.Name)
             .ToList();
         var athleteIds = athletes.Select(a => a.Id).ToList();
