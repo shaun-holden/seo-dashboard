@@ -200,6 +200,50 @@ using (var scope = app.Services.CreateScope())
         }
     }
 
+    // One-time fix: Move Alton Murphy's payments/credits from Girls Competitive Team to Men Regionals
+    {
+        var appDb = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var alton = await appDb.Gymnasts.FirstOrDefaultAsync(g => g.Name == "Alton Murphy");
+        if (alton != null)
+        {
+            var girlsSeason = await appDb.Seasons.FirstOrDefaultAsync(s => s.Name.Contains("2026-2027") && s.Name.Contains("Girls") && s.Name.Contains("Competitive"));
+            var menSeason = await appDb.Seasons.FirstOrDefaultAsync(s => s.Name.Contains("Men") && s.Name.Contains("Regional"));
+            if (girlsSeason != null && menSeason != null)
+            {
+                var paymentsToMove = await appDb.Payments
+                    .Where(p => p.AthleteId == alton.Id && p.SeasonId == girlsSeason.Id)
+                    .ToListAsync();
+                if (paymentsToMove.Any())
+                {
+                    foreach (var p in paymentsToMove)
+                        p.SeasonId = menSeason.Id;
+                    logger.LogInformation("Moved {Count} payment(s) for Alton Murphy from '{From}' to '{To}'",
+                        paymentsToMove.Count, girlsSeason.Name, menSeason.Name);
+                }
+
+                // Remove SeasonGymnast link to Girls Competitive if exists
+                var girlsLink = await appDb.SeasonGymnasts
+                    .FirstOrDefaultAsync(sg => sg.GymnastId == alton.Id && sg.SeasonId == girlsSeason.Id);
+                if (girlsLink != null)
+                {
+                    appDb.SeasonGymnasts.Remove(girlsLink);
+                    logger.LogInformation("Removed Alton Murphy from season '{Season}'", girlsSeason.Name);
+                }
+
+                // Ensure he's linked to Men Regionals
+                var menLink = await appDb.SeasonGymnasts
+                    .FirstOrDefaultAsync(sg => sg.GymnastId == alton.Id && sg.SeasonId == menSeason.Id);
+                if (menLink == null)
+                {
+                    appDb.SeasonGymnasts.Add(new GymBudgetApp.Models.SeasonGymnast { GymnastId = alton.Id, SeasonId = menSeason.Id });
+                    logger.LogInformation("Added Alton Murphy to season '{Season}'", menSeason.Name);
+                }
+
+                await appDb.SaveChangesAsync();
+            }
+        }
+    }
+
     // Data migration completed - no longer needed
 }
 
