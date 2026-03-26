@@ -35,148 +35,46 @@ else
 
     @if (selectedSeasonId > 0)
     {
-        <button class="btn btn-primary mb-3 me-2" @onclick="ShowForm">+ Add @labels.TeamLevel</button>
-        <button class="btn btn-outline-info mb-3" @onclick="LoadManageAthletes">
-            @(showManageAthletes ? "Hide" : "Manage") Athletes
-        </button>
-
-        @if (showManageAthletes)
-        {
-            <div class="card mb-4 p-3 border-info">
-                <h5>Manage Athletes in Season</h5>
-                <p class="text-muted small">Check athletes who belong to this season. Changes are saved immediately.</p>
-                @if (!allGymnasts.Any())
-                {
-                    <p class="text-muted">No gymnasts found in roster.</p>
-                }
-                else
-                {
-                    <div class="d-flex align-items-center gap-2 mb-3">
-                        <button class="btn btn-sm btn-outline-primary" @onclick="SelectAllGymnasts">Select All</button>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="DeselectAllGymnasts">Deselect All</button>
-                        <input class="form-control form-control-sm" style="max-width: 250px;"
-                               placeholder="Search by name..."
-                               @bind="manageAthletesSearch" @bind:event="oninput" />
-                    </div>
-                    <div class="row">
-                        @foreach (var gymnast in filteredManageAthletes)
-                        {
-                            var gId = gymnast.Id;
-                            var isChecked = seasonGymnastIds.Contains(gId);
-                            <div class="col-md-4 col-sm-6 mb-2">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="sg-@gId"
-                                           checked="@isChecked"
-                                           @onchange="e => ToggleGymnastInSeason(gId, (bool)e.Value!)" />
-                                    <label class="form-check-label" for="sg-@gId">
-                                        @gymnast.Name
-                                        @if (!string.IsNullOrWhiteSpace(gymnast.Level))
-                                        {
-                                            <span class="text-muted small">(@gymnast.Level)</span>
-                                        }
-                                    </label>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
-        }
-
-
-        @if (showForm)
-        {
-            <div class="card mb-4 p-3">
-                <h5>@(editingLevel == null ? $"Add {labels.TeamLevel}" : $"Edit {labels.TeamLevel}")</h5>
-                <div class="row">
-                    <div class="col-md-4 mb-2">
-                        <label>Level Name</label>
-                        <input class="form-control" @bind="formName" placeholder="e.g. Gym Stars, Elite/HOPE" />
-                    </div>
+        <div class="card mb-4 p-3">
+            <h5>Athletes in Season</h5>
+            <p class="text-muted small">Check athletes who belong to this season. Changes are saved immediately.</p>
+            @if (!allGymnasts.Any())
+            {
+                <p class="text-muted">No gymnasts found in roster.</p>
+            }
+            else
+            {
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <button class="btn btn-sm btn-outline-primary" @onclick="SelectAllGymnasts">Select All</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="DeselectAllGymnasts">Deselect All</button>
+                    <input class="form-control form-control-sm" style="max-width: 250px;"
+                           placeholder="Search by name..."
+                           @bind="manageAthletesSearch" @bind:event="oninput" />
+                    <span class="text-muted small ms-2">@seasonGymnastIds.Count selected</span>
                 </div>
-                @if (seasonGroups.Any())
-                {
-                    <div class="mt-2 mb-2 p-2 bg-light rounded">
-                        <label class="fw-bold mb-1">Groups (optional)</label>
-                        <div class="d-flex flex-wrap gap-3">
-                            @foreach (var g in seasonGroups)
-                            {
-                                var gId = g.Id;
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" checked="@formGroupIds.Contains(gId)"
-                                           @onchange="(e) => ToggleFormGroup(gId, (bool)e.Value!)" />
-                                    <label class="form-check-label">@g.Name</label>
-                                </div>
-                            }
+                <div class="row">
+                    @foreach (var gymnast in filteredManageAthletes)
+                    {
+                        var gId = gymnast.Id;
+                        var isChecked = seasonGymnastIds.Contains(gId);
+                        <div class="col-md-4 col-sm-6 mb-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="sg-@gId"
+                                       checked="@isChecked"
+                                       @onchange="e => ToggleGymnastInSeason(gId, (bool)e.Value!)" />
+                                <label class="form-check-label" for="sg-@gId">
+                                    @gymnast.Name
+                                    @if (!string.IsNullOrWhiteSpace(gymnast.Level))
+                                    {
+                                        <span class="text-muted small">(@gymnast.Level)</span>
+                                    }
+                                </label>
+                            </div>
                         </div>
-                    </div>
-                }
-                @if (meets.Any())
-                {
-                    <div class="mt-2 mb-2 p-2 bg-light rounded">
-                        <label class="fw-bold mb-1">@labels.Meets (optional)</label>
-                        <div class="d-flex flex-wrap gap-3">
-                            @foreach (var m in meets)
-                            {
-                                var mId = m.Id;
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" checked="@formMeetIds.Contains(mId)"
-                                           @onchange="(e) => ToggleFormMeet(mId, (bool)e.Value!)" />
-                                    <label class="form-check-label">@m.Name</label>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                }
-                <button class="btn btn-success me-2" @onclick="SaveLevel">Save</button>
-                <button class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
-            </div>
-        }
-
-        @if (seasonGroups.Any())
-        {
-            @* Grouped team levels *@
-            @foreach (var group in seasonGroups)
-            {
-                var groupLevelIds = levelGroupAssignments.Where(a => a.SeasonGroupId == group.Id).Select(a => a.TeamLevelId).ToHashSet();
-                var groupLevels = teamLevels.Where(t => groupLevelIds.Contains(t.Id)).ToList();
-                @if (groupLevels.Count == 1 && string.Equals(groupLevels[0].Name?.Trim(), group.Name?.Trim(), StringComparison.OrdinalIgnoreCase))
-                {
-                    @* Single level with same name as group — skip the group wrapper to avoid duplication *@
-                    @RenderLevelCard(groupLevels[0])
-                }
-                else
-                {
-                    <div class="card mb-4 border-primary">
-                        <div class="card-header bg-light">
-                            <h5 class="mb-0">@group.Name</h5>
-                        </div>
-                        <div class="card-body p-2">
-                            @if (groupLevels.Any())
-                            {
-                                @foreach (var level in groupLevels)
-                                {
-                                    @RenderLevelCard(level)
-                                }
-                            }
-                            else
-                            {
-                                <p class="text-muted mb-0 fst-italic">No @labels.TeamLevels assigned to this group yet.</p>
-                            }
-                        </div>
-                    </div>
-                }
+                    }
+                </div>
             }
-        }
-        else
-        {
-            @* No groups — show all levels *@
-            @foreach (var level in teamLevels)
-            {
-                @RenderLevelCard(level)
-            }
-        }
-
+        </div>
     }
 }
 
@@ -383,6 +281,18 @@ else
         athleteItems = await db.AthleteItems.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
         meets = await db.Meets.AsNoTracking().Where(m => m.SeasonId == selectedSeasonId).OrderBy(m => m.Date).ToListAsync();
         meetLevelAssignments = await db.MeetTeamLevelAssignments.AsNoTracking().Where(a => levelIds.Contains(a.TeamLevelId)).ToListAsync();
+
+        // Load athletes for season management
+        allGymnasts = await db.Gymnasts.AsNoTracking()
+            .Where(g => !g.IsArchived)
+            .OrderBy(g => g.Name)
+            .ToListAsync();
+        seasonGymnastIds = (await db.SeasonGymnasts.AsNoTracking()
+            .Where(sg => sg.SeasonId == selectedSeasonId)
+            .Select(sg => sg.GymnastId)
+            .ToListAsync())
+            .ToHashSet();
+
         StateHasChanged();
     }
 
@@ -535,30 +445,12 @@ else
 
 
     // --- Manage Athletes (SeasonGymnast) ---
-    private bool showManageAthletes;
     private List<Gymnast> allGymnasts = new();
     private HashSet<int> seasonGymnastIds = new();
     private string manageAthletesSearch = "";
     private List<Gymnast> filteredManageAthletes => string.IsNullOrWhiteSpace(manageAthletesSearch)
         ? allGymnasts
         : allGymnasts.Where(g => g.Name.Contains(manageAthletesSearch, StringComparison.OrdinalIgnoreCase)).ToList();
-
-    private async Task LoadManageAthletes()
-    {
-        showManageAthletes = !showManageAthletes;
-        if (!showManageAthletes || selectedSeasonId == 0) return;
-
-        using var db = await DbFactory.CreateDbContextAsync();
-        allGymnasts = await db.Gymnasts.AsNoTracking()
-            .Where(g => !g.IsArchived)
-            .OrderBy(g => g.Name)
-            .ToListAsync();
-        seasonGymnastIds = (await db.SeasonGymnasts.AsNoTracking()
-            .Where(sg => sg.SeasonId == selectedSeasonId)
-            .Select(sg => sg.GymnastId)
-            .ToListAsync())
-            .ToHashSet();
-    }
 
     private async Task ToggleGymnastInSeason(int gymnastId, bool isChecked)
     {
