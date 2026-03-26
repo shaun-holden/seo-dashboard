@@ -1189,10 +1189,8 @@ else
             .ToHashSet();
 
         publishedSeasonsList = publishedSeasons.Where(s =>
-            // Season has a TeamLevel directly assigned to this parent's athlete
-            linkedTeamLevelSeasonIds.Contains(s.Id)
             // Season has gymnasts explicitly assigned via SeasonGymnast
-            || gymnastSeasonIds.Contains(s.Id)
+            gymnastSeasonIds.Contains(s.Id)
         ).ToList();
 
         Season? targetSeason;
@@ -1376,24 +1374,14 @@ else
             .ThenByDescending(s => s.Name)
             .ToList();
 
-        // Seasons from direct athlete->teamlevel links
-        var linkedSeasonIds = linkedAthletes
-            .Select(a => allTeamLevels.FirstOrDefault(t => t.Id == a.TeamLevelId)?.SeasonId)
-            .Where(id => id.HasValue)
-            .Select(id => id!.Value)
-            .Distinct()
-            .ToHashSet();
-
-        // Seasons from explicit SeasonGymnast assignments
+        // Only use explicit SeasonGymnast assignments
         var assignedSeasonIds = seasonGymnastLinks
             .Select(sg => sg.SeasonId)
             .Distinct()
             .ToHashSet();
 
-        linkedSeasonIds.UnionWith(assignedSeasonIds);
-
-        return publishedSeasons.FirstOrDefault(s => s.IsActive && linkedSeasonIds.Contains(s.Id))
-            ?? publishedSeasons.FirstOrDefault(s => linkedSeasonIds.Contains(s.Id))
+        return publishedSeasons.FirstOrDefault(s => s.IsActive && assignedSeasonIds.Contains(s.Id))
+            ?? publishedSeasons.FirstOrDefault(s => assignedSeasonIds.Contains(s.Id))
             ?? publishedSeasons.FirstOrDefault(s => s.IsActive)
             ?? publishedSeasons.FirstOrDefault();
     }
