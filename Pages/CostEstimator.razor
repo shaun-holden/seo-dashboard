@@ -1,0 +1,178 @@
+@page "/cost-estimator"
+@attribute [Authorize]
+@using GymBudgetApp.Models
+@using GymBudgetApp
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IConfiguration Configuration
+
+<h3>Cost Estimator</h3>
+<p class="text-muted">See how the per-athlete cost changes based on team size.</p>
+
+@if (seasons == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    @if (isAdmin)
+    {
+        <div class="mb-3">
+            <label>Select Season</label>
+            <select class="form-select w-auto d-inline-block ms-2" @onchange="OnSeasonChanged">
+                <option value="">-- Select Season --</option>
+                @foreach (var s in seasons)
+                {
+                    <option value="@s.Id" selected="@(s.Id == selectedSeasonId)">@s.Name</option>
+                }
+            </select>
+        </div>
+    }
+    else if (selectedSeasonId > 0)
+    {
+        <div class="mb-3">
+            <span class="fw-bold">@selectedSeasonName</span>
+        </div>
+    }
+
+    @if (selectedSeasonId > 0 && totalBudget > 0)
+    {
+        <div class="row mb-4">
+            <div class="col-md-4 mb-2">
+                <div class="card text-white bg-primary">
+                    <div class="card-body">
+                        <h6>Total Budget</h6>
+                        <h4>$@totalBudget.ToString("N2")</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-2">
+                <div class="card text-white bg-success">
+                    <div class="card-body">
+                        <h6>Current Athletes</h6>
+                        <h4>@currentAthleteCount</h4>
+                        <small>$@currentCostPerAthlete.ToString("N2") per athlete</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0">Cost Breakdown by Team Size</h5></div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="text-center">Athletes</th>
+                            <th class="text-end">Cost Per Athlete</th>
+                            <th class="text-end">Total</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (int i = 1; i <= 25; i++)
+                        {
+                            var count = i;
+                            var costPer = Math.Round(totalBudget / count, 2);
+                            var isCurrentSize = count == currentAthleteCount;
+                            <tr class="@(isCurrentSize ? "table-success fw-bold" : "")">
+                                <td class="text-center">
+                                    @count
+                                    @if (isCurrentSize)
+                                    {
+                                        <span class="badge bg-success ms-1">Current</span>
+                                    }
+                                </td>
+                                <td class="text-end">$@costPer.ToString("N2")</td>
+                                <td class="text-end">$@totalBudget.ToString("N2")</td>
+                                <td>
+                                    @if (count > 1)
+                                    {
+                                        var diff = costPer - Math.Round(totalBudget / (count - 1), 2);
+                                        <small class="text-success">@diff.ToString("N2") less than @(count - 1)</small>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+    else if (selectedSeasonId > 0)
+    {
+        <div class="alert alert-info">No budget entries found for this season.</div>
+    }
+}
+
+@code {
+    private List<Season>? seasons;
+    private int selectedSeasonId;
+    private string selectedSeasonName = "";
+    private decimal totalBudget;
+    private int currentAthleteCount;
+    private decimal currentCostPerAthlete;
+    private bool isAdmin;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var email = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? authState.User.FindFirst("email")?.Value;
+        var adminEmails = Configuration.GetSection("AdminEmails").Get<List<string>>()
+            ?? new() { Configuration["AdminEmail"] ?? "deshaun@tntgym.org" };
+        isAdmin = adminEmails.Any(ae => string.Equals(email, ae, StringComparison.OrdinalIgnoreCase))
+                  || authState.User.IsInRole("Employee");
+
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        if (isAdmin)
+        {
+            seasons = await db.Seasons
+                .OrderByDescending(s => s.IsActive)
+                .ThenByDescending(s => s.Name)
+                .ToListAsync();
+        }
+        else
+        {
+            // Parents see only published seasons
+            seasons = await db.Seasons
+                .Where(s => s.IsPublished)
+                .OrderByDescending(s => s.IsActive)
+                .ThenByDescending(s => s.Name)
+                .ToListAsync();
+
+            // Auto-select active season for parents
+            var active = seasons.FirstOrDefault(s => s.IsActive);
+            if (active != null)
+            {
+                selectedSeasonId = active.Id;
+                selectedSeasonName = active.Name;
+                await LoadBudget();
+            }
+        }
+    }
+
+    private async Task OnSeasonChanged(ChangeEventArgs e)
+    {
+        selectedSeasonId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        selectedSeasonName = seasons?.FirstOrDefault(s => s.Id == selectedSeasonId)?.Name ?? "";
+        await LoadBudget();
+    }
+
+    private async Task LoadBudget()
+    {
+        if (selectedSeasonId <= 0) { totalBudget = 0; return; }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        totalBudget = await db.BudgetCalculatorEntries.AsNoTracking()
+            .Where(e => e.SeasonId == selectedSeasonId)
+            .SumAsync(e => (decimal?)e.CalculatedTotal) ?? 0;
+
+        var season = await db.Seasons.FindAsync(selectedSeasonId);
+        currentAthleteCount = season?.AthleteCount ?? 0;
+        currentCostPerAthlete = currentAthleteCount > 0 ? Math.Round(totalBudget / currentAthleteCount, 2) : 0;
+    }
+}
