@@ -275,12 +275,13 @@
                             var appliesToGymnast = DoesItemApplyToLevel(col.Name, g.Level);
                             var colName = col.Name;
                             var gymnastId = g.Id;
+                            var itemRequired = appliesToGymnast && IsItemRequiredForLevel(col.Name, g.Level);
                             <td class="text-center">
                                 @if (!appliesToGymnast)
                                 {
                                     <span class="text-muted" title="Not applicable to this level">—</span>
                                 }
-                                else if (col.IsRequired)
+                                else if (itemRequired)
                                 {
                                     <input type="checkbox" class="form-check-input" checked disabled />
                                     <small class="d-block text-muted">$@itemPrice.ToString("N0")</small>
@@ -303,12 +304,13 @@
                             var compPrice = GetCompItemPrice(col.Name, g.Level);
                             var compColName = col.Name;
                             var compGymnastId = g.Id;
+                            var compItemRequired = compApplies && IsCompItemRequiredForLevel(col.Name, g.Level);
                             <td class="text-center">
                                 @if (!compApplies)
                                 {
                                     <span class="text-muted">—</span>
                                 }
-                                else if (col.IsRequired)
+                                else if (compItemRequired)
                                 {
                                     <input type="checkbox" class="form-check-input" checked disabled />
                                     <small class="d-block text-muted">$@compPrice.ToString("N0")</small>
@@ -351,12 +353,12 @@
                         <td></td>
                         @foreach (var col in apparelColumns)
                         {
-                            var count = filteredGymnasts.Count(g => col.IsRequired || IsGymnastItemChecked(g, col.Name));
+                            var count = filteredGymnasts.Count(g => (DoesItemApplyToLevel(col.Name, g.Level) && IsItemRequiredForLevel(col.Name, g.Level)) || IsGymnastItemChecked(g, col.Name));
                             <td class="text-center">@count</td>
                         }
                         @foreach (var col in competitionColumns)
                         {
-                            var count = filteredGymnasts.Count(g => col.IsRequired || IsCompItemChecked(g, col.Name));
+                            var count = filteredGymnasts.Count(g => (DoesCompItemApplyToLevel(col.Name, g.Level) && IsCompItemRequiredForLevel(col.Name, g.Level)) || IsCompItemChecked(g, col.Name));
                             <td class="text-center">@count</td>
                         }
                         <td class="text-end text-primary">$@((costPerGymnast * filteredGymnasts.Count).ToString("N2"))</td>
@@ -819,6 +821,16 @@
         return items.Any(a => !IsAppliesToEmpty(a.AppliesTo) && LevelMatchesAppliesTo(level, a.AppliesTo!));
     }
 
+    private bool IsItemRequiredForLevel(string itemName, string? level)
+    {
+        var items = apparelItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!items.Any()) return false;
+        var matching = items.Where(a =>
+            IsAppliesToEmpty(a.AppliesTo) ||
+            (!string.IsNullOrEmpty(level) && LevelMatchesAppliesTo(level, a.AppliesTo!))).ToList();
+        return matching.Any(a => a.IsRequired);
+    }
+
     private decimal GetItemPrice(string itemName, string? level)
     {
         var items = apparelItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -849,7 +861,7 @@
         foreach (var col in apparelColumns)
         {
             if (!DoesItemApplyToLevel(col.Name, g.Level)) continue;
-            if (col.IsRequired || IsGymnastItemChecked(g, col.Name))
+            if (IsItemRequiredForLevel(col.Name, g.Level) || IsGymnastItemChecked(g, col.Name))
             {
                 cost += GetItemPrice(col.Name, g.Level);
             }
@@ -870,6 +882,16 @@
         if (!items.Any()) return false;
         if (items.Any(a => IsAppliesToEmpty(a.AppliesTo))) return true;
         return items.Any(a => !IsAppliesToEmpty(a.AppliesTo) && LevelMatchesAppliesTo(level, a.AppliesTo!));
+    }
+
+    private bool IsCompItemRequiredForLevel(string itemName, string? level)
+    {
+        var items = competitionItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!items.Any()) return false;
+        var matching = items.Where(a =>
+            IsAppliesToEmpty(a.AppliesTo) ||
+            (!string.IsNullOrEmpty(level) && LevelMatchesAppliesTo(level, a.AppliesTo!))).ToList();
+        return matching.Any(a => a.IsRequired);
     }
 
     private decimal GetCompItemPrice(string itemName, string? level)
@@ -897,7 +919,7 @@
         foreach (var col in competitionColumns)
         {
             if (!DoesCompItemApplyToLevel(col.Name, g.Level)) continue;
-            if (col.IsRequired || IsCompItemChecked(g, col.Name))
+            if (IsCompItemRequiredForLevel(col.Name, g.Level) || IsCompItemChecked(g, col.Name))
                 cost += GetCompItemPrice(col.Name, g.Level);
         }
         return cost;

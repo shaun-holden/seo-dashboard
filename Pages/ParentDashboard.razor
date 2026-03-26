@@ -279,7 +279,8 @@ else
                                                     var appLocked = appDeadline.HasValue && appDeadline.Value < DateTime.Today;
                                                     var appAthId = athlete.Id;
                                                     var appName = col.Name;
-                                                    if (col.IsRequired)
+                                                    var appRequired = IsApparelRequiredForLevel(col.Name, athleteLevel);
+                                                    if (appRequired)
                                                     {
                                                         <tr>
                                                             <td><input type="checkbox" class="form-check-input me-2" checked disabled /> @col.Name</td>
@@ -335,7 +336,8 @@ else
                                                     var compLocked = compDeadline.HasValue && compDeadline.Value < DateTime.Today;
                                                     var compAthId = athlete.Id;
                                                     var compName = col.Name;
-                                                    if (col.IsRequired)
+                                                    var compRequired = IsCompRequiredForLevel(col.Name, athleteLevel);
+                                                    if (compRequired)
                                                     {
                                                         <tr>
                                                             <td><input type="checkbox" class="form-check-input me-2" checked disabled /> @col.Name</td>
@@ -1547,6 +1549,17 @@ else
         return items.Any(a => !IsAppliesToEmpty(a.AppliesTo) && LevelMatchesKeywords(level, a.AppliesTo!));
     }
 
+    private bool IsApparelRequiredForLevel(string itemName, string level)
+    {
+        var items = parentApparelItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!items.Any()) return false;
+        // Find items that match this level and check if any are required
+        var matching = items.Where(a =>
+            IsAppliesToEmpty(a.AppliesTo) ||
+            (!string.IsNullOrEmpty(level) && LevelMatchesKeywords(level, a.AppliesTo!))).ToList();
+        return matching.Any(a => a.IsRequired);
+    }
+
     private decimal GetApparelPrice(string itemName, string level)
     {
         var items = parentApparelItems.Where(a => a.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -1580,7 +1593,7 @@ else
         foreach (var col in parentApparelColumns)
         {
             if (!DoesApparelApplyToLevel(col.Name, level)) continue;
-            if (col.IsRequired || IsParentApparelSelected(athleteId, col.Name))
+            if (IsApparelRequiredForLevel(col.Name, level) || IsParentApparelSelected(athleteId, col.Name))
                 cost += GetApparelPrice(col.Name, level);
         }
         return cost;
@@ -1624,6 +1637,16 @@ else
         return items.Any(c => !IsAppliesToEmpty(c.AppliesTo) && LevelMatchesKeywords(level, c.AppliesTo!));
     }
 
+    private bool IsCompRequiredForLevel(string itemName, string level)
+    {
+        var items = parentCompetitionItems.Where(c => c.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!items.Any()) return false;
+        var matching = items.Where(c =>
+            IsAppliesToEmpty(c.AppliesTo) ||
+            (!string.IsNullOrEmpty(level) && LevelMatchesKeywords(level, c.AppliesTo!))).ToList();
+        return matching.Any(c => c.IsRequired);
+    }
+
     private decimal GetCompPrice2(string itemName, string level)
     {
         var items = parentCompetitionItems.Where(c => c.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -1642,7 +1665,7 @@ else
         foreach (var col in parentCompColumns)
         {
             if (!DoesCompApplyToLevel2(col.Name, level)) continue;
-            if (col.IsRequired || IsParentCompSelected(athleteId, col.Name))
+            if (IsCompRequiredForLevel(col.Name, level) || IsParentCompSelected(athleteId, col.Name))
                 cost += GetCompPrice2(col.Name, level);
         }
         return cost;
