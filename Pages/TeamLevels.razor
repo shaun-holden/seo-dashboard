@@ -550,7 +550,7 @@ else
 
         using var db = await DbFactory.CreateDbContextAsync();
         allGymnasts = await db.Gymnasts.AsNoTracking()
-            .Where(g => g.UserId == userId && !g.IsArchived)
+            .Where(g => !g.IsArchived)
             .OrderBy(g => g.Name)
             .ToListAsync();
         seasonGymnastIds = (await db.SeasonGymnasts.AsNoTracking()
@@ -622,7 +622,7 @@ else
             .Where(tl => tl.SeasonId == seasonId)
             .ToListAsync();
         var gymnasts = await db.Gymnasts.AsNoTracking()
-            .Where(g => g.UserId == userId && !g.IsArchived && g.Level != null)
+            .Where(g => !g.IsArchived && g.Level != null)
             .ToListAsync();
         var existing = await db.SeasonGymnasts
             .Where(sg => sg.SeasonId == seasonId)
