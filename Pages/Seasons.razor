@@ -530,31 +530,30 @@ else
         }
         else
         {
-            var originalName = editingSeason.Name;
-            editingSeason.Name = formName;
-            editingSeason.AthleteCount = formAthleteCount;
-            editingSeason.IsActive = formIsActive;
-            editingSeason.IsLocked = formIsLocked;
-            editingSeason.ProjectType = formProjectType;
-            editingSeason.MeetLabel = formProjectType == ProjectType.Custom ? formMeetLabel : "Meet";
-            editingSeason.CoachLabel = formProjectType == ProjectType.Custom ? formCoachLabel : "Coach";
-            editingSeason.TeamLevelLabel = formProjectType == ProjectType.Custom ? formTeamLevelLabel : "Team Level";
-            editingSeason.AthleteItemLabel = formProjectType == ProjectType.Custom ? formAthleteItemLabel : "Athlete Item";
-            editingSeason.EnableTeamLevels = formProjectType == ProjectType.Custom ? formEnableTeamLevels : true;
-            editingSeason.EnablePerDiem = formProjectType == ProjectType.Custom ? formEnablePerDiem : true;
-            editingSeason.EnableMileage = formProjectType == ProjectType.Custom ? formEnableMileage : true;
-            var entry = Db.Entry(editingSeason);
-            if (entry.State == EntityState.Detached)
-                Db.Seasons.Attach(editingSeason);
-            entry.State = EntityState.Modified;
+            var tracked = await Db.Seasons.FindAsync(editingSeason.Id);
+            if (tracked == null) return;
+            var originalName = tracked.Name;
+            tracked.Name = formName;
+            tracked.AthleteCount = formAthleteCount;
+            tracked.IsActive = formIsActive;
+            tracked.IsLocked = formIsLocked;
+            tracked.ProjectType = formProjectType;
+            tracked.MeetLabel = formProjectType == ProjectType.Custom ? formMeetLabel : "Meet";
+            tracked.CoachLabel = formProjectType == ProjectType.Custom ? formCoachLabel : "Coach";
+            tracked.TeamLevelLabel = formProjectType == ProjectType.Custom ? formTeamLevelLabel : "Team Level";
+            tracked.AthleteItemLabel = formProjectType == ProjectType.Custom ? formAthleteItemLabel : "Athlete Item";
+            tracked.EnableTeamLevels = formProjectType == ProjectType.Custom ? formEnableTeamLevels : true;
+            tracked.EnablePerDiem = formProjectType == ProjectType.Custom ? formEnablePerDiem : true;
+            tracked.EnableMileage = formProjectType == ProjectType.Custom ? formEnableMileage : true;
+            newSeason = tracked;
             auditAction = "SeasonUpdated";
-            auditDetails = $"Updated season {originalName} to {editingSeason.Name}. Active={editingSeason.IsActive}, Published={editingSeason.IsPublished}, BudgetLocked={editingSeason.IsLocked}.";
+            auditDetails = $"Updated season {originalName} to {tracked.Name}. Active={tracked.IsActive}, Published={tracked.IsPublished}, BudgetLocked={tracked.IsLocked}.";
         }
 
         await Db.SaveChangesAsync();
 
         // Sync TeamLevel records from the comma-separated levels field
-        var savedSeason = editingSeason ?? newSeason!;
+        var savedSeason = newSeason!;
         var desiredLevels = formLevels.Split(',', StringSplitOptions.RemoveEmptyEntries)
             .Select(l => l.Trim())
             .Where(l => l.Length > 0)
@@ -586,44 +585,40 @@ else
 
     private async Task SetActive(Season season)
     {
-        season.IsActive = !season.IsActive;
-        var entry = Db.Entry(season);
-        if (entry.State == EntityState.Detached)
-            Db.Seasons.Attach(season);
-        entry.State = EntityState.Modified;
+        var tracked = await Db.Seasons.FindAsync(season.Id);
+        if (tracked == null) return;
+        tracked.IsActive = !tracked.IsActive;
         await Db.SaveChangesAsync();
-        await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonActivationChanged", $"{season.Name} marked {(season.IsActive ? "active" : "inactive")}.");
+        await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonActivationChanged", $"{tracked.Name} marked {(tracked.IsActive ? "active" : "inactive")}.");
         await LoadSeasons();
     }
 
     private async Task ToggleLock(Season season)
     {
-        season.IsLocked = !season.IsLocked;
-        var entry = Db.Entry(season);
-        if (entry.State == EntityState.Detached)
-            Db.Seasons.Attach(season);
-        entry.State = EntityState.Modified;
+        var tracked = await Db.Seasons.FindAsync(season.Id);
+        if (tracked == null) return;
+        tracked.IsLocked = !tracked.IsLocked;
         await Db.SaveChangesAsync();
-        await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonBudgetLockChanged", $"{season.Name} budget calculator {(season.IsLocked ? "locked" : "unlocked")}.");
+        await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonBudgetLockChanged", $"{tracked.Name} budget calculator {(tracked.IsLocked ? "locked" : "unlocked")}.");
         await LoadSeasons();
     }
 
     private async Task TogglePublish(Season season)
     {
-        season.IsPublished = !season.IsPublished;
-        var entry = Db.Entry(season);
-        if (entry.State == EntityState.Detached)
-            Db.Seasons.Attach(season);
-        entry.State = EntityState.Modified;
+        var tracked = await Db.Seasons.FindAsync(season.Id);
+        if (tracked == null) return;
+        tracked.IsPublished = !tracked.IsPublished;
         await Db.SaveChangesAsync();
-        await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonPublishChanged", $"{season.Name} {(season.IsPublished ? "published" : "unpublished")}.");
+        await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonPublishChanged", $"{tracked.Name} {(tracked.IsPublished ? "published" : "unpublished")}.");
         await LoadSeasons();
     }
 
     private async Task DeleteSeason(Season season)
     {
-        var seasonName = season.Name;
-        Db.Seasons.Remove(season);
+        var tracked = await Db.Seasons.FindAsync(season.Id);
+        if (tracked == null) return;
+        var seasonName = tracked.Name;
+        Db.Seasons.Remove(tracked);
         await Db.SaveChangesAsync();
         await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonDeleted", $"Deleted season {seasonName}.");
         await LoadSeasons();
