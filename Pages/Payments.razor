@@ -147,17 +147,37 @@ else
                 <div class="card-body p-0">
                     <table class="table table-sm mb-0">
                         <thead class="table-light">
-                            <tr><th>Athlete</th><th>Amount</th><th>Reason</th><th>Date</th></tr>
+                            <tr><th>Athlete</th><th>Amount</th><th>Reason</th><th>Date</th><th>Actions</th></tr>
                         </thead>
                         <tbody>
                             @foreach (var c in allCredits)
                             {
                                 var aName = gymnasts.FirstOrDefault(a => a.Id == c.AthleteId)?.Name ?? "Unknown";
+                                var creditId = c.Id;
                                 <tr>
                                     <td>@aName</td>
                                     <td class="text-success">-$@c.Amount.ToString("N2")</td>
                                     <td>@(c.Description ?? "Credit")</td>
                                     <td>@(c.PaidAt?.ToString("MMM dd, yyyy") ?? c.CreatedAt.ToString("MMM dd, yyyy"))</td>
+                                    <td>
+                                        @if (editingPaymentId == creditId)
+                                        {
+                                            <div class="d-flex gap-1 align-items-center">
+                                                <select class="form-select form-select-sm" style="max-width:180px;" @bind="editSeasonId">
+                                                    @foreach (var s in seasons!)
+                                                    {
+                                                        <option value="@s.Id">@s.Name</option>
+                                                    }
+                                                </select>
+                                                <button class="btn btn-sm btn-success" @onclick="() => SavePaymentSeason(creditId)">Save</button>
+                                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => editingPaymentId = 0">X</button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => StartEditPayment(creditId)">Move</button>
+                                        }
+                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -346,6 +366,8 @@ else
     private string creditDescription = "";
     private string? creditMessage;
     private bool canViewPayments;
+    private int editingPaymentId;
+    private int editSeasonId;
 
     private class PaymentRow
     {
@@ -560,6 +582,34 @@ else
                 ParentContactEmail = string.Join("; ", contactEmails)
             };
         }).ToList();
+    }
+
+    private void StartEditPayment(int paymentId)
+    {
+        editingPaymentId = paymentId;
+        editSeasonId = selectedSeasonId;
+    }
+
+    private async Task SavePaymentSeason(int paymentId)
+    {
+        if (editSeasonId <= 0) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var payment = await db.Payments.FindAsync(paymentId);
+        if (payment == null) return;
+
+        var oldSeasonName = (await db.Seasons.FindAsync(payment.SeasonId))?.Name ?? "Unknown";
+        var newSeasonName = (await db.Seasons.FindAsync(editSeasonId))?.Name ?? "Unknown";
+
+        payment.SeasonId = editSeasonId;
+        await db.SaveChangesAsync();
+
+        var athleteName = (await db.Gymnasts.FindAsync(payment.AthleteId))?.Name ?? "Unknown";
+        await AuditService.LogAsync(userId ?? "", userEmail ?? "", "PaymentSeasonChanged",
+            $"Moved {payment.Type} ${payment.Amount:N2} for {athleteName} from '{oldSeasonName}' to '{newSeasonName}'");
+
+        editingPaymentId = 0;
+        actionMessage = $"Moved {payment.Type.ToString().ToLower()} for {athleteName} to {newSeasonName}.";
+        await LoadData();
     }
 
     private static string EscapeCsv(string? value)
