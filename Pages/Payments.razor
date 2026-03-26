@@ -284,11 +284,13 @@ else
                             <th class="text-center">Status</th>
                             <th class="text-center">Parent Link</th>
                             <th>Parent Contact</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var row in filteredRows)
                         {
+                            var rowAthleteId = row.AthleteId;
                             <tr>
                                 <td><strong>@row.Name</strong></td>
                                 <td>@row.Level</td>
@@ -325,6 +327,33 @@ else
                                     }
                                 </td>
                                 <td>@(string.IsNullOrWhiteSpace(row.ParentContactEmail) ? "—" : row.ParentContactEmail)</td>
+                                <td>
+                                    @if (row.Balance < 0)
+                                    {
+                                        @if (transferAthleteId == rowAthleteId)
+                                        {
+                                            <div class="d-flex gap-1 align-items-center flex-nowrap">
+                                                <select class="form-select form-select-sm" style="max-width:180px;" @bind="transferSeasonId">
+                                                    <option value="0">-- Season --</option>
+                                                    @foreach (var s in seasons!.Where(s => s.Id != selectedSeasonId))
+                                                    {
+                                                        <option value="@s.Id">@s.Name</option>
+                                                    }
+                                                </select>
+                                                <button class="btn btn-sm btn-success" disabled="@(transferSeasonId == 0)"
+                                                        @onclick="() => ExecuteTransfer(rowAthleteId)">Go</button>
+                                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => transferAthleteId = 0">X</button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-outline-info" @onclick="() => StartTransfer(rowAthleteId)"
+                                                    title="Transfer $@(Math.Abs(row.Balance).ToString("N2")) overpayment to another season">
+                                                Transfer $@(Math.Abs(row.Balance).ToString("N2"))
+                                            </button>
+                                        }
+                                    }
+                                </td>
                             </tr>
                         }
                     </tbody>
@@ -335,7 +364,7 @@ else
                             <td class="text-end text-success">$@filteredRows.Sum(r => r.Paid).ToString("N2")</td>
                             <td class="text-end text-info">$@filteredRows.Sum(r => r.Credits).ToString("N2")</td>
                             <td class="text-end">$@filteredRows.Sum(r => r.Balance).ToString("N2")</td>
-                            <td colspan="3"></td>
+                            <td colspan="4"></td>
                         </tr>
                     </tfoot>
                 </table>
@@ -368,6 +397,8 @@ else
     private bool canViewPayments;
     private int editingPaymentId;
     private int editSeasonId;
+    private int transferAthleteId;
+    private int transferSeasonId;
 
     private class PaymentRow
     {
@@ -619,6 +650,70 @@ else
 
         editingPaymentId = 0;
         actionMessage = $"Moved {payment.Type.ToString().ToLower()} for {athleteName} to {newSeasonName}.";
+        await LoadData();
+    }
+
+    private void StartTransfer(int athleteId)
+    {
+        transferAthleteId = athleteId;
+        transferSeasonId = 0;
+    }
+
+    private async Task ExecuteTransfer(int athleteId)
+    {
+        if (transferSeasonId <= 0) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var athlete = await db.Gymnasts.FindAsync(athleteId);
+        if (athlete == null) return;
+
+        // Calculate the overpayment (negative balance = overpaid)
+        var athletePayments = await db.Payments.AsNoTracking()
+            .Where(p => p.SeasonId == selectedSeasonId && p.AthleteId == athleteId)
+            .ToListAsync();
+        var paid = athletePayments.Where(p => p.Status == PaymentStatus.Paid && p.Type == PaymentType.Payment).Sum(p => p.Amount);
+        var credits = athletePayments.Where(p => p.Type == PaymentType.Credit).Sum(p => p.Amount);
+        var balance = costPerGymnast - paid - credits;
+
+        if (balance >= 0) return; // No overpayment to transfer
+
+        var transferAmount = Math.Abs(balance);
+        var fromSeasonName = seasons?.FirstOrDefault(s => s.Id == selectedSeasonId)?.Name ?? "Unknown";
+        var toSeasonName = seasons?.FirstOrDefault(s => s.Id == transferSeasonId)?.Name ?? "Unknown";
+
+        // Create credit in destination season
+        db.Payments.Add(new Payment
+        {
+            SeasonId = transferSeasonId,
+            AthleteId = athleteId,
+            PayerUserId = userId!,
+            Amount = transferAmount,
+            Status = PaymentStatus.Paid,
+            Type = PaymentType.Credit,
+            Description = $"Balance transfer from {fromSeasonName}",
+            PaidAt = DateTime.UtcNow
+        });
+
+        // Create a negative credit in source season to zero out the overpayment
+        db.Payments.Add(new Payment
+        {
+            SeasonId = selectedSeasonId,
+            AthleteId = athleteId,
+            PayerUserId = userId!,
+            Amount = -transferAmount,
+            Status = PaymentStatus.Paid,
+            Type = PaymentType.Credit,
+            Description = $"Balance transferred to {toSeasonName}",
+            PaidAt = DateTime.UtcNow
+        });
+
+        await db.SaveChangesAsync();
+        await AuditService.LogAsync(userId ?? "", userEmail ?? "", "BalanceTransferred",
+            $"Transferred ${transferAmount:N2} for {athlete.Name} from '{fromSeasonName}' to '{toSeasonName}'");
+
+        transferAthleteId = 0;
+        transferSeasonId = 0;
+        actionMessage = $"Transferred ${transferAmount:N2} for {athlete.Name} to {toSeasonName}.";
         await LoadData();
     }
 
