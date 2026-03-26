@@ -15,7 +15,7 @@ Complete team management platform for gymnastics programs. Manage budgets, athle
 - **Seasons** — Create and manage seasons with copy structure and import
 - **Athletes** — Manage gymnasts, invite parents with invite codes, archive instead of delete
 - **Roster** — Track apparel sizes and competition items per athlete, bulk assign levels
-- **Team Levels** — Create levels per season, explicitly assign athletes to seasons with select all/search
+- **Team Levels** — Assign athletes to seasons with checkboxes, select all/deselect all, and name search
 - **Emergency Contacts** — View emergency contacts and medical notes for all athletes (employee accessible)
 
 ### Schedule
@@ -30,9 +30,10 @@ Complete team management platform for gymnastics programs. Manage budgets, athle
 - **Budget Calculator** — What-if scenario modeling for per-athlete costs (lockable per season)
 - **Apparel** — Pricing and assignment for team apparel items
 - **Competitions** — Competition entry fees and travel costs
-- **Payments** — Track Stripe and manual payments per athlete, apply credits for iClass families
+- **Payments** — Track Stripe and manual payments per athlete, apply credits, move payments between seasons, transfer overpayment balances
 - **Payment Plans** — Custom payment months for approved plan requests, bulk level updates
 - **Payment Plan Requests** — Parents can request alternate payment plans, admin reviews and approves
+- **Cost Estimator** — Per-athlete cost breakdown for 1–25 athletes based on season budget (visible to parents)
 - **Stripe Integration** — Online payments (Pay Monthly, Pay in Full, Custom Amount, Auto-Pay)
 - **iClassPro Billing** — Optional CSV import for billing integration
 - **Auto-Expire Payments** — Abandoned Stripe payments auto-expire after 30 minutes
@@ -67,6 +68,8 @@ A separate green-themed portal for parents with mobile PWA support and push noti
 | **Payment Plan** | Monthly installments with due dates on the 15th |
 | **Stripe Payments** | Pay Monthly, Pay in Full, Custom Amount, or Auto-Pay |
 | **Statement Download** | Download or print financial statements per athlete |
+| **Balance Transfer** | Transfer overpayment credits to another season |
+| **Cost Estimator** | View per-athlete cost breakdown by team size (read-only) |
 | **Profile** | Display name, profile picture, push notification toggle |
 | **Child Profiles** | Emergency contacts, medical info, sizes per linked athlete |
 | **Payment Plan Requests** | Request alternate payment plans for admin review |
