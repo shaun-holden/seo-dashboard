@@ -101,6 +101,31 @@ else
                 <label>Total Athlete Count</label>
                 <input type="number" class="form-control" @bind="formAthleteCount" />
             </div>
+            <div class="row mb-2">
+                <div class="col-md-6">
+                    <label>Payment Start Month</label>
+                    <select class="form-select" @bind="formPaymentStartMonth">
+                        <option value="1">January</option>
+                        <option value="2">February</option>
+                        <option value="3">March</option>
+                        <option value="4">April</option>
+                        <option value="5">May</option>
+                        <option value="6">June</option>
+                        <option value="7">July</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
+                    </select>
+                    <div class="form-text">Month when the first payment is due (on the 15th).</div>
+                </div>
+                <div class="col-md-6">
+                    <label>Number of Payment Months</label>
+                    <input type="number" class="form-control" min="1" max="12" @bind="formPaymentMonths" />
+                    <div class="form-text">How many monthly installments.</div>
+                </div>
+            </div>
             <div class="mb-2">
                 <input type="checkbox" @bind="formIsActive" /> Active Season
             </div>
@@ -389,6 +414,8 @@ else
     private int formAthleteCount = 0;
     private bool formIsActive = true;
     private bool formIsLocked;
+    private int formPaymentStartMonth = 8;
+    private int formPaymentMonths = 8;
     private ProjectType formProjectType = ProjectType.Competition;
     private string formMeetLabel = "Meet";
     private string formCoachLabel = "Coach";
@@ -482,6 +509,8 @@ else
         formEnablePerDiem = true;
         formEnableMileage = true;
         formLevels = "";
+        formPaymentStartMonth = 8;
+        formPaymentMonths = 8;
         showForm = true;
     }
 
@@ -500,6 +529,8 @@ else
         formEnableTeamLevels = season.EnableTeamLevels;
         formEnablePerDiem = season.EnablePerDiem;
         formEnableMileage = season.EnableMileage;
+        formPaymentStartMonth = season.PaymentStartMonth > 0 ? season.PaymentStartMonth : 8;
+        formPaymentMonths = season.PaymentMonths > 0 ? season.PaymentMonths : 8;
 
         var existingLevels = await Db.TeamLevels.AsNoTracking()
             .Where(t => t.SeasonId == season.Id)
@@ -533,7 +564,9 @@ else
                 AthleteItemLabel = formProjectType == ProjectType.Custom ? formAthleteItemLabel : "Athlete Item",
                 EnableTeamLevels = formProjectType == ProjectType.Custom ? formEnableTeamLevels : true,
                 EnablePerDiem = formProjectType == ProjectType.Custom ? formEnablePerDiem : true,
-                EnableMileage = formProjectType == ProjectType.Custom ? formEnableMileage : true
+                EnableMileage = formProjectType == ProjectType.Custom ? formEnableMileage : true,
+                PaymentStartMonth = formPaymentStartMonth,
+                PaymentMonths = formPaymentMonths
             };
             Db.Seasons.Add(newSeason);
             auditAction = "SeasonCreated";
@@ -556,6 +589,8 @@ else
             tracked.EnableTeamLevels = formProjectType == ProjectType.Custom ? formEnableTeamLevels : true;
             tracked.EnablePerDiem = formProjectType == ProjectType.Custom ? formEnablePerDiem : true;
             tracked.EnableMileage = formProjectType == ProjectType.Custom ? formEnableMileage : true;
+            tracked.PaymentStartMonth = formPaymentStartMonth;
+            tracked.PaymentMonths = formPaymentMonths;
             newSeason = tracked;
             auditAction = "SeasonUpdated";
             auditDetails = $"Updated season {originalName} to {tracked.Name}. Active={tracked.IsActive}, Published={tracked.IsPublished}, BudgetLocked={tracked.IsLocked}.";
