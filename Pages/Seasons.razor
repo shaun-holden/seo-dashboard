@@ -9,6 +9,7 @@
 @inject NavigationManager Nav
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject GymBudgetApp.Services.AuditService AuditService
+@inject IConfiguration Configuration
 
 <h3>Seasons</h3>
 
@@ -103,10 +104,13 @@ else
             <div class="mb-2">
                 <input type="checkbox" @bind="formIsActive" /> Active Season
             </div>
-            <div class="mb-2">
-                <input type="checkbox" @bind="formIsLocked" /> Lock Budget Calculator
-                <div class="form-text">Prevents edits in Budget Calculator only. Other season pages stay editable.</div>
-            </div>
+            @if (isAdmin)
+            {
+                <div class="mb-2">
+                    <input type="checkbox" @bind="formIsLocked" /> Lock Budget Calculator
+                    <div class="form-text">Prevents edits in Budget Calculator only. Other season pages stay editable.</div>
+                </div>
+            }
 
             @if (formProjectType == ProjectType.Custom)
             {
@@ -245,9 +249,12 @@ else
                                         {
                                             <button class="btn btn-sm btn-success" @onclick="() => TogglePublish(season)">Publish</button>
                                         }
-                                        <button class="btn btn-sm btn-outline-dark" @onclick="() => ToggleLock(season)">
-                                            @(season.IsLocked ? "Unlock Budget" : "Lock Budget")
-                                        </button>
+                                        @if (isAdmin)
+                                        {
+                                            <button class="btn btn-sm btn-outline-dark" @onclick="() => ToggleLock(season)">
+                                                @(season.IsLocked ? "Unlock Budget" : "Lock Budget")
+                                            </button>
+                                        }
                                         <button class="btn btn-sm btn-outline-primary" @onclick="() => EditSeason(season)">Edit</button>
                                         <button class="btn btn-sm btn-outline-success" @onclick="() => StartCopy(season)">Copy</button>
                                         <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteSeason(season)">Delete</button>
@@ -374,6 +381,7 @@ else
     private Season? editingSeason;
     private string? userId;
     private string? userEmail;
+    private bool isAdmin;
     private string seasonSearchText = "";
     private string seasonFilter = "All";
 
@@ -398,6 +406,9 @@ else
         userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
                     ?? authState.User.FindFirst("email")?.Value
                     ?? authState.User.Identity?.Name;
+        var adminEmails = Configuration.GetSection("AdminEmails").Get<List<string>>()
+            ?? new() { Configuration["AdminEmail"] ?? "deshaun@tntgym.org" };
+        isAdmin = adminEmails.Any(ae => string.Equals(userEmail, ae, StringComparison.OrdinalIgnoreCase));
         await LoadSeasons();
     }
 

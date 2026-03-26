@@ -6,6 +6,8 @@
 @using System.Security.Claims
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IConfiguration Configuration
 
 <h3>Budget Calculator</h3>
 
@@ -28,7 +30,13 @@ else
 
     @if (selectedSeasonId > 0)
     {
-        @if (isBudgetLocked)
+        @if (isBudgetLocked && !isAdmin)
+        {
+            <div class="alert alert-warning">
+                This season's budget calculator is locked.
+            </div>
+        }
+        else if (isBudgetLocked && isAdmin)
         {
             <div class="alert alert-warning">
                 This season's budget calculator is locked. You can review the budget, but edits are disabled.
@@ -552,36 +560,40 @@ else
         </div>
 
         <!-- Grand Total Bar -->
-        <div class="budget-grand-total">
-            <div class="row align-items-center">
-                <div class="col-md-8">
-                    <div class="d-flex flex-wrap gap-3">
-                        @foreach (var tab in allTabs)
-                        {
-                            var catTotal = GetCategoryTotal(tab);
-                            @if (catTotal != 0)
+        @if (isAdmin)
+        {
+            <div class="budget-grand-total">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <div class="d-flex flex-wrap gap-3">
+                            @foreach (var tab in allTabs)
                             {
-                                <span><small class="text-white-50">@GetTabLabel(tab):</small> $@catTotal.ToString("N2")</span>
+                                var catTotal = GetCategoryTotal(tab);
+                                @if (catTotal != 0)
+                                {
+                                    <span><small class="text-white-50">@GetTabLabel(tab):</small> $@catTotal.ToString("N2")</span>
+                                }
                             }
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <div style="font-size: 1.25rem; font-weight: bold;">Total Budget: $@grandTotal.ToString("N2") | Actual: $@grandActual.ToString("N2")</div>
+                        <div class="@(grandTotal - grandActual >= 0 ? "text-white-50" : "text-warning")">Variance: $@((grandTotal - grandActual).ToString("N2"))</div>
+                        @if (seasonAthleteCount > 0)
+                        {
+                            <div class="text-white-50">Cost Per Gymnast: $@((grandTotal / seasonAthleteCount).ToString("N2")) (@seasonAthleteCount gymnasts)</div>
                         }
                     </div>
                 </div>
-                <div class="col-md-4 text-end">
-                    <div style="font-size: 1.25rem; font-weight: bold;">Total Budget: $@grandTotal.ToString("N2") | Actual: $@grandActual.ToString("N2")</div>
-                    <div class="@(grandTotal - grandActual >= 0 ? "text-white-50" : "text-warning")">Variance: $@((grandTotal - grandActual).ToString("N2"))</div>
-                    @if (seasonAthleteCount > 0)
-                    {
-                        <div class="text-white-50">Cost Per Gymnast: $@((grandTotal / seasonAthleteCount).ToString("N2")) (@seasonAthleteCount gymnasts)</div>
-                    }
-                </div>
             </div>
-        </div>
+        }
     }
 }
 
 @code {
     private List<Season>? seasons;
     private int selectedSeasonId;
+    private bool isAdmin;
     private bool isBudgetLocked => seasons?.FirstOrDefault(s => s.Id == selectedSeasonId)?.IsLocked == true;
     private string activeTab = "TeamEntry";
     private List<string> rosterLevels = new();
@@ -606,6 +618,13 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var email = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? authState.User.FindFirst("email")?.Value;
+        var adminEmails = Configuration.GetSection("AdminEmails").Get<List<string>>()
+            ?? new() { Configuration["AdminEmail"] ?? "deshaun@tntgym.org" };
+        isAdmin = adminEmails.Any(ae => string.Equals(email, ae, StringComparison.OrdinalIgnoreCase));
+
         using var db = await DbFactory.CreateDbContextAsync();
         seasons = await db.Seasons.OrderByDescending(s => s.IsActive).ThenBy(s => s.Name).ToListAsync();
     }
