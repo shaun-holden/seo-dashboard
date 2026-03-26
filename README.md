@@ -12,7 +12,7 @@ Complete team management platform for gymnastics programs. Manage budgets, athle
 
 ### Team
 
-- **Seasons** — Create and manage seasons with copy structure and import
+- **Seasons** — Create and manage seasons with copy structure, import, payment schedule (start month and installment count), and admin-only budget lock
 - **Athletes** — Manage gymnasts, invite parents with invite codes, archive instead of delete
 - **Roster** — Track apparel sizes and competition items per athlete, bulk assign levels
 - **Team Levels** — Assign athletes to seasons with checkboxes, select all/deselect all, and name search
@@ -27,7 +27,7 @@ Complete team management platform for gymnastics programs. Manage budgets, athle
 ### Finance
 
 - **Budget** — Track revenue and expenses by category with budget vs. actual
-- **Budget Calculator** — What-if scenario modeling for per-athlete costs (lockable per season)
+- **Budget Calculator** — What-if scenario modeling for per-athlete costs (admin-only lock, totals hidden from employees)
 - **Apparel** — Pricing and assignment for team apparel items
 - **Competitions** — Competition entry fees and travel costs
 - **Payments** — Track Stripe and manual payments per athlete, apply credits, move payments between seasons, transfer overpayment balances
