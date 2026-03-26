@@ -415,6 +415,38 @@ else
                     </div>
                 </div>
 
+                @if (balance < 0)
+                {
+                    var transferAthId = athlete.Id;
+                    var transferAmt = Math.Abs(balance);
+                    var otherSeasons = publishedSeasonsList.Where(s => s.Id != selectedSeasonId).ToList();
+                    @if (otherSeasons.Any())
+                    {
+                        <div class="alert alert-info py-2 d-flex align-items-center gap-2 flex-wrap">
+                            <span>You have a <strong>$@transferAmt.ToString("N2")</strong> overpayment.</span>
+                            @if (parentTransferAthleteId == transferAthId)
+                            {
+                                <select class="form-select form-select-sm" style="max-width:220px;" @bind="parentTransferSeasonId">
+                                    <option value="0">-- Select Season --</option>
+                                    @foreach (var s in otherSeasons)
+                                    {
+                                        <option value="@s.Id">@s.Name</option>
+                                    }
+                                </select>
+                                <button class="btn btn-sm btn-success" disabled="@(parentTransferSeasonId == 0)"
+                                        @onclick="() => ExecuteParentTransfer(transferAthId, transferAmt)">Transfer</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => parentTransferAthleteId = 0">Cancel</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-info" @onclick="() => StartParentTransfer(transferAthId)">
+                                    Transfer $@transferAmt.ToString("N2") to another season
+                                </button>
+                            }
+                        </div>
+                    }
+                }
+
                 @{
                     var athleteLevelObj = teamLevels.FirstOrDefault(t => t.Id == athlete.TeamLevelId);
                     var gymnastRecord = parentGymnasts.FirstOrDefault(g => g.Id == athlete.Id);
@@ -924,6 +956,9 @@ else
     private int? selectedSeasonId;
     private HashSet<int> expandedAthletes = new();
     private HashSet<int> seasonAthleteIds = new();
+    private int parentTransferAthleteId;
+    private int parentTransferSeasonId;
+    private string? transferMessage;
     private bool isProcessing;
     private string? paymentError;
     private bool stripeEnabled;
@@ -1362,6 +1397,58 @@ else
             .Select(r => r.AnnouncementId)
             .ToListAsync())
             .ToHashSet();
+    }
+
+    private void StartParentTransfer(int athleteId)
+    {
+        parentTransferAthleteId = athleteId;
+        parentTransferSeasonId = 0;
+        transferMessage = null;
+    }
+
+    private async Task ExecuteParentTransfer(int athleteId, decimal transferAmount)
+    {
+        if (parentTransferSeasonId <= 0 || transferAmount <= 0) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var athlete = await db.Gymnasts.FindAsync(athleteId);
+        if (athlete == null) return;
+
+        var fromSeasonName = publishedSeasonsList.FirstOrDefault(s => s.Id == selectedSeasonId)?.Name ?? "Unknown";
+        var toSeasonName = publishedSeasonsList.FirstOrDefault(s => s.Id == parentTransferSeasonId)?.Name ?? "Unknown";
+
+        // Create credit in destination season
+        db.Payments.Add(new Payment
+        {
+            SeasonId = parentTransferSeasonId,
+            AthleteId = athleteId,
+            PayerUserId = userId ?? "",
+            Amount = transferAmount,
+            Status = PaymentStatus.Paid,
+            Type = PaymentType.Credit,
+            Description = $"Balance transfer from {fromSeasonName}",
+            PaidAt = DateTime.UtcNow
+        });
+
+        // Zero out the overpayment in source season
+        db.Payments.Add(new Payment
+        {
+            SeasonId = selectedSeasonId ?? 0,
+            AthleteId = athleteId,
+            PayerUserId = userId ?? "",
+            Amount = -transferAmount,
+            Status = PaymentStatus.Paid,
+            Type = PaymentType.Credit,
+            Description = $"Balance transferred to {toSeasonName}",
+            PaidAt = DateTime.UtcNow
+        });
+
+        await db.SaveChangesAsync();
+
+        parentTransferAthleteId = 0;
+        parentTransferSeasonId = 0;
+        transferMessage = $"Transferred ${transferAmount:N2} to {toSeasonName}.";
+        await LoadData();
     }
 
     private Season? SelectParentSeason(List<Season> publishedSeasons, List<TeamLevel> allTeamLevels, List<Athlete> linkedAthletes, List<SeasonGymnast> seasonGymnastLinks)
