@@ -532,9 +532,19 @@ else
             .ToList();
 
         var gymnastIds = gymnasts.Select(g => g.Id).ToList();
+        // Load all payments for this season (including athletes no longer in the season)
         payments = await db.Payments.AsNoTracking()
-            .Where(p => p.SeasonId == selectedSeasonId && gymnastIds.Contains(p.AthleteId))
+            .Where(p => p.SeasonId == selectedSeasonId)
             .ToListAsync();
+        // Include orphaned athletes (have payments but no longer match season levels)
+        var orphanedAthleteIds = payments.Select(p => p.AthleteId).Distinct()
+            .Where(id => !gymnastIds.Contains(id)).ToList();
+        if (orphanedAthleteIds.Any())
+        {
+            var orphanedGymnasts = allGymnasts.Where(g => orphanedAthleteIds.Contains(g.Id)).ToList();
+            gymnasts = gymnasts.Concat(orphanedGymnasts).OrderBy(g => g.Name).ToList();
+            gymnastIds = gymnasts.Select(g => g.Id).ToList();
+        }
         parentLinks = await db.ParentLinks.AsNoTracking().Where(pl => gymnastIds.Contains(pl.AthleteId)).ToListAsync();
 
         // Calculate cost per gymnast from calculator
