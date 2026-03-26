@@ -543,7 +543,10 @@ else
             editingSeason.EnableTeamLevels = formProjectType == ProjectType.Custom ? formEnableTeamLevels : true;
             editingSeason.EnablePerDiem = formProjectType == ProjectType.Custom ? formEnablePerDiem : true;
             editingSeason.EnableMileage = formProjectType == ProjectType.Custom ? formEnableMileage : true;
-            Db.Seasons.Update(editingSeason);
+            var entry = Db.Entry(editingSeason);
+            if (entry.State == EntityState.Detached)
+                Db.Seasons.Attach(editingSeason);
+            entry.State = EntityState.Modified;
             auditAction = "SeasonUpdated";
             auditDetails = $"Updated season {originalName} to {editingSeason.Name}. Active={editingSeason.IsActive}, Published={editingSeason.IsPublished}, BudgetLocked={editingSeason.IsLocked}.";
         }
@@ -584,7 +587,10 @@ else
     private async Task SetActive(Season season)
     {
         season.IsActive = !season.IsActive;
-        Db.Seasons.Update(season);
+        var entry = Db.Entry(season);
+        if (entry.State == EntityState.Detached)
+            Db.Seasons.Attach(season);
+        entry.State = EntityState.Modified;
         await Db.SaveChangesAsync();
         await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonActivationChanged", $"{season.Name} marked {(season.IsActive ? "active" : "inactive")}.");
         await LoadSeasons();
@@ -593,7 +599,10 @@ else
     private async Task ToggleLock(Season season)
     {
         season.IsLocked = !season.IsLocked;
-        Db.Seasons.Update(season);
+        var entry = Db.Entry(season);
+        if (entry.State == EntityState.Detached)
+            Db.Seasons.Attach(season);
+        entry.State = EntityState.Modified;
         await Db.SaveChangesAsync();
         await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonBudgetLockChanged", $"{season.Name} budget calculator {(season.IsLocked ? "locked" : "unlocked")}.");
         await LoadSeasons();
@@ -602,7 +611,10 @@ else
     private async Task TogglePublish(Season season)
     {
         season.IsPublished = !season.IsPublished;
-        Db.Seasons.Update(season);
+        var entry = Db.Entry(season);
+        if (entry.State == EntityState.Detached)
+            Db.Seasons.Attach(season);
+        entry.State = EntityState.Modified;
         await Db.SaveChangesAsync();
         await AuditService.LogAsync(userId ?? "", userEmail ?? "", "SeasonPublishChanged", $"{season.Name} {(season.IsPublished ? "published" : "unpublished")}.");
         await LoadSeasons();
